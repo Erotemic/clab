@@ -419,6 +419,11 @@ def instance_fscore(gti, uncertain, dsm, pred):
         n_ccs, cc_labels = cv2.connectedComponents(mask, connectivity=4)
         return cc_labels
 
+    def instance_label2(pred_seg):
+        import cv2
+        seeds = pred_seg == 2
+        n_ccs, cc_labels = cv2.connectedComponents(seeds.astype(np.uint8), connectivity=4)
+
 
     for k in [3, 5, 7, 9, 11, 13, 14, 15, 16]:
         # for d in [3, 4, 5, 6, 7, 8]:
@@ -438,7 +443,14 @@ def instance_fscore(gti, uncertain, dsm, pred):
                 task = UrbanMapper3D('', '')
 
                 pred_seg = util.imread(pred_fpath)
-                pred = task.instance_label(pred_seg, dist_thresh=d, k=k, watershed=True)
+
+                if True:  # inner/outer
+                    pred_seg == 1
+                    pred_seg == 2
+
+
+
+                pred = instance_label(pred_seg, dist_thresh=d, k=k, watershed=True)
                 gti = util.imread(gti_fpath)
                 gtl = util.imread(gtl_fpath)
                 dsm = util.imread(dsm_fpath)
@@ -573,4 +585,4 @@ def instance_fscore(gti, uncertain, dsm, pred):
     f_score = 2 * precision * recall / (precision + recall)
 
     # They multiply by 1e6, but lets not do that.
-    return f_score
+    return (f_score, precision, recall)
