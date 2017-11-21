@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-from clab import inputs
 import ubelt as ub
-from .tasks._sseg import SemanticSegmentationTask
+from clab import inputs
+from clab.tasks._sseg import SemanticSegmentationTask
 from collections import OrderedDict
 from os.path import exists, join, expanduser
-from .util import imutil
+from clab.util import imutil
 
 
 class CamVid(SemanticSegmentationTask):

@@ -4,7 +4,7 @@ http://crcv.ucf.edu/projects/Geosemantic/
 http://www.6d-vision.com/scene-labeling
 https://www.cc.gatech.edu/cpl/projects/videogeometriccontext/
 """
-from .tasks._sseg import SemanticSegmentationTask
+from clab.tasks._sseg import SemanticSegmentationTask
 
 
 class CityScapes(SemanticSegmentationTask):
