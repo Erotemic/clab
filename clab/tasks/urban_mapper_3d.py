@@ -15,8 +15,10 @@ from clab import preprocess
 from clab import getLogger
 import parse
 
-logger = getLogger(__name__)
-print = logger.info
+
+if True:
+    logger = getLogger(__name__)
+    print = logger.info
 
 
 def _imshow_dtm(image):

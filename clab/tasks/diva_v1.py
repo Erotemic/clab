@@ -32,8 +32,10 @@ from clab import augment
 from clab.tasks._sseg import SemanticSegmentationTask
 
 from clab import getLogger
-logger = getLogger(__name__)
-print = logger.info
+
+if True:
+    logger = getLogger(__name__)
+    print = logger.info
 
 
 class DivaV1(SemanticSegmentationTask):
