@@ -10,7 +10,7 @@ from clab import util
 from clab.torch import xpu_device
 from clab.torch import models
 from clab.util import imutil
-from clab.torch.sseg_train import task_datasets, get_task, SSegInputsWrapper
+from clab.live.urban_train import task_datasets, get_task, SSegInputsWrapper
 
 
 def urban_mapper_eval_dataset():
