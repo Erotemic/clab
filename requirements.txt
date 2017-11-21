@@ -1,2 +1,4 @@
 pygtrie
 numpy
+ubelt
+pytorch

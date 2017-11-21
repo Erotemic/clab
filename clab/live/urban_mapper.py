@@ -39,13 +39,24 @@ def hack_urban_mapper_eval_submission():
     #     '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
     # load_path = get_snapshot(train_dpath, epoch=202)
 
-    train_dpath = ub.truepath(
-        '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_8438-haplmmpq/solver_8438-haplmmpq_unet_None_kvterjeu_a=1,c=RGB,n_ch=5,n_cl=3')
-    load_path = get_snapshot(train_dpath, epoch=258)
-    # load_path = get_snapshot(train_dpath)
+    if False:
+        train_dpath = ub.truepath(
+            '~/remote/aretha/data/work/urban_mapper/arch/unet/train/'
+            'input_8438-haplmmpq/solver_8438-haplmmpq_unet_None_kvterjeu_a=1,c=RGB,n_ch=5,n_cl=3')
+        load_path = get_snapshot(train_dpath, epoch=258)
 
-    eval_dataset = urban_mapper_eval_dataset()
-    eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
+        eval_dataset = urban_mapper_eval_dataset()
+        eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
+
+    elif True:
+        train_dpath = ub.truepath(
+            '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
+            'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
+
+        eval_dataset = urban_mapper_eval_dataset()
+        eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
+
+    # load_path = get_snapshot(train_dpath)
 
     pharn = PredictHarness(eval_dataset)
     pharn.hack_dump_path(load_path)
