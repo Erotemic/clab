@@ -25,7 +25,7 @@ from .util import imutil
 class SSegInputsWrapper(torch.utils.data.Dataset):
     """
     Ignore:
-        >>> from clab.torch.urban_train import *
+        >>> from clab.live.urban_train import *
         >>> task = get_task('urban_mapper_3d')
         >>> learn, test = next(task.xval_splits())
         >>> inputs = learn
@@ -215,12 +215,11 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
         return input_tuple, gt
 
-    @profile
     def __getitem__(self, index):
         """
 
         Ignore:
-            >>> from clab.torch.urban_train import *
+            >>> from clab.live.urban_train import *
             >>> from clab.tasks.urban_mapper_3d import UrbanMapper3D
             >>> self = load_task_dataset('urban_mapper_3d')['train']
             >>> self.augment = True
@@ -298,10 +297,9 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
     def ignore_label(self):
         return self.task.ignore_label
 
-    @profile
     def class_weights(self):
         """
-            >>> from clab.torch.urban_train import *
+            >>> from clab.live.urban_train import *
             >>> self = load_task_dataset('urban_mapper_3d')['train']
             >>> self.class_weights()
         """
@@ -433,19 +431,19 @@ def urban_fit():
     """
 
     CommandLine:
-        python -m clab.torch.urban_train urban_fit --profile
+        python -m clab.live.urban_train urban_fit --profile
 
-        python -m clab.torch.urban_train urban_fit --task=urban_mapper_3d --arch=segnet
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=segnet
 
-        python -m clab.torch.urban_train urban_fit --task=urban_mapper_3d --arch=unet --noaux
-        python -m clab.torch.urban_train urban_fit --task=urban_mapper_3d --arch=unet
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --noaux
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet
 
-        python -m clab.torch.urban_train urban_fit --task=urban_mapper_3d --dry
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --dry
 
-        python -m clab.torch.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB --all
-        python -m clab.torch.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB --all
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB
 
-        python -m clab.torch.urban_train urban_fit --task=urban_mapper_3d --arch=unet --dry
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --dry
 
     Example:
         >>> from clab.torch.fit_harness import *
@@ -598,9 +596,9 @@ def urban_fit():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.torch.urban_train
-        python -m clab.torch.urban_train urban_fit
-        python -m clab.torch.urban_train urban_fit --dry
+        python -m clab.live.urban_train
+        python -m clab.live.urban_train urban_fit
+        python -m clab.live.urban_train urban_fit --dry
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

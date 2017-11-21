@@ -155,7 +155,7 @@ def siam_augment(img1, img2, label, rng):
 class LabeledPairDataset(PairDataset):
     """
     Ignore:
-        >>> from clab.torch.siam_train import *
+        >>> from clab.live.siam_train import *
         >>> train_dataset, vali_dataset, test_dataset = ibeis_datasets('PZ_MTEST')
         >>> ut.qtensure()
         >>> self = train_dataset
@@ -346,14 +346,14 @@ class RandomBalancedIBEISSample(PairDataset):
 
 def randomized_ibeis_dset(dbname, dim=224):
     """
-        >>> from clab.torch.siam_train import *
+        >>> from clab.live.siam_train import *
         >>> datasets = randomized_ibeis_dset('PZ_MTEST')
         >>> ut.qtensure()
         >>> self = datasets['train']
         >>> self.augment = True
         >>> self.show_sample()
     """
-    # from clab.torch.siam_train import *
+    # from clab.live.siam_train import *
     # dbname = 'PZ_MTEST'
     import utool as ut
     from ibeis.algo.verif import vsone
@@ -400,7 +400,7 @@ def randomized_ibeis_dset(dbname, dim=224):
 def ibeis_datasets(dbname='PZ_MTEST', dim=224):
     """
     Example:
-        >>> from clab.torch.siam_train import *
+        >>> from clab.live.siam_train import *
         >>> from ibeis.algo.verif.vsone import *  # NOQA
         >>> pblm = OneVsOneProblem.from_empty('GZ_Master1')
         >>> ibs = pblm.infr.ibs
@@ -472,7 +472,7 @@ def att_faces_datasets(dim=224):
     """
     https://github.com/harveyslash/Facial-Similarity-with-Siamese-Networks-in-Pytorch
 
-        >>> from clab.torch.siam_train import *
+        >>> from clab.live.siam_train import *
         >>> train_dataset, vali_dataset, test_dataset = att_faces_datasets()
         train_dataset[0][0].shape
 
@@ -540,12 +540,12 @@ def comparable_vamp():
     Script to get comparison between vamp and siam
 
     CommandLine:
-        python -m clab.torch.siam_train comparable_vamp --db GZ_Master1
-        python -m clab.torch.siam_train comparable_vamp --db PZ_Master1
+        python -m clab.live.siam_train comparable_vamp --db GZ_Master1
+        python -m clab.live.siam_train comparable_vamp --db PZ_Master1
 
     Example:
         >>> # SCRIPT
-        >>> from clab.torch.siam_train import *  # NOQA
+        >>> from clab.live.siam_train import *  # NOQA
         >>> comparable_vamp()
     """
     import parse
@@ -686,18 +686,18 @@ def comparable_vamp():
 def siam_vsone_train():
     r"""
     CommandLine:
-        python -m clab.torch.siam_train siam_vsone_train --dry
-        python -m clab.torch.siam_train siam_vsone_train
-        python -m clab.torch.siam_train siam_vsone_train --db PZ_Master1
-        python -m clab.torch.siam_train siam_vsone_train --db PZ_MTEST --dry
-        python -m clab.torch.siam_train siam_vsone_train --db PZ_MTEST
-        python -m clab.torch.siam_train siam_vsone_train --db RotanTurtles
+        python -m clab.live.siam_train siam_vsone_train --dry
+        python -m clab.live.siam_train siam_vsone_train
+        python -m clab.live.siam_train siam_vsone_train --db PZ_Master1
+        python -m clab.live.siam_train siam_vsone_train --db PZ_MTEST --dry
+        python -m clab.live.siam_train siam_vsone_train --db PZ_MTEST
+        python -m clab.live.siam_train siam_vsone_train --db RotanTurtles
 
-        python -m clab.torch.siam_train siam_vsone_train --db humpbacks_fb
+        python -m clab.live.siam_train siam_vsone_train --db humpbacks_fb
 
     Example:
         >>> # DISABLE_DOCTEST
-        >>> from clab.torch.siam_train import *  # NOQA
+        >>> from clab.live.siam_train import *  # NOQA
         >>> siam_vsone_train()
     """
     dbname = ub.argval('--db', default='PZ_MTEST')
@@ -771,7 +771,7 @@ def siam_vsone_train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.torch.siam_train siam_vsone_train --dry
+        python -m clab.live.siam_train siam_vsone_train --dry
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

@@ -27,7 +27,7 @@ profile = ut.inject2(__name__)[-1]
 class SSegInputsWrapper(torch.utils.data.Dataset):
     """
     Ignore:
-        >>> from clab.torch.sseg_train import *
+        >>> from clab.live.sseg_train import *
         >>> task = get_task('urban_mapper_3d')
         >>> learn, test = next(task.xval_splits())
         >>> inputs = learn
@@ -42,7 +42,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         np.bincount(gt.cpu().numpy().ravel())
 
     Ignore:
-        >>> from clab.torch.sseg_train import *
+        >>> from clab.live.sseg_train import *
         >>> task = get_task('camvid')
         >>> learn, test = next(task.xval_splits())
         >>> inputs = learn
@@ -207,7 +207,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         """
 
         Ignore:
-            >>> from clab.torch.sseg_train import *
+            >>> from clab.live.sseg_train import *
             >>> self = load_task_dataset('urban_mapper_3d')['train']
             >>> self.augment = True
             >>> index = 0
@@ -285,7 +285,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
     @profile
     def class_weights(self):
         """
-            >>> from clab.torch.sseg_train import *
+            >>> from clab.live.sseg_train import *
             >>> self = load_task_dataset('urban_mapper_3d')['train']
             >>> self.class_weights()
         """
@@ -424,29 +424,29 @@ def task_fit(taskname):
     """
 
     CommandLine:
-        python -m clab.torch.sseg_train task_fit --profile
+        python -m clab.live.sseg_train task_fit --profile
 
-        python -m clab.torch.sseg_train task_fit --task=camvid --arch=segnet
-        python -m clab.torch.sseg_train task_fit --task=camvid --arch=unet
-        python -m clab.torch.sseg_train task_fit --task=camvid --arch=segnet --dry
+        python -m clab.live.sseg_train task_fit --task=camvid --arch=segnet
+        python -m clab.live.sseg_train task_fit --task=camvid --arch=unet
+        python -m clab.live.sseg_train task_fit --task=camvid --arch=segnet --dry
 
-        python -m clab.torch.sseg_train task_fit --task=camvid --arch=unet --colorspace=RGB
-        python -m clab.torch.sseg_train task_fit --task=camvid --arch=unet --colorspace=LAB
+        python -m clab.live.sseg_train task_fit --task=camvid --arch=unet --colorspace=RGB
+        python -m clab.live.sseg_train task_fit --task=camvid --arch=unet --colorspace=LAB
 
-        python -m clab.torch.sseg_train task_fit --task=camvid --arch=segnet --colorspace=RGB
-        python -m clab.torch.sseg_train task_fit --task=camvid --arch=segnet --colorspace=LAB
+        python -m clab.live.sseg_train task_fit --task=camvid --arch=segnet --colorspace=RGB
+        python -m clab.live.sseg_train task_fit --task=camvid --arch=segnet --colorspace=LAB
 
-        python -m clab.torch.sseg_train task_fit --task=urban_mapper_3d --arch=segnet
+        python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=segnet
 
-        python -m clab.torch.sseg_train task_fit --task=urban_mapper_3d --arch=unet --noaux
-        python -m clab.torch.sseg_train task_fit --task=urban_mapper_3d --arch=unet
+        python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=unet --noaux
+        python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=unet
 
-        python -m clab.torch.sseg_train task_fit --task=urban_mapper_3d --dry
+        python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --dry
 
-        python -m clab.torch.sseg_train task_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB --all
-        python -m clab.torch.sseg_train task_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB
+        python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB --all
+        python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB
 
-        python -m clab.torch.sseg_train task_fit --task=urban_mapper_3d --arch=unet --dry
+        python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=unet --dry
 
     Example:
         >>> from clab.torch.fit_harness import *
@@ -576,9 +576,9 @@ def task_fit(taskname):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.torch.sseg_train
-        python -m clab.torch.sseg_train task_fit
-        python -m clab.torch.sseg_train task_fit --dry
+        python -m clab.live.sseg_train
+        python -m clab.live.sseg_train task_fit
+        python -m clab.live.sseg_train task_fit --dry
     """
     try:
         import xdoctest

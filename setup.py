@@ -111,6 +111,7 @@ def parse_requirements(fname='requirements.txt'):
             lines = [line.strip() for line in f.readlines()]
             lines = [line for line in lines if not line.startswith('#')]
             return lines
+    return []
 
 
 if __name__ == '__main__':

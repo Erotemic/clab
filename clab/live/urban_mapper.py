@@ -11,9 +11,6 @@ from . import util
 from . import models
 from .util import imutil
 from .torch.sseg_train import task_datasets, get_task, SSegInputsWrapper
-import parse
-
-parse.log.setLevel(30)
 
 
 def urban_mapper_eval_dataset():
