@@ -6,7 +6,6 @@ import numpy as np
 import six
 import pandas as pd
 import ubelt as ub
-from clab import models
 from .util import fnameutil
 from .util import imutil
 from .util import hashutil
@@ -14,6 +13,22 @@ from .util import hashutil
 from clab import getLogger
 logger = getLogger(__name__)
 print = logger.info
+
+
+def make_input_file(im_paths, gt_paths=None, ext='.png', dpath=None):
+    # TODO: remove or refactor (holdover from caffe)
+    input_fpath = join(dpath, 'inputs.txt')
+    if gt_paths is not None:
+        assert fnameutil.check_aligned(im_paths, gt_paths), (
+            'image names should correspond')
+        text = '\n'.join([
+            '{} {}'.format(xpath, ypath)
+            for xpath, ypath in zip(im_paths, gt_paths)
+        ])
+    else:
+        text = '\n'.join(im_paths)
+    ub.writeto(input_fpath, text)
+    return input_fpath
 
 
 class DictLike(object):
@@ -405,7 +420,8 @@ class Inputs(ub.NiceRepr):
             assert self.input_id is not None
             self.input_dpath = ub.ensuredir((self.base_dpath,
                                              self.input_id))
-            self.input_fpath = models.make_input_file(
+            # TODO: remove or refactor (holdover from caffe)
+            self.input_fpath = make_input_file(
                 self.im_paths, self.gt_paths, dpath=self.input_dpath)
             print('{} input_fpath = {!r}'.format(self.tag,
                                                  ub.compressuser(self.input_fpath)))
