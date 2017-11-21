@@ -21,15 +21,15 @@ import itertools as it
 import numpy as np
 from PIL import Image
 from clab import inputs
-from .util import fnameutil
-from .util import gpu_util
-from .util import imutil
-from .util import colorutil
-from .util import hashutil
-from .util import jsonutil
+from clab.util import fnameutil
+from clab.util import gpu_util
+from clab.util import imutil
+from clab.util import colorutil
+from clab.util import hashutil
+from clab.util import jsonutil
 from clab import util
 from clab import augment
-from .tasks._sseg import SemanticSegmentationTask
+from clab.tasks._sseg import SemanticSegmentationTask
 
 from clab import getLogger
 logger = getLogger(__name__)

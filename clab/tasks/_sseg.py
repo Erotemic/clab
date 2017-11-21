@@ -3,8 +3,8 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 import ubelt as ub
 import numpy as np
-from .util import colorutil
-from .util import imutil
+from clab.util import colorutil
+from clab.util import imutil
 
 
 class SemanticSegmentationTask(object):

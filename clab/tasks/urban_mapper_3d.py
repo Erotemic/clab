@@ -6,17 +6,14 @@ import cv2
 import glob
 import ubelt as ub
 import numpy as np
-from .tasks._sseg import SemanticSegmentationTask
-from .util import imutil
-from .util import colorutil
-from .util import fnameutil  # NOQA
+from clab.tasks._sseg import SemanticSegmentationTask
+from clab.util import imutil
+from clab.util import colorutil
+from clab.util import fnameutil  # NOQA
 from clab import inputs
 from clab import preprocess
 from clab import getLogger
 import parse
-import logging
-
-parse.log.setLevel(logging.INFO)
 
 logger = getLogger(__name__)
 print = logger.info
