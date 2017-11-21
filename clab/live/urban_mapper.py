@@ -6,11 +6,11 @@ import numpy as np  # NOQA
 import ubelt as ub
 import os  # NOQA
 from os.path import join, splitext, basename  # NOQA
-from . import xpu_device
-from . import util
-from . import models
-from .util import imutil
-from .torch.sseg_train import task_datasets, get_task, SSegInputsWrapper
+from clab import util
+from clab.torch import xpu_device
+from clab.torch import models
+from clab.util import imutil
+from clab.torch.sseg_train import task_datasets, get_task, SSegInputsWrapper
 
 
 def urban_mapper_eval_dataset():
