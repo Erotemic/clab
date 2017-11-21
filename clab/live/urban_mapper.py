@@ -453,6 +453,27 @@ def draw_with_gt(task, pred_fpath, gtl, gti, bgr):
     drawContours
 
 
+def instance_label2(pred_seg):
+    import cv2
+
+    mask = (pred_seg > 0).astype(np.uint8)
+    topology = np.dstack([mask] * 3)
+    seeds = cv2.connectedComponents((pred_seg == 1).astype(np.uint8), connectivity=4)[1]
+
+    seeds[mask == 0] = -1
+    markers = cv2.watershed(topology, seeds.copy())
+    markers[mask == 0] = 0
+    markers[markers == -1] = 0
+
+    pt.imshow(task.instance_colorize(gtl, task.instance_colorize(markers)))
+
+    pt.imshow(task.instance_colorize(markers))
+    pt.imshow(task.instance_colorize(seeds))
+
+    n_ccs, cc_labels = cv2.connectedComponents(seeds.astype(np.uint8), connectivity=4)
+    return cc_labels
+
+
 def instance_fscore(gti, uncertain, dsm, pred):
     """
     path = '/home/local/KHQ/jon.crall/data/work/urban_mapper/eval/input_4224-rwyxarza/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3/_epoch_00000236/restiched/pred'
@@ -480,31 +501,7 @@ def instance_fscore(gti, uncertain, dsm, pred):
     from clab.tasks.urban_mapper_3d import UrbanMapper3D
     task = UrbanMapper3D('', '')
 
-
     def draw_with_gt():
-
-    def instance_label2(pred_seg):
-        import cv2
-
-        mask = (pred_seg > 0).astype(np.uint8)
-        topology = np.dstack([mask] * 3)
-        seeds = cv2.connectedComponents((pred_seg == 1).astype(np.uint8), connectivity=4)[1]
-
-        seeds[mask == 0] = -1
-        markers = cv2.watershed(topology, seeds.copy())
-        markers[mask == 0] = 0
-        markers[markers == -1] = 0
-
-
-        pt.imshow(task.instance_colorize(gtl, task.instance_colorize(markers)))
-
-        pt.imshow(task.instance_colorize(markers))
-        pt.imshow(task.instance_colorize(seeds))
-
-        cv2.topology(
-
-        n_ccs, cc_labels = cv2.connectedComponents(seeds.astype(np.uint8), connectivity=4)
-        return cc_labels
 
     for k in [3, 5, 7, 9, 11, 13, 14, 15, 16]:
         # for d in [3, 4, 5, 6, 7, 8]:
@@ -524,14 +521,7 @@ def instance_fscore(gti, uncertain, dsm, pred):
 
                 pred_seg = util.imread(pred_fpath)
 
-                if True:  # inner/outer
-                    pred_seg == 1
-                    pred_seg == 2
-
-
-
-                pred = instance_label(pred_seg, dist_thresh=d, k=k, watershed=True)
-                pred = task.instance_label(mask, dist_thresh=d, k=k, watershed=True)
+                pred = instance_label2(pred_seg, dist_thresh=d, k=k, watershed=True)
                 gti = util.imread(gti_fpath)
                 gtl = util.imread(gtl_fpath)
                 dsm = util.imread(dsm_fpath)
@@ -559,26 +549,29 @@ def instance_fscore(gti, uncertain, dsm, pred):
     pred_label = pred[pred_rc]
     pred_rc_arr = np.ascontiguousarray(np.vstack(pred_rc).T)
 
-    import vtool as vt
-    group_true_labels, true_groupxs = vt.group_indices(gti_label)
-    grouped_true_rc_arrs = vt.apply_grouping(gti_rc_arr, true_groupxs, axis=0)
+    group_true_labels, true_groupxs = util.group_indices(gti_label)
+    grouped_true_rc_arrs = util.apply_grouping(gti_rc_arr, true_groupxs, axis=0)
 
-    group_pred_labels, pred_groupxs = vt.group_indices(pred_label)
-    grouped_pred_rc_arrs = vt.apply_grouping(pred_rc_arr, pred_groupxs, axis=0)
+    group_pred_labels, pred_groupxs = util.group_indices(pred_label)
+    grouped_pred_rc_arrs = util.apply_grouping(pred_rc_arr, pred_groupxs, axis=0)
 
     # true_rcs_arr = ub.map_vals(np.array, ub.group_items(np.vstack(gti_rc).T, gti_label))
     # true_rcs = ub.map_vals(lambda x: set(map(tuple, x)), true_rcs_arr)
 
+    DSM_NAN = -32767
+    MIN_SIZE = 100
+    # H, W = pred.shape[0:2]
+
     # Find uncertain truth
     uncertain_labels = set(np.unique(gti[uncertain.astype(np.bool)]))
     for ix, (label, rc_arr) in enumerate(zip(group_true_labels, grouped_true_rc_arrs)):
-        if len(rc_arr) < 100:
+        if len(rc_arr) < MIN_SIZE:
             rc_arr = np.array(list(rc_arr))
             if (np.any(rc_arr == 0) or np.any(rc_arr == 2047)):
                 uncertain_labels.add(label)
             else:
                 rc_loc = tuple(rc_arr.T)
-                is_invisible = (dsm[rc_loc] == -32767)
+                is_invisible = (dsm[rc_loc] == DSM_NAN)
                 if np.any(is_invisible):
                     print('is_invisible = {!r}'.format(is_invisible))
                     invisible_rc = rc_arr.compress(is_invisible, axis=0)
@@ -591,8 +584,8 @@ def instance_fscore(gti, uncertain, dsm, pred):
     # using nums instead of tuples gives the intersection a modest speedup
     pred_rc_int = pred_rc_arr.T[0] + pred.shape[0] + pred_rc_arr.T[1]
     true_rc_int = gti_rc_arr.T[0] + pred.shape[0] + gti_rc_arr.T[1]
-    true_rcs_ = dict(zip(group_true_labels, map(set, vt.apply_grouping(true_rc_int, true_groupxs))))
-    pred_rcs_ = dict(zip(group_pred_labels, map(set, vt.apply_grouping(pred_rc_int, pred_groupxs))))
+    true_rcs_ = dict(zip(group_true_labels, map(set, util.apply_grouping(true_rc_int, true_groupxs))))
+    pred_rcs_ = dict(zip(group_pred_labels, map(set, util.apply_grouping(pred_rc_int, pred_groupxs))))
 
     # true_rcs_ = ub.map_vals(set, true_rcs_)
     # pred_rcs_ = ub.map_vals(set, pred_rcs_)

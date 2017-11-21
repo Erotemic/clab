@@ -149,3 +149,88 @@ def opt_crf():
     for i in range(len(names)):
         pt.plt.plot(xs.T[i], ys, 'o', label=names[i])
     pt.plt.legend()
+
+
+def opt_postprocess_boundary():
+    import optml
+    from clab import util
+    from os.path import join, splitext, basename  # NOQA
+    import glob
+    import ubelt as ub
+    import itertools as it
+    import numpy as np
+    from clab.live.urban_mapper import instance_fscore
+
+    path = ub.truepath(
+        '~/remote/aretha/data/work/urban_mapper2/test/input_4224-exkudlzu/'
+        'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/'
+        '_epoch_00000154/restiched/pred')
+    mode_paths = sorted(glob.glob(path + '/*.png'))
+
+    results = ub.odict()
+
+    param_space = [
+        # optml.Parameter(name='s', param_type='boolean'),
+        optml.Parameter(name='w', param_type='boolean'),
+        # optml.Parameter(name='k', param_type='integer', lower=1, upper=16),
+        # optml.Parameter(name='d', param_type='integer', lower=1, upper=5),
+        # optml.Parameter(name='n', param_type='integer', lower=1, upper=1),
+    ]
+
+    def itergrid():
+        names = [p.name for p in param_space]
+        for values in it.product(*map(iter, param_space)):
+            yield ub.odict(zip(names, values))
+
+    def instance_label2(pred_seg, w, s=True):
+        import cv2
+
+        mask = (pred_seg > 0).astype(np.uint8)
+        seeds = cv2.connectedComponents((pred_seg == 1).astype(np.uint8), connectivity=4)[1]
+
+        if not s:
+            return cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)[1]
+        else:
+            if not w:
+                return seeds
+            else:
+                topology = np.dstack([mask] * 3)
+                seeds[mask == 0] = -1
+                markers = cv2.watershed(topology, seeds.copy())
+                markers[mask == 0] = 0
+                markers[markers == -1] = 0
+
+                n_ccs, cc_labels = cv2.connectedComponents(seeds.astype(np.uint8), connectivity=4)
+                return cc_labels
+
+    for params in itergrid():
+
+        scores = []
+        for pred_fpath in ub.ProgIter(mode_paths):
+            gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
+            gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
+            dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
+            # bgr_fname = basename(pred_fpath).replace('.png', '_RGB.tif')
+            gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+            gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+            dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+            # bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+
+            pred_seg = util.imread(pred_fpath)
+            gti = util.imread(gti_fpath)
+            gtl = util.imread(gtl_fpath)
+            dsm = util.imread(dsm_fpath)
+            # bgr = util.imread(bgr_fpath)
+
+            pred = instance_label2(pred_seg, **params)
+
+            uncertain = (gtl == 65)
+
+            score = instance_fscore(gti, uncertain, dsm, pred)
+            scores.append(score)
+
+        res = np.array(scores).mean(axis=0)
+        key = tuple(params.items())
+        print('key = {!r}'.format(key))
+        print('res = {!r}'.format(res))
+        results[key] = res

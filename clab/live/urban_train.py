@@ -459,13 +459,13 @@ def urban_fit():
     # TODO: save normalization type with the model
     # datasets['train'].center_inputs = datasets['train']._make_normalizer()
 
-    if ub.argflag('--all'):
-        # custom centering from the initialization point I'm going to use
-        datasets['train'].center_inputs = datasets['train']._custom_urban_mapper_normalizer(
-            0.3750553785198646, 1.026544662398811, 2.5136079110849674)
-    else:
-        datasets['train'].center_inputs = datasets['train']._make_normalizer()
-        # datasets['train'].center_inputs = _custom_urban_mapper_normalizer(0, 1, 2.5)
+    # if ub.argflag('--all'):
+    #     # custom centering from the initialization point I'm going to use
+    #     datasets['train'].center_inputs = datasets['train']._custom_urban_mapper_normalizer(
+    #         0.3750553785198646, 1.026544662398811, 2.5136079110849674)
+    # else:
+    datasets['train'].center_inputs = datasets['train']._make_normalizer()
+    # datasets['train'].center_inputs = _custom_urban_mapper_normalizer(0, 1, 2.5)
 
     datasets['test'].center_inputs = datasets['train'].center_inputs
     datasets['vali'].center_inputs = datasets['train'].center_inputs
@@ -498,7 +498,8 @@ def urban_fit():
             'weight': class_weights,
         }),
         optimizer=(torch.optim.SGD, {
-            'weight_decay': .0006,
+            # 'weight_decay': .0006,
+            'weight_decay': .0005,
             'momentum': 0.9,
             'nesterov': True,
         }),
@@ -519,10 +520,14 @@ def urban_fit():
 
         'unet_rgb_4k': ub.truepath('~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3/torch_snapshots/_epoch_00000236.pt'),
 
-        'unet_rgb_8k': ub.truepath('~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_8438-haplmmpq/solver_8438-haplmmpq_unet_None_kvterjeu_a=1,c=RGB,n_ch=5,n_cl=3/torch_snapshots/_epoch_00000402.pt'),
+        # 'unet_rgb_8k': ub.truepath('~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_8438-haplmmpq/solver_8438-haplmmpq_unet_None_kvterjeu_a=1,c=RGB,n_ch=5,n_cl=3/torch_snapshots/_epoch_00000402.pt'),
         # "ImageCenterScale", {"im_mean": [[[0.3750553785198646]]], "im_scale": [[[1.026544662398811]]]}
         # "DTMCenterScale", "std": 2.5136079110849674, "nan_value": -32767.0 }
 
+        'unet_rgb_8k': ub.truepath(
+            '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
+            'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/torch_snapshots/_epoch_00000189.pt'
+        )
     }
 
     if arch == 'segnet':
@@ -558,8 +563,7 @@ def urban_fit():
         snapshot = xpu_device.XPU(None).load(pretrained)
         model_state_dict = snapshot['model_state_dict']
         model.load_partial_state(model_state_dict)
-
-        model.shock_outward()
+        # model.shock_outward()
 
     elif arch == 'dummy':
         model = models.SSegDummy(in_channels=n_channels, n_classes=n_classes)
