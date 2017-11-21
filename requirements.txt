@@ -2,3 +2,4 @@ pygtrie
 numpy
 ubelt
 pytorch
+xdoctest

@@ -395,6 +395,64 @@ class PredictHarness(object):
                     imutil.imwrite(fpath, img)
 
 
+def erode_ccs(ccs):
+    pass
+
+
+def draw_with_gt(task, pred_fpath, gtl, gti, bgr):
+    from clab.util import nputil
+
+    import cv2
+    rc_locs = np.where(gti > 0)
+
+    pred_seg = util.imread(pred_fpath)
+
+    mask = (pred_seg > 0).astype(np.uint8)
+    k = 15
+    kernel = np.ones((k, k), dtype=np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+
+    topology = np.dstack([mask] * 3)
+
+    pred_seg[pred_seg == 1] = 5
+    pred_seg[pred_seg == 2] = 1
+    pred_seg[pred_seg == 5] = 2
+
+    seeds = cv2.connectedComponents((pred_seg == 2).astype(np.uint8), connectivity=4)[1]
+
+    seeds[mask == 0] = -1
+    markers = cv2.watershed(topology, seeds.copy())
+    markers[mask == 0] = 0
+    markers[markers == -1] = 0
+
+    grouped_cc_xys = nputil.group_items(
+        np.ascontiguousarray(np.vstack(rc_locs[::-1]).T),
+        gti[rc_locs], axis=0
+    )
+    gt_hulls = ub.map_vals(cv2.convexHull, grouped_cc_xys)
+
+    BGR_GREEN = (0, 255, 0)
+
+    blend_mask = task.colorize(mask, bgr)
+    seed_mask = util.ensure_alpha_channel(task.instance_colorize(seeds), alpha=.6)
+    seed_mask.T[3][seeds < 0] = 0
+    draw_img = util.overlay_alpha_images(seed_mask, blend_mask)
+    draw_img = (draw_img * 255).astype(np.uint8)
+
+    draw_img = np.ascontiguousarray(draw_img[:, :, 0:3])
+    draw_img = cv2.drawContours(
+        image=draw_img, contours=list(gt_hulls.values()), contourIdx=-1,
+        color=BGR_GREEN, thickness=2)
+    pt.clf()
+    pt.imshow(draw_img)
+
+    # [:, 0, :]
+
+    import cv2
+    contours = cv2.findContours(gtl, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    drawContours
+
+
 def instance_fscore(gti, uncertain, dsm, pred):
     """
     path = '/home/local/KHQ/jon.crall/data/work/urban_mapper/eval/input_4224-rwyxarza/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3/_epoch_00000236/restiched/pred'
@@ -419,11 +477,34 @@ def instance_fscore(gti, uncertain, dsm, pred):
         n_ccs, cc_labels = cv2.connectedComponents(mask, connectivity=4)
         return cc_labels
 
+    from clab.tasks.urban_mapper_3d import UrbanMapper3D
+    task = UrbanMapper3D('', '')
+
+
+    def draw_with_gt():
+
     def instance_label2(pred_seg):
         import cv2
-        seeds = pred_seg == 2
-        n_ccs, cc_labels = cv2.connectedComponents(seeds.astype(np.uint8), connectivity=4)
 
+        mask = (pred_seg > 0).astype(np.uint8)
+        topology = np.dstack([mask] * 3)
+        seeds = cv2.connectedComponents((pred_seg == 1).astype(np.uint8), connectivity=4)[1]
+
+        seeds[mask == 0] = -1
+        markers = cv2.watershed(topology, seeds.copy())
+        markers[mask == 0] = 0
+        markers[markers == -1] = 0
+
+
+        pt.imshow(task.instance_colorize(gtl, task.instance_colorize(markers)))
+
+        pt.imshow(task.instance_colorize(markers))
+        pt.imshow(task.instance_colorize(seeds))
+
+        cv2.topology(
+
+        n_ccs, cc_labels = cv2.connectedComponents(seeds.astype(np.uint8), connectivity=4)
+        return cc_labels
 
     for k in [3, 5, 7, 9, 11, 13, 14, 15, 16]:
         # for d in [3, 4, 5, 6, 7, 8]:
@@ -435,12 +516,11 @@ def instance_fscore(gti, uncertain, dsm, pred):
                 gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
                 gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
                 dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
-                gtl_fpath = join('/home/local/KHQ/jon.crall/remote/aretha/data/UrbanMapper3D/training/', gtl_fname)
-                gti_fpath = join('/home/local/KHQ/jon.crall/remote/aretha/data/UrbanMapper3D/training/', gti_fname)
-                dsm_fpath = join('/home/local/KHQ/jon.crall/remote/aretha/data/UrbanMapper3D/training/', dsm_fname)
-
-                from clab.tasks.urban_mapper_3d import UrbanMapper3D
-                task = UrbanMapper3D('', '')
+                bgr_fname = basename(pred_fpath).replace('.png', '_RGB.tif')
+                gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+                gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+                dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+                bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
 
                 pred_seg = util.imread(pred_fpath)
 
@@ -451,9 +531,11 @@ def instance_fscore(gti, uncertain, dsm, pred):
 
 
                 pred = instance_label(pred_seg, dist_thresh=d, k=k, watershed=True)
+                pred = task.instance_label(mask, dist_thresh=d, k=k, watershed=True)
                 gti = util.imread(gti_fpath)
                 gtl = util.imread(gtl_fpath)
                 dsm = util.imread(dsm_fpath)
+                bgr = util.imread(bgr_fpath)
 
                 uncertain = (gtl == 65)
 

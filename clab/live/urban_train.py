@@ -41,6 +41,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
     """
     def __init__(self, inputs, task, colorspace='RGB'):
+
         self.inputs = inputs
         self.task = task
 
