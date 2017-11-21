@@ -233,7 +233,7 @@ def evaulate_internal_testset():
 
     if 1:
         import pandas as pd  # NOQA
-        from clab..metrics import confusion_matrix, jaccard_score_from_confusion  # NOQA
+        from clab.metrics import confusion_matrix, jaccard_score_from_confusion  # NOQA
         from clab.torch import filters  # NOQA
 
         paths = {}
@@ -418,7 +418,6 @@ def instance_fscore(gti, uncertain, dsm, pred):
         mask = mask.astype(np.uint8)
         n_ccs, cc_labels = cv2.connectedComponents(mask, connectivity=4)
         return cc_labels
-
 
 
     for k in [3, 5, 7, 9, 11, 13, 14, 15, 16]:
