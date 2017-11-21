@@ -10,7 +10,7 @@ from clab import util
 from clab.torch import xpu_device
 from clab.torch import models
 from clab.util import imutil
-from clab.live.urban_train import task_datasets, get_task, SSegInputsWrapper
+from clab.live.urban_train import get_task, SSegInputsWrapper
 
 
 def urban_mapper_eval_dataset():
@@ -141,11 +141,12 @@ def get_snapshot(train_dpath, epoch='recent'):
     return load_path
 
 
-def hack_um_test_visualize():
+def evaulate_internal_testset():
     """
     Working with the testing set (don't submit with this)
     """
-    datasets = task_datasets(get_task('urban_mapper_3d'))
+    from clab.live.urban_train import load_task_dataset
+    datasets = load_task_dataset('urban_mapper_3d')
     test_dataset = datasets['test']
     test_dataset.with_gt = False
     test_dataset.inputs.make_dumpsafe_names()
