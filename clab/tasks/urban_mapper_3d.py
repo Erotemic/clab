@@ -405,7 +405,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 for ((r, c), (h, w)) in zip(rc_locs, shapes)
             ])
             stiched_shape = tuple(bboxes.T[2:4].max(axis=1))
-            n_classes = 2
+            n_classes = len(task.classnames)
             votes = np.zeros((n_classes,) + stiched_shape)
             for bbox, tile in zip(bboxes, tiles):
                 r1, c1, r2, c2 = bbox

@@ -68,8 +68,8 @@ def hack_urban_mapper_eval_submission():
     restitched_pred = pharn._restitch_type(mode, blend='vote')
 
     # if True:
-    #     _restitch_type(test_dump_dpath, 'blend_pred', blend=None)
-    #     _restitch_type(test_dump_dpath, 'blend_pred_crf', blend=None)
+    #     pharn._restitch_type('blend_pred', blend=None)
+    #     pharn._restitch_type('blend_pred_crf', blend=None)
 
     restitched_pred = eval_dataset.fullres.align(restitched_pred)
 
@@ -150,19 +150,29 @@ def evaulate_internal_testset():
     test_dataset = datasets['test']
     test_dataset.with_gt = False
     test_dataset.inputs.make_dumpsafe_names()
-    test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
+    if False:
+        test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
+    else:
+        datasets['test'].center_inputs = datasets['train']._make_normalizer()
+
     test_dataset.tag = 'test'
 
     # 3D3__epoch_00000202
 
+    # if False:
+    #     train_dpath = ub.truepath(
+    #         '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
+    # load_path = get_snapshot(train_dpath, epoch=202)
+
     train_dpath = ub.truepath(
-        '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
-    load_path = get_snapshot(train_dpath, epoch=202)
+        '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
+        'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
+    load_path = get_snapshot(train_dpath)
 
     pharn = PredictHarness(test_dataset)
     pharn.hack_dump_path(load_path)
-    # pharn.load_snapshot(load_path)
-    # pharn.run()
+    pharn.load_snapshot(load_path)
+    pharn.run()
 
     # hack
     if 0:
@@ -223,8 +233,8 @@ def evaulate_internal_testset():
 
     if 1:
         import pandas as pd  # NOQA
-        from .metrics import confusion_matrix, jaccard_score_from_confusion  # NOQA
-        from .torch import filters  # NOQA
+        from clab..metrics import confusion_matrix, jaccard_score_from_confusion  # NOQA
+        from clab.torch import filters  # NOQA
 
         paths = {}
         for mode in ['pred', 'pred_crf']:
@@ -323,7 +333,10 @@ class PredictHarness(object):
         pharn.model.train(False)
 
         for ix in ub.ProgIter(range(len(pharn.dataset)), label='dumping'):
-            inputs_ = pharn.dataset[ix][None, :]
+            if pharn.dataset.with_gt:
+                inputs_ = pharn.dataset[ix][0][None, :]
+            else:
+                inputs_ = pharn.dataset[ix][None, :]
 
             inputs_ = pharn.xpu.to_xpu(inputs_)
             inputs_ = torch.autograd.Variable(inputs_)
@@ -336,35 +349,33 @@ class PredictHarness(object):
             # transform
             img = imutil.imread(pharn.dataset.inputs.im_paths[ix])
 
-            # ut.save_cPkl('crf_testdata.pkl', {
-            #     'log_probs': log_probs,
-            #     'img': img,
-            # })
-
-            from clab.torch import filters
-
-            posterior = filters.crf_posterior(img, log_probs)
             # output = prob_tensor.data.cpu().numpy()[0]
 
             pred = log_probs.argmax(axis=0)
-            pred_crf = posterior.argmax(axis=0)
 
             fname = pharn.dataset.inputs.dump_im_names[ix]
             fname = os.path.splitext(fname)[0] + '.png'
 
             # pred = argmax.data.cpu().numpy()[0]
             blend_pred = pharn.dataset.task.colorize(pred, img)
-            blend_pred_crf = pharn.dataset.task.colorize(pred_crf, img)
-            # color_pred = task.colorize(pred)
 
             output_dict = {
-                'log_probs': log_probs,
                 'blend_pred': blend_pred,
                 # 'color_pred': color_pred,
-                'blend_pred_crf': blend_pred_crf,
-                'pred_crf': pred_crf,
                 'pred': pred,
             }
+
+            if False:
+                from clab.torch import filters
+                posterior = filters.crf_posterior(img, log_probs)
+                pred_crf = posterior.argmax(axis=0)
+                blend_pred_crf = pharn.dataset.task.colorize(pred_crf, img)
+                # color_pred = task.colorize(pred)
+                output_dict.update({
+                    'log_probs': log_probs,
+                    'blend_pred_crf': blend_pred_crf,
+                    'pred_crf': pred_crf,
+                })
 
             if pharn.dataset.with_gt:
                 true = imutil.imread(pharn.dataset.inputs.gt_paths[ix])
@@ -387,7 +398,26 @@ class PredictHarness(object):
 def instance_fscore(gti, uncertain, dsm, pred):
     """
     path = '/home/local/KHQ/jon.crall/data/work/urban_mapper/eval/input_4224-rwyxarza/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3/_epoch_00000236/restiched/pred'
+
+    path = ub.truepath('~/remote/aretha/data/work/urban_mapper2/test/input_4224-exkudlzu/solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/_epoch_00000154/restiched/pred')
     mode_paths = sorted(glob.glob(path + '/*.png'))
+
+    def instance_label(pred, k=15, n_iters=1, dist_thresh=5, watershed=False):
+        mask = pred
+
+        # noise removal
+        if k > 0 and n_iters > 0:
+            kernel = np.ones((k, k), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel,
+                                    iterations=n_iters)
+
+        if watershed:
+            from clab.torch import filters
+            mask = filters.watershed_filter(mask, dist_thresh=dist_thresh)
+
+        mask = mask.astype(np.uint8)
+        n_ccs, cc_labels = cv2.connectedComponents(mask, connectivity=4)
+        return cc_labels
 
 
 
@@ -397,6 +427,7 @@ def instance_fscore(gti, uncertain, dsm, pred):
 
             fscores = []
             for pred_fpath in ub.ProgIter(mode_paths):
+                pass
                 gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
                 gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
                 dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
@@ -407,7 +438,8 @@ def instance_fscore(gti, uncertain, dsm, pred):
                 from clab.tasks.urban_mapper_3d import UrbanMapper3D
                 task = UrbanMapper3D('', '')
 
-                pred = task.instance_label(util.imread(pred_fpath), dist_thresh=d, k=k, watershed=True)
+                pred_seg = util.imread(pred_fpath)
+                pred = task.instance_label(pred_seg, dist_thresh=d, k=k, watershed=True)
                 gti = util.imread(gti_fpath)
                 gtl = util.imread(gtl_fpath)
                 dsm = util.imread(dsm_fpath)
