@@ -1,7 +1,7 @@
 import torch.nn as nn
 from functools import partial
 import torch  # NOQA
-from .torch.models.output_shape_for import OutputShapeFor
+from clab.torch.models.output_shape_for import OutputShapeFor
 from collections import OrderedDict
 
 

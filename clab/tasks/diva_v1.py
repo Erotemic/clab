@@ -20,18 +20,18 @@ import shutil
 import itertools as it
 import numpy as np
 from PIL import Image
-from . import inputs
+from clab import inputs
 from .util import fnameutil
 from .util import gpu_util
 from .util import imutil
 from .util import colorutil
 from .util import hashutil
 from .util import jsonutil
-from . import util
-from . import augment
+from clab import util
+from clab import augment
 from .tasks._sseg import SemanticSegmentationTask
 
-from . import getLogger
+from clab import getLogger
 logger = getLogger(__name__)
 print = logger.info
 

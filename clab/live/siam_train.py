@@ -9,15 +9,17 @@ import torch
 import torch.nn
 import torchvision
 
-from . import util
-from .util import hashutil
-from . import augment
-from . import fit_harness
-from . import xpu_device
-from . import models
-from . import criterions
-from . import im_loaders
-from . import hyperparams
+from clab import util
+from clab.util import hashutil
+from clab import augment
+from clab.torch import xpu_device
+from clab.torch import models
+from clab.torch import hyperparams
+from clab.torch import fit_harness
+from clab.torch import im_loaders
+from clab.torch import criterions
+from clab import util  # NOQA
+
 # from clab.util import imutil
 
 

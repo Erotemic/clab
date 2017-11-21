@@ -2,13 +2,9 @@ from PIL import Image
 from PIL import ImageFilter
 # from PIL import ImageEnhance
 import itertools as it
-from .augment_common import random_affine_args, affine_around_mat2x3, PERTERB_AUG_KW
-
-import utool as ut
-profile = ut.inject2(__name__)[-1]
+from clab.augment.augment_common import random_affine_args, affine_around_mat2x3, PERTERB_AUG_KW
 
 
-@profile
 def online_affine_perterb(pil_images, rng, **kw):
     """
     Args:
@@ -52,7 +48,6 @@ def online_affine_perterb(pil_images, rng, **kw):
         yield imgaug
 
 
-@profile
 def online_intensity_augment(img, rng):
     """
         >>> from clab.augment import *

@@ -3,11 +3,9 @@ import pandas as pd
 import numpy as np
 import collections
 import ubelt as ub
-from .metrics import (confusion_matrix, jaccard_score_from_confusion,
-                            pixel_accuracy_from_confusion,
-                            perclass_accuracy_from_confusion)
-import utool as ut
-profile = ut.inject2(__name__)[-1]
+from clab.metrics import (confusion_matrix, jaccard_score_from_confusion,
+                          pixel_accuracy_from_confusion,
+                          perclass_accuracy_from_confusion)
 
 
 def tpr(output, label, labels, ignore_label=-100):
@@ -41,7 +39,6 @@ def tpr(output, label, labels, ignore_label=-100):
     # return accuracy
 
 
-@profile
 def _sseg_metrics(output, label, labels, ignore_label=-100):
     """
 
@@ -89,7 +86,6 @@ def _sseg_metrics(output, label, labels, ignore_label=-100):
     return metrics_dict
 
 
-@profile
 def _clf_metrics(output, label, labels, ignore_label=-100):
     """
 

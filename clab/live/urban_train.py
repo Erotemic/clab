@@ -9,17 +9,17 @@ import os  # NOQA
 from os.path import join
 
 import torchvision  # NOQA
-from . import xpu_device
-from . import models
-from . import metrics
-from . import hyperparams
-from . import fit_harness
-from . import im_loaders
-from . import criterions
-from . import util  # NOQA
-from .transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
-from .transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
-from .util import imutil
+from clab.torch import xpu_device
+from clab.torch import models
+from clab.torch import metrics
+from clab.torch import hyperparams
+from clab.torch import fit_harness
+from clab.torch import im_loaders
+from clab.torch import criterions
+from clab import util  # NOQA
+from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+from clab.torch.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
+from clab.util import imutil
 
 
 class SSegInputsWrapper(torch.utils.data.Dataset):

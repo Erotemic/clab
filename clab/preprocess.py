@@ -4,13 +4,13 @@ import cv2
 import ubelt as ub
 from os.path import join, expanduser, basename, splitext, abspath, exists  # NOQA
 from PIL import Image
-from . import inputs
+from clab import inputs
 from .util import fnameutil  # NOQA
 from .util import imutil
 from .util import hashutil
 import numpy as np
 
-from . import getLogger
+from clab import getLogger
 logger = getLogger(__name__)
 print = logger.info
 

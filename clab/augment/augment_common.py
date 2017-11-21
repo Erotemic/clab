@@ -1,6 +1,6 @@
 from __future__ import division, print_function
 import numpy as np
-from . import util
+from clab import util
 
 
 # arguments good for small affine perterbations

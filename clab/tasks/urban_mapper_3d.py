@@ -10,9 +10,9 @@ from .tasks._sseg import SemanticSegmentationTask
 from .util import imutil
 from .util import colorutil
 from .util import fnameutil  # NOQA
-from . import inputs
-from . import preprocess
-from . import getLogger
+from clab import inputs
+from clab import preprocess
+from clab import getLogger
 import parse
 import logging
 

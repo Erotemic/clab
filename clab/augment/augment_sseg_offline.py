@@ -1,8 +1,8 @@
 from __future__ import division, print_function
 import cv2
 import numpy as np
-from .util import imutil
-from . import util
+from clab.util import imutil
+from clab import util
 
 
 class SSegAugmentor(object):

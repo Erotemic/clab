@@ -1,7 +1,7 @@
 import ubelt as ub
 import torch
-from . import nnio
-from .util import gpu_util
+from clab.torch import nnio
+from clab.util import gpu_util
 
 
 class XPU(ub.NiceRepr):

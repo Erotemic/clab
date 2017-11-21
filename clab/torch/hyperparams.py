@@ -5,9 +5,9 @@ Torch version of hyperparams
 import ubelt as ub
 import torch
 import six
-from . import util
-from . import criterions
-from . import lr_schedule
+from clab import util
+from clab.torch import criterions
+from clab.torch import lr_schedule
 
 
 def _lookup_scheduler(arg):

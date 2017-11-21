@@ -3,7 +3,7 @@ References:
     https://github.com/meetshah1995/pytorch-semseg/blob/master/ptsemseg/models/utils.py
 """
 import torch.nn as nn
-from .output_shape_for import OutputShapeFor
+from clab.torch.models.output_shape_for import OutputShapeFor
 
 
 class Conv2DBatchNorm(nn.Module):

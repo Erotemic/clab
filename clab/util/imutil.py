@@ -11,7 +11,7 @@ from os.path import splitext  # NOQA
 import itertools as it  # NOQA
 import skimage.io
 
-from . import getLogger
+from clab import getLogger
 logger = getLogger(__name__)
 print = logger.info
 

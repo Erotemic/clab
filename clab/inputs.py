@@ -6,12 +6,12 @@ import numpy as np
 import six
 import pandas as pd
 import ubelt as ub
-from . import models
+from clab import models
 from .util import fnameutil
 from .util import imutil
 from .util import hashutil
 
-from . import getLogger
+from clab import getLogger
 logger = getLogger(__name__)
 print = logger.info
 

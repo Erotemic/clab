@@ -3,7 +3,7 @@ Adapated from:
     https://github.com/meetshah1995/pytorch-semseg
 """
 import torch.nn as nn
-from ._common import Conv2DBatchNormRelu
+from clab.torch.models._common import Conv2DBatchNormRelu
 
 __all__ = ['SegNet']
 

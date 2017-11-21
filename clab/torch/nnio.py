@@ -1,5 +1,5 @@
 import torch
-from . import xpu_device
+from clab.torch import xpu_device
 
 
 def device_mapping(gpu_num: int):

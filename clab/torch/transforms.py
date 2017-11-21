@@ -2,8 +2,8 @@ import numpy as np
 import skimage
 import six
 import cv2
-from .augment import augment_common
-from .util import imutil
+from clab.augment import augment_common
+from clab.util import imutil
 
 
 class NaNInputer(object):

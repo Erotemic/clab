@@ -2,8 +2,8 @@
 https://github.com/meetshah1995/pytorch-semseg/blob/master/ptsemseg/models/linknet.py
 """
 import torch.nn as nn
-from ._common import OutputShapeFor
-from ._common import Conv2DBatchNormRelu, ResidualBlock, Deconv2DBatchNormRelu
+from clab.torch.models._common import OutputShapeFor
+from clab.torch.models._common import Conv2DBatchNormRelu, ResidualBlock, Deconv2DBatchNormRelu
 
 __all__ = ['LinkNet']
 

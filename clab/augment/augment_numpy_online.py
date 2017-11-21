@@ -1,14 +1,10 @@
-from .util import imutil
-from . import util
+from clab.util import imutil
+from clab import util  # NOQA
 import ubelt as ub
 import cv2
 import numpy as np
 import skimage.transform
-from .augment_common import random_affine_args, affine_around_mat2x3, PERTERB_AUG_KW
-
-
-import utool as ut
-profile = ut.inject2(__name__)[-1]
+from clab.augment.augment_common import random_affine_args, affine_around_mat2x3, PERTERB_AUG_KW
 
 
 SKIMAGE_INTERP_LOOKUP = {
@@ -20,7 +16,6 @@ SKIMAGE_INTERP_LOOKUP = {
 }
 
 
-@profile
 def online_affine_perterb_np(np_images, rng, interp='cubic',
                              border_mode='reflect', **kw):
     """
@@ -88,7 +83,6 @@ def online_affine_perterb_np(np_images, rng, interp='cubic',
         yield imaug
 
 
-@profile
 def online_intensity_augment_np(img, rng):
     """
         >>> from clab.augment.augment_numpy_online import *

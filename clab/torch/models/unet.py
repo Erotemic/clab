@@ -3,8 +3,8 @@ import functools
 import math
 import torch
 import torch.nn.functional as F
-from .. import nninit
-from ._common import OutputShapeFor
+from clab.torch import nninit
+from clab.torch.models.output_shape_for import OutputShapeFor
 
 __all__ = ['UNet']
 

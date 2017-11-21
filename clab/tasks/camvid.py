@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from . import inputs
+from clab import inputs
 import ubelt as ub
 from .tasks._sseg import SemanticSegmentationTask
 from collections import OrderedDict

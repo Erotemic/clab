@@ -1,12 +1,8 @@
 from PIL import Image
-from . import util
-from .util import imutil
+from clab import util
+from clab.util import imutil
 import torch
 import numpy as np
-
-import utool as ut
-profile = ut.inject2(__name__)[-1]
-
 
 # def accimage_loader(path):
 #     """
@@ -16,7 +12,6 @@ profile = ut.inject2(__name__)[-1]
 #     acc_img = accimage.Image(path)
 
 
-@profile
 def np_loader(fpath, colorspace=None):
     im_in = imutil.imread(fpath)
     if colorspace is not None:
@@ -41,7 +36,6 @@ def np_loader(fpath, colorspace=None):
     return im_out
 
 
-@profile
 def pil_loader(fpath, colorspace=None):
     """
     Example:

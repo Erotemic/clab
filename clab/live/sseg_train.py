@@ -9,19 +9,15 @@ import os  # NOQA
 from os.path import join
 
 import torchvision  # NOQA
-from . import xpu_device
-from . import models
-from . import metrics
-from . import hyperparams
-from . import fit_harness
-from . import im_loaders
-from . import criterions
-from . import util  # NOQA
-from .util import imutil
-
-
-import utool as ut
-profile = ut.inject2(__name__)[-1]
+from clab.torch import xpu_device
+from clab.torch import models
+from clab.torch import metrics
+from clab.torch import hyperparams
+from clab.torch import fit_harness
+from clab.torch import im_loaders
+from clab.torch import criterions
+from clab import util  # NOQA
+from clab.util import imutil
 
 
 class SSegInputsWrapper(torch.utils.data.Dataset):
@@ -202,7 +198,6 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             gt_tensor = im_loaders.label_to_long_tensor(gt)
         return input_tuple, gt_tensor
 
-    @profile
     def __getitem__(self, index):
         """
 
@@ -282,7 +277,6 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
     def ignore_label(self):
         return self.task.ignore_label
 
-    @profile
     def class_weights(self):
         """
             >>> from clab.live.sseg_train import *
@@ -424,8 +418,6 @@ def task_fit(taskname):
     """
 
     CommandLine:
-        python -m clab.live.sseg_train task_fit --profile
-
         python -m clab.live.sseg_train task_fit --task=camvid --arch=segnet
         python -m clab.live.sseg_train task_fit --task=camvid --arch=unet
         python -m clab.live.sseg_train task_fit --task=camvid --arch=segnet --dry
@@ -580,15 +572,5 @@ if __name__ == '__main__':
         python -m clab.live.sseg_train task_fit
         python -m clab.live.sseg_train task_fit --dry
     """
-    try:
-        import xdoctest
-        xdoctest.doctest_module(__file__)
-    except KeyboardInterrupt:
-        pass
-    except Exception:
-        raise
-    finally:
-        import sys
-        if '--profile' in sys.argv:
-            import utool as ut
-            ut.dump_profile_text()
+    import xdoctest
+    xdoctest.doctest_module(__file__)

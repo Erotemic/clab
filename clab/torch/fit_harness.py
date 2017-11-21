@@ -12,12 +12,12 @@ from torch.autograd import Variable
 import tensorboard_logger
 import torchvision  # NOQA
 import itertools as it
-from . import metrics
-from . import xpu_device
-from . import nnio
-from . import im_loaders
-from . import util  # NOQA
-from . import getLogger
+from clab.torch import metrics
+from clab.torch import xpu_device
+from clab.torch import nnio
+from clab.torch import im_loaders
+from clab import util  # NOQA
+from clab import getLogger
 logger = getLogger(__name__)
 print = logger.info
 
@@ -30,8 +30,8 @@ def mnist_demo():
     Example:
         >>> mnist_demo()
     """
-    from .torch import models
-    from .torch import hyperparams
+    from clab.torch import models
+    from clab.torch import hyperparams
     root = os.path.expanduser('~/data/mnist/')
 
     transform = torchvision.transforms.Compose([

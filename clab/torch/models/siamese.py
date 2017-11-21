@@ -1,6 +1,6 @@
 import torch
 import torchvision
-from ._common import OutputShapeFor
+from clab.torch.models.output_shape_for import OutputShapeFor
 
 
 class SiameseLP(torch.nn.Module):

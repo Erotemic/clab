@@ -1,8 +1,8 @@
 import torch.nn as nn
 
-from ._common import ResidualBlock, Conv2DBatchNormRelu
-from .linknet import LinkNetUp
-from ._common import OutputShapeFor
+from clab.torch.models._common import ResidualBlock, Conv2DBatchNormRelu
+from clab.torch.models.linknet import LinkNetUp
+from clab.torch.models._common import OutputShapeFor
 
 
 class PSPNet(nn.Module):
