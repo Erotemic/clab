@@ -1,0 +1,74 @@
+Notes:
+    Output of Inputs Depends on:
+        * image pixels (filenames as proxies)
+        * groundtruth labels
+
+    Output of Training Depends on:
+        * train input
+        * network architecture
+        * train hyperparameters
+            * train initial state
+            * train learning params
+        * number of iterations
+
+
+
+    Output of Testing Depends on:
+        * test input
+        * test weights
+
+
+    # New MODULAR directory structure
+
+    {workdir}
+    ├── inputs -> INPUTS
+    └── arch
+        └── arch_{archid}
+            ├── train -> TRAIN
+            └── test -> TEST
+
+    INPUTS
+    └── input_{inputid}
+        ├── inputs.txt
+        └── classeights.txt
+
+
+    TRAIN
+    └── input_{train_input_id}
+        └── solver_{train_id}
+            ├── solver.prototext
+            ├── fit_{arch}_model.prototext
+            ├── snapshots
+            │   └── train_weights_{iterno}.caffemode
+            │   └── solverstate_{iterno}.caffemode
+            └── testable
+                └── test_weights_{train_id}_{iterno}.caffemodel
+
+    TEST
+    └── input_{test_input_id}
+         ├── predict_{arch}_model.prototext
+         └── weights_{train_id}_{iterno}
+             ├── test_weights.caffemodel.lnk  # contains path to actual weights
+             ├── pred
+             │   └── {imgid}.png
+
+
+    # Vars:
+
+        train_inputs = DEFINED BY USER
+        test_inputs = DEFINED BY USER
+        iterno = defined or output of testing
+        weights_path = defined or output of testing
+
+        inputid = hash_data(im_paths + [gt_paths + classfreq])
+        archid = segnet_basic | segnet_proper
+        train_input_id = train_inputs.inputid
+        test_input_id = test_inputs.inputid
+        init_id = hash(weights_path) | file_hash(weights_path)
+        hyper_id = None  # for now, fixme later
+        iterno = [0-9]*  # Defined by training schedule
+
+        train_id = {train_input_id}_{archid}_{init_id}_{hyper_id}
+
+
+    +-- arch_{arch}
