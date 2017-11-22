@@ -381,15 +381,31 @@ class PredictHarness(object):
                     imutil.imwrite(fpath, img)
 
 
-def erode_ccs(ccs):
-    pass
+# def erode_ccs(ccs):
+#     pass
+
+
+def draw_gt_contours(img, gti):
+    import cv2
+    rc_locs = np.where(gti > 0)
+    grouped_cc_xys = util.group_items(
+        np.ascontiguousarray(np.vstack(rc_locs[::-1]).T),
+        gti[rc_locs], axis=0
+    )
+    gt_hulls = ub.map_vals(cv2.convexHull, grouped_cc_xys)
+    BGR_GREEN = (0, 255, 0)
+    draw_img = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
+    img = util.rectify_to_float01(img)
+    draw_img = cv2.drawContours(
+        image=draw_img, contours=list(gt_hulls.values()), contourIdx=-1,
+        color=BGR_GREEN, thickness=1)
+    return draw_img
 
 
 def draw_with_gt(task, pred_fpath, gtl, gti, bgr):
     from clab.util import nputil
 
     import cv2
-    rc_locs = np.where(gti > 0)
 
     pred_seg = util.imread(pred_fpath)
 
@@ -411,28 +427,15 @@ def draw_with_gt(task, pred_fpath, gtl, gti, bgr):
     markers[mask == 0] = 0
     markers[markers == -1] = 0
 
-    grouped_cc_xys = nputil.group_items(
-        np.ascontiguousarray(np.vstack(rc_locs[::-1]).T),
-        gti[rc_locs], axis=0
-    )
-    gt_hulls = ub.map_vals(cv2.convexHull, grouped_cc_xys)
-
-    BGR_GREEN = (0, 255, 0)
-
     blend_mask = task.colorize(mask, bgr)
     seed_mask = util.ensure_alpha_channel(task.instance_colorize(seeds), alpha=.6)
     seed_mask.T[3][seeds < 0] = 0
     draw_img = util.overlay_alpha_images(seed_mask, blend_mask)
     draw_img = (draw_img * 255).astype(np.uint8)
 
-    draw_img = np.ascontiguousarray(draw_img[:, :, 0:3])
-    draw_img = cv2.drawContours(
-        image=draw_img, contours=list(gt_hulls.values()), contourIdx=-1,
-        color=BGR_GREEN, thickness=2)
+    draw_img = draw_gt_contours(draw_img, gti)
     pt.clf()
     pt.imshow(draw_img)
-
-    # [:, 0, :]
 
     import cv2
     contours = cv2.findContours(gtl, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -464,7 +467,10 @@ def instance_fscore(gti, uncertain, dsm, pred):
     """
     path = '/home/local/KHQ/jon.crall/data/work/urban_mapper/eval/input_4224-rwyxarza/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3/_epoch_00000236/restiched/pred'
 
-    path = ub.truepath('~/remote/aretha/data/work/urban_mapper2/test/input_4224-exkudlzu/solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/_epoch_00000154/restiched/pred')
+    path = ub.truepath(
+        '~/remote/aretha/data/work/urban_mapper2/test/input_4224-exkudlzu/'
+        'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/'
+        '_epoch_00000154/restiched/pred')
     mode_paths = sorted(glob.glob(path + '/*.png'))
 
     def instance_label(pred, k=15, n_iters=1, dist_thresh=5, watershed=False):
@@ -487,62 +493,58 @@ def instance_fscore(gti, uncertain, dsm, pred):
     from clab.tasks.urban_mapper_3d import UrbanMapper3D
     task = UrbanMapper3D('', '')
 
-    def draw_with_gt():
+    fscores = []
+    for pred_fpath in ub.ProgIter(mode_paths):
+        pass
+        gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
+        gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
+        dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
+        bgr_fname = basename(pred_fpath).replace('.png', '_RGB.tif')
+        gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+        gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+        dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+        bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
 
-    for k in [3, 5, 7, 9, 11, 13, 14, 15, 16]:
-        # for d in [3, 4, 5, 6, 7, 8]:
-        for n in [1, 2, 3]:
+        pred_seg = util.imread(pred_fpath)
 
-            fscores = []
-            for pred_fpath in ub.ProgIter(mode_paths):
-                pass
-                gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
-                gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
-                dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
-                bgr_fname = basename(pred_fpath).replace('.png', '_RGB.tif')
-                gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
-                gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
-                dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
-                bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+        pred = instance_label2(pred_seg, dist_thresh=d, k=k, watershed=True)
+        gti = util.imread(gti_fpath)
+        gtl = util.imread(gtl_fpath)
+        dsm = util.imread(dsm_fpath)
+        bgr = util.imread(bgr_fpath)
 
-                pred_seg = util.imread(pred_fpath)
+        uncertain = (gtl == 65)
 
-                pred = instance_label2(pred_seg, dist_thresh=d, k=k, watershed=True)
-                gti = util.imread(gti_fpath)
-                gtl = util.imread(gtl_fpath)
-                dsm = util.imread(dsm_fpath)
-                bgr = util.imread(bgr_fpath)
-
-                uncertain = (gtl == 65)
-
-                fscore = instance_fscore(gti, uncertain, dsm, pred)
-                fscores.append(fscore)
-            print('k = {!r}'.format(k))
-            print('d = {!r}'.format(d))
-            print(np.mean(fscores))
+        fscore = instance_fscore(gti, uncertain, dsm, pred)
+        fscores.append(fscore)
+    print('k = {!r}'.format(k))
+    print('d = {!r}'.format(d))
+    print(np.mean(fscores))
 
 
-    from .torch import profiler
+    from clab import profiler
     instance_fscore_ = dynamic_profile(instance_fscore)
     fscore = instance_fscore_(gti, uncertain, dsm, pred)
     instance_fscore_.profile.profile.print_stats()
     """
-    gti_rc = np.where(gti)
-    gti_rc_arr = np.ascontiguousarray(np.vstack(gti_rc).T)
-    gti_label = gti[gti_rc]
+    def cc_locs(ccs):
+        rc_locs = np.where(ccs > 0)
+        rc_ids = ccs[rc_locs]
+        rc_arr = np.ascontiguousarray(np.vstack(rc_locs).T)
+        unique_labels, groupxs = util.group_indices(rc_ids)
+        grouped_arrs = util.apply_grouping(rc_arr, groupxs, axis=0)
+        id_to_rc = dict(zip(unique_labels, grouped_arrs))
 
-    pred_rc = np.where(pred)
-    pred_label = pred[pred_rc]
-    pred_rc_arr = np.ascontiguousarray(np.vstack(pred_rc).T)
+        # using nums instead of tuples gives the intersection a modest speedup
+        # rc_int = rc_arr.T[0] + pred.shape[0] + rc_arr.T[1]
+        # id_to_rc_int = dict(zip(unique_labels, map(set, util.apply_grouping(rc_int, groupxs))))
+        return id_to_rc, unique_labels, groupxs, rc_arr
 
-    group_true_labels, true_groupxs = util.group_indices(gti_label)
-    grouped_true_rc_arrs = util.apply_grouping(gti_rc_arr, true_groupxs, axis=0)
+    (true_rcs_arr, group_true_labels, true_groupxs,
+     gti_rc_arr) = cc_locs(gti)
 
-    group_pred_labels, pred_groupxs = util.group_indices(pred_label)
-    grouped_pred_rc_arrs = util.apply_grouping(pred_rc_arr, pred_groupxs, axis=0)
-
-    # true_rcs_arr = ub.map_vals(np.array, ub.group_items(np.vstack(gti_rc).T, gti_label))
-    # true_rcs = ub.map_vals(lambda x: set(map(tuple, x)), true_rcs_arr)
+    (pred_rcs_arr, group_pred_labels, pred_groupxs,
+     pred_rc_arr) = cc_locs(pred)
 
     DSM_NAN = -32767
     MIN_SIZE = 100
@@ -550,7 +552,7 @@ def instance_fscore(gti, uncertain, dsm, pred):
 
     # Find uncertain truth
     uncertain_labels = set(np.unique(gti[uncertain.astype(np.bool)]))
-    for ix, (label, rc_arr) in enumerate(zip(group_true_labels, grouped_true_rc_arrs)):
+    for label, rc_arr in true_rcs_arr.items():
         if len(rc_arr) < MIN_SIZE:
             rc_arr = np.array(list(rc_arr))
             if (np.any(rc_arr == 0) or np.any(rc_arr == 2047)):
@@ -564,7 +566,7 @@ def instance_fscore(gti, uncertain, dsm, pred):
                     invisible_rc_set = set(map(tuple, invisible_rc))
                     # Remove invisible pixels
                     remain_rc_set = list(set(map(tuple, rc_arr)).difference(invisible_rc_set))
-                    grouped_true_rc_arrs[ix] = np.array(remain_rc_set)
+                    true_rcs_arr[label] = np.array(remain_rc_set)
                     uncertain_labels.add(label)
 
     # using nums instead of tuples gives the intersection a modest speedup
@@ -572,24 +574,6 @@ def instance_fscore(gti, uncertain, dsm, pred):
     true_rc_int = gti_rc_arr.T[0] + pred.shape[0] + gti_rc_arr.T[1]
     true_rcs_ = dict(zip(group_true_labels, map(set, util.apply_grouping(true_rc_int, true_groupxs))))
     pred_rcs_ = dict(zip(group_pred_labels, map(set, util.apply_grouping(pred_rc_int, pred_groupxs))))
-
-    # true_rcs_ = ub.map_vals(set, true_rcs_)
-    # pred_rcs_ = ub.map_vals(set, pred_rcs_)
-
-    true_rcs_arr = dict(zip(group_true_labels, grouped_true_rc_arrs))
-    pred_rcs_arr = dict(zip(group_pred_labels, grouped_pred_rc_arrs))
-
-    # pred_rcs_arr = ub.map_vals(np.array, ub.group_items(np.vstack(pred_rc).T, pred_label))
-    # pred_rcs = ub.map_vals(lambda x: set(map(tuple, x)), pred_rcs_arr)
-
-    # true_rcs_ = ub.map_vals(lambda x: np.array(sorted([r * pred.shape[0] + c for (r, c) in x])), true_rcs)
-    # pred_rcs_ = ub.map_vals(lambda x: np.array(sorted([r * pred.shape[0] + c for (r, c) in x])), pred_rcs)
-
-    # using nums instead of tuples gives the intersection a modest speedup
-    # true_rcs_ = ub.map_vals(lambda x: {r * pred.shape[0] + c for (r, c) in x}, true_rcs)
-    # pred_rcs_ = ub.map_vals(lambda x: {r * pred.shape[0] + c for (r, c) in x}, pred_rcs)
-    # true_rcs_ = true_rcs.copy()
-    # pred_rcs_ = pred_rcs.copy()
 
     # Make intersection a bit faster by filtering via bbox fist
     def _bbox(arr):
