@@ -19,6 +19,7 @@ from clab.torch import fit_harness
 from clab.torch import im_loaders
 from clab.torch import criterions
 from clab import util  # NOQA
+from clab.torch.fit_harness import get_snapshot
 
 # from clab.util import imutil
 
@@ -552,7 +553,6 @@ def comparable_vamp():
     """
     import parse
     import glob
-    from .torch.urban_mapper import get_snapshot
     from ibeis.algo.verif import vsone
     parse.log.setLevel(30)
 

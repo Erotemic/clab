@@ -515,6 +515,24 @@ class FitHarness(object):
             harn.log('Snapshot saved to {}'.format(save_path))
 
 
+def get_snapshot(train_dpath, epoch='recent'):
+    """
+    Get a path to a particular epoch or the most recent one
+    """
+    import parse
+    snapshots = sorted(glob.glob(train_dpath + '/*/_epoch_*.pt'))
+    if epoch is None:
+        epoch = 'recent'
+
+    if epoch == 'recent':
+        load_path = snapshots[-1]
+    else:
+        snapshot_nums = [parse.parse('{}_epoch_{num:d}.pt', path).named['num']
+                         for path in snapshots]
+        load_path = dict(zip(snapshot_nums, snapshots))[epoch]
+    return load_path
+
+
 if __name__ == '__main__':
     r"""
     CommandLine:

@@ -10,6 +10,7 @@ from clab import util
 from clab.torch import xpu_device
 from clab.torch import models
 from clab.util import imutil
+from clab.torch.fit_harness import get_snapshot
 from clab.live.urban_train import get_task, SSegInputsWrapper
 
 
@@ -124,21 +125,6 @@ def hack_urban_mapper_eval_submission():
     Leaderboards:
         https://community.topcoder.com/longcontest/?module=ViewStandings&rd=17007
     """
-
-
-def get_snapshot(train_dpath, epoch='recent'):
-    snapshots = sorted(glob.glob(train_dpath + '/*/_epoch_*.pt'))
-    if epoch is None:
-        epoch = 'recent'
-
-    if epoch == 'recent':
-        load_path = snapshots[-1]
-    else:
-        import parse
-        snapshot_nums = [parse.parse('{}_epoch_{num:d}.pt', path).named['num']
-                         for path in snapshots]
-        load_path = dict(zip(snapshot_nums, snapshots))[epoch]
-    return load_path
 
 
 def evaulate_internal_testset():
