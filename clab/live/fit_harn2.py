@@ -228,9 +228,9 @@ class FitHarness(object):
                 # Measure train accuracy and other informative metrics
                 cur_metrics = harn._call_metric_hooks(output, label, loss)
 
-                if 1:
-                    harn._tensorboard_extra(inputs, output, label, tag,
-                                            iter_idx, loader)
+                # if 1:
+                #     harn._tensorboard_extra(inputs, output, label, tag,
+                #                             iter_idx, loader)
 
                 # Accumulate measures
                 batch_metrics.update(cur_metrics)

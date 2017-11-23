@@ -453,6 +453,8 @@ def urban_fit():
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --dry
 
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --all
+
     Example:
         >>> from clab.torch.fit_harness import *
         >>> harn = urban_fit()
@@ -597,7 +599,6 @@ def urban_fit():
             weight=torch.FloatTensor([.1, 1]),
             ignore_label=2
         )
-        harn.xpu.to_xpu(harn.criterion2)
 
         def compute_loss(harn, outputs, labels):
 
@@ -615,7 +616,21 @@ def urban_fit():
         z = harn.loaders['train']
         b = next(iter(z))
         print('b = {!r}'.format(b))
+        import sys
         sys.exit(0)
+
+        def custom_metrics(harn, output, label):
+            ignore_label = datasets['train'].ignore_label
+            labels = datasets['train'].task.labels
+
+            metrics_dict = metrics._sseg_metrics(output[0], label[0],
+                                                 labels=labels,
+                                                 ignore_label=ignore_label)
+            return metrics_dict
+
+        # TODO: port this to main test harness and have hyperparams know to
+        # convert tensors to lists before they use repr2
+        harn.xpu.to_xpu(harn.criterion2)
     else:
         harn = fit_harness.FitHarness(
             model=model, hyper=hyper, datasets=datasets, xpu=xpu,
@@ -623,13 +638,13 @@ def urban_fit():
             batch_size=batch_size,
         )
 
-    def custom_metrics(harn, output, label):
-        ignore_label = datasets['train'].ignore_label
-        labels = datasets['train'].task.labels
+        def custom_metrics(harn, output, label):
+            ignore_label = datasets['train'].ignore_label
+            labels = datasets['train'].task.labels
 
-        metrics_dict = metrics._sseg_metrics(output, label, labels=labels,
-                                             ignore_label=ignore_label)
-        return metrics_dict
+            metrics_dict = metrics._sseg_metrics(output, label, labels=labels,
+                                                 ignore_label=ignore_label)
+            return metrics_dict
 
     harn.add_metric_hook(custom_metrics)
 
