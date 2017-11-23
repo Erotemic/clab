@@ -628,10 +628,6 @@ def urban_fit():
                                                  labels=labels,
                                                  ignore_label=ignore_label)
             return metrics_dict
-
-        # TODO: port this to main test harness and have hyperparams know to
-        # convert tensors to lists before they use repr2
-        harn.xpu.to_xpu(harn.criterion2)
     else:
         harn = fit_harness.FitHarness(
             model=model, hyper=hyper, datasets=datasets, xpu=xpu,

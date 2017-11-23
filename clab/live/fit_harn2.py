@@ -142,6 +142,10 @@ class FitHarness(object):
             harn.log('Criterion: {}'.format(harn.criterion_cls.__name__))
             harn.criterion = harn.criterion_cls(**harn.criterion_params)
 
+            # TODO: port this to main test harness and have hyperparams know to
+            # convert tensors to lists before they use repr2
+            harn.criterion2 = harn.xpu.to_xpu(harn.criterion2)
+
             harn.log('Optimizer: {}'.format(harn.optimizer_cls.__name__))
             if harn.lr_scheduler:
                 lr = harn.lr_scheduler(harn.epoch)
@@ -220,6 +224,9 @@ class FitHarness(object):
                 iter_idx = (harn.epoch * len(loader) + bx)
                 inputs, labels = input_batch
 
+                # The dataset should return a inputs/target 2-tuple of lists.
+                # In most cases each list will be length 1, unless there are
+                # multiple input branches or multiple output branches.
                 if not isinstance(inputs, (list, tuple)):
                     inputs = [inputs]
                 if not isinstance(labels, (list, tuple)):
