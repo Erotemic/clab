@@ -598,7 +598,7 @@ def urban_fit():
             batch_size=batch_size,
         )
         harn.criterion2 = criterions.CrossEntropyLoss2D(
-            weight=torch.FloatTensor([.1, 1]),
+            weight=torch.FloatTensor([.1, 1, 0]),
             ignore_label=2
         )
 
