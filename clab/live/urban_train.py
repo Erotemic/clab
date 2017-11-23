@@ -236,6 +236,13 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         if self.with_gt:
             # print('gotitem: ' + str(data_tensor.shape))
             # print('gt_tensor: ' + str(gt_tensor.shape))
+            if ub.argval('--arch', default='unet') == 'unet2':
+                mask = gt_tensor >= 2
+                gt_tensor_alt = gt_tensor.copy()
+                gt_tensor_alt[mask] = gt_tensor_alt[mask] - 1
+                labels = (gt_tensor, gt_tensor_alt)
+                return data_tensor, labels
+
             return data_tensor, gt_tensor
         else:
             return data_tensor
@@ -559,11 +566,17 @@ def urban_fit():
     elif arch == 'unet':
         model = models.UNet(in_channels=n_channels, n_classes=n_classes,
                             nonlinearity='leaky_relu')
-
         snapshot = xpu_device.XPU(None).load(pretrained)
         model_state_dict = snapshot['model_state_dict']
         model.load_partial_state(model_state_dict)
         # model.shock_outward()
+    elif arch == 'unet2':
+        from clab.live import unet2
+        model = unet2.UNet(n_alt_classes=3, in_channels=n_channels,
+                           n_classes=n_classes, nonlinearity='leaky_relu')
+        snapshot = xpu_device.XPU(None).load(pretrained)
+        model_state_dict = snapshot['model_state_dict']
+        model.load_partial_state(model_state_dict)
 
     elif arch == 'dummy':
         model = models.SSegDummy(in_channels=n_channels, n_classes=n_classes)
@@ -571,11 +584,39 @@ def urban_fit():
         raise ValueError('unknown arch')
 
     xpu = xpu_device.XPU.from_argv()
-    harn = fit_harness.FitHarness(
-        model=model, hyper=hyper, datasets=datasets, xpu=xpu,
-        train_dpath=train_dpath, dry=dry,
-        batch_size=batch_size,
-    )
+
+    if arch == 'unet2':
+
+        from clab.live import fit_harn2
+        harn = fit_harn2.FitHarness(
+            model=model, hyper=hyper, datasets=datasets, xpu=xpu,
+            train_dpath=train_dpath, dry=dry,
+            batch_size=batch_size,
+        )
+        harn.criterion2 = criterions.CrossEntropyLoss2D(
+            weights=[.1, 1],
+            ignore_label=2
+        )
+        harn.xpu.to_xpu(harn.criterion2)
+
+        def compute_loss(harn, outputs, labels):
+
+            output1, output2 = outputs
+            label1, label2 = labels
+
+            # Compute the loss
+            loss1 = harn.criterion(output1, label1)
+            loss2 = harn.criterion2(output2, label2)
+            loss = (loss1 + loss2) / 2.0
+            return loss
+
+        harn.compute_loss = compute_loss
+    else:
+        harn = fit_harness.FitHarness(
+            model=model, hyper=hyper, datasets=datasets, xpu=xpu,
+            train_dpath=train_dpath, dry=dry,
+            batch_size=batch_size,
+        )
 
     def custom_metrics(harn, output, label):
         ignore_label = datasets['train'].ignore_label
