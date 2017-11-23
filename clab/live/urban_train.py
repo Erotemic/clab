@@ -240,8 +240,9 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
                 mask = gt_tensor >= 2
                 gt_tensor_alt = gt_tensor.clone()
                 gt_tensor_alt[mask] = gt_tensor_alt[mask] - 1
-                labels = (gt_tensor, gt_tensor_alt)
-                return data_tensor, labels
+                labels = [gt_tensor, gt_tensor_alt]
+                inputs = [data_tensor]
+                return inputs, labels
 
             return data_tensor, gt_tensor
         else:

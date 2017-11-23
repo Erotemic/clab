@@ -218,18 +218,24 @@ class FitHarness(object):
         with prog:
             for bx, input_batch in enumerate(loader):
                 iter_idx = (harn.epoch * len(loader) + bx)
+                inputs, labels = input_batch
 
-                input_batch = harn.xpu.to_xpu_var(*input_batch)
+                if not isinstance(inputs, (list, tuple)):
+                    inputs = [inputs]
+                if not isinstance(labels, (list, tuple)):
+                    labels = [labels]
+
+                inputs = harn.xpu.to_xpu_var(*inputs)
+                labels = harn.xpu.to_xpu_var(*labels)
 
                 # Core learning / backprop
-                *inputs, label = input_batch
-                output, loss = harn.run_batch(inputs, label, learn=learn)
+                outputs, loss = harn.run_batch(inputs, labels, learn=learn)
 
                 # Measure train accuracy and other informative metrics
-                cur_metrics = harn._call_metric_hooks(output, label, loss)
+                cur_metrics = harn._call_metric_hooks(outputs, labels, loss)
 
                 # if 1:
-                #     harn._tensorboard_extra(inputs, output, label, tag,
+                #     harn._tensorboard_extra(inputs, outputs, labels, tag,
                 #                             iter_idx, loader)
 
                 # Accumulate measures
@@ -256,28 +262,28 @@ class FitHarness(object):
         for key, value in final_metrics.items():
             harn.log_value(tag + ' epoch ' + key, value, harn.epoch)
 
-    def run_batch(harn, inputs, label, learn=False):
+    def run_batch(harn, inputs, labels, learn=False):
         """
         Batch with weight updates
 
         https://github.com/meetshah1995/pytorch-semseg/blob/master/train.py
         """
         if harn.dry:
-            # output_shape = label.shape  # TODO: make sure this works
+            # output_shape = labels.shape  # TODO: make sure this works
             # TODO: make general
-            # output_shape = (label.shape[0],) + tuple(harn.single_output_shape)
-            # output_shape = (label.shape[0], 3, label.shape[1], label.shape[2])
-            # output = Variable(torch.rand(*output_shape))
-            output = None
+            # output_shape = (labels.shape[0],) + tuple(harn.single_output_shape)
+            # output_shape = (labels.shape[0], 3, labels.shape[1], labels.shape[2])
+            # outputs = Variable(torch.rand(*output_shape))
+            outputs = None
             loss = Variable(torch.rand(1))
-            return output, loss
+            return outputs, loss
 
         # Forward prop through the model
-        output = harn.model(*inputs)
+        outputs = harn.model(inputs)
 
         # Compute the loss
-        loss = harn.compute_loss(harn, output, label)
-        # loss = harn.criterion(output, label)
+        loss = harn.compute_loss(harn, outputs, labels)
+        # loss = harn.criterion(outputs, labels)
 
         # Backprop and learn
         if learn:
@@ -285,7 +291,7 @@ class FitHarness(object):
             loss.backward()
             harn.optimizer.step()
 
-        return output, loss
+        return outputs, loss
 
     def _tensorboard_inputs(harn, inputs, iter_idx, tag):
         """
@@ -348,7 +354,7 @@ class FitHarness(object):
             else:
                 print('\nSKIPPING INPUT VISUALIZE\n')
 
-    def _tensorboard_extra(harn, inputs, output, label, tag, iter_idx, loader):
+    def _tensorboard_extra(harn, inputs, outputs, labels, tag, iter_idx, loader):
         # https://github.com/yunjey/pytorch-tutorial/blob/master/tutorials/04-utils/tensorboard/main.py#L83-L105
         # print("\nTENSORBOARD EXTRAS\n")
         # loader.dataset
@@ -358,7 +364,7 @@ class FitHarness(object):
             harn._tensorboard_inputs(inputs, iter_idx, tag)
 
         if iter_idx % 1000 == 0:
-            true = label.data.cpu().numpy().ravel()
+            true = labels.data.cpu().numpy().ravel()
             n_classes = harn.hyper.other['n_classes']
             counts = np.bincount(true, minlength=n_classes)
             bins = list(range(n_classes + 1))
@@ -367,21 +373,21 @@ class FitHarness(object):
         if iter_idx % 1000 == 0:
             if not harn.dry:
                 n_classes = harn.hyper.other['n_classes']
-                preds = output.max(dim=1)[1].data.cpu().numpy().ravel()
+                preds = outputs.max(dim=1)[1].data.cpu().numpy().ravel()
                 counts = np.bincount(preds, minlength=n_classes)
                 bins = list(range(n_classes + 1))
                 harn.log_histogram(tag + '-pred-', (bins, counts), iter_idx)
                 # import torch.nn.functional as F
-                # probs = torch.exp(F.log_softmax(output, dim=1))
+                # probs = torch.exp(F.log_softmax(outputs, dim=1))
 
     def add_metric_hook(harn, hook):
         """
         Adds a hook that should take arguments
-        (harn, output, label) and return a dictionary of scalar metrics
+        (harn, outputs, labels) and return a dictionary of scalar metrics
         """
         harn._metric_hooks.append(hook)
 
-    def _call_metric_hooks(harn, output, label, loss):
+    def _call_metric_hooks(harn, outputs, labels, loss):
         loss_sum = loss.data.sum()
         inf = float("inf")
         if loss_sum == inf or loss_sum == -inf:
@@ -395,7 +401,7 @@ class FitHarness(object):
         }
         if not harn.dry:
             for hook in harn._metric_hooks:
-                _custom_dict = hook(harn, output, label)
+                _custom_dict = hook(harn, outputs, labels)
                 isect = set(_custom_dict).intersection(set(metrics_dict))
                 if isect:
                     raise Exception('Conflicting metric hooks: {}'.format(isect))
