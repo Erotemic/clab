@@ -276,7 +276,8 @@ class FitHarness(object):
         output = harn.model(*inputs)
 
         # Compute the loss
-        loss = harn.criterion(output, label)
+        loss = harn.compute_loss(harn, output, label)
+        # loss = harn.criterion(output, label)
 
         # Backprop and learn
         if learn:
