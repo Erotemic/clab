@@ -505,6 +505,7 @@ def urban_fit():
     hyper = hyperparams.HyperParams(
         criterion=(criterions.CrossEntropyLoss2D, {
             'ignore_label': ignore_label,
+            # TODO: weight should be a FloatTensor
             'weight': class_weights,
         }),
         optimizer=(torch.optim.SGD, {

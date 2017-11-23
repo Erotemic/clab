@@ -80,7 +80,8 @@ class UNet2(unet.UNet):
         """
         # Is there a way to miror so that we have enough input pixels?
         # so we can crop off extras after?
-        if isinstance(inputs, tuple):
+        if isinstance(inputs, (list, tuple)):
+            assert len(inputs) == 1, 'unet2 only takes single branch input'
             inputs = inputs[0]
 
         mirrored = inputs
