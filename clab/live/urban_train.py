@@ -611,6 +611,11 @@ def urban_fit():
             return loss
 
         harn.compute_loss = compute_loss
+
+        z = harn.loaders['train']
+        b = next(iter(z))
+        print('b = {!r}'.format(b))
+        sys.exit(0)
     else:
         harn = fit_harness.FitHarness(
             model=model, hyper=hyper, datasets=datasets, xpu=xpu,
