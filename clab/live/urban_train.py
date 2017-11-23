@@ -238,7 +238,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             # print('gt_tensor: ' + str(gt_tensor.shape))
             if ub.argval('--arch', default='unet') == 'unet2':
                 mask = gt_tensor >= 2
-                gt_tensor_alt = gt_tensor.copy()
+                gt_tensor_alt = gt_tensor.clone()
                 gt_tensor_alt[mask] = gt_tensor_alt[mask] - 1
                 labels = (gt_tensor, gt_tensor_alt)
                 return data_tensor, labels
@@ -572,8 +572,8 @@ def urban_fit():
         # model.shock_outward()
     elif arch == 'unet2':
         from clab.live import unet2
-        model = unet2.UNet(n_alt_classes=3, in_channels=n_channels,
-                           n_classes=n_classes, nonlinearity='leaky_relu')
+        model = unet2.UNet2(n_alt_classes=3, in_channels=n_channels,
+                            n_classes=n_classes, nonlinearity='leaky_relu')
         snapshot = xpu_device.XPU(None).load(pretrained)
         model_state_dict = snapshot['model_state_dict']
         model.load_partial_state(model_state_dict)
@@ -594,7 +594,7 @@ def urban_fit():
             batch_size=batch_size,
         )
         harn.criterion2 = criterions.CrossEntropyLoss2D(
-            weights=[.1, 1],
+            weight=torch.FloatTensor([.1, 1]),
             ignore_label=2
         )
         harn.xpu.to_xpu(harn.criterion2)
