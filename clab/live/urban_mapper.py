@@ -168,6 +168,13 @@ def eval_internal_testset():
     pharn.load_snapshot(load_path)
     pharn.run()
 
+    paths = {}
+    for mode in ['pred', 'pred1']:
+        restitched_paths = pharn._restitch_type(mode, blend='vote')
+        if 1:
+            pharn._restitch_type('blend_' + mode, blend=None)
+        paths[mode] = restitched_paths
+
     # hack
     if 0:
         for mode in ['blend_pred', 'blend_pred_crf']:
@@ -339,66 +346,74 @@ class PredictHarness(object):
         pharn.model.train(False)
 
         for ix in ub.ProgIter(range(len(pharn.dataset)), label='dumping'):
+            fname = pharn.dataset.inputs.dump_im_names[ix]
+            fname = os.path.splitext(fname)[0] + '.png'
+
             if pharn.dataset.with_gt:
                 inputs_ = pharn.dataset[ix][0][None, :]
             else:
                 inputs_ = pharn.dataset[ix][None, :]
 
-            inputs_ = pharn.xpu.to_xpu(inputs_)
-            inputs_ = torch.autograd.Variable(inputs_)
+            if not isinstance(inputs_, (list, tuple)):
+                inputs_ = [inputs_]
 
-            output_tensor = pharn.model(inputs_)
-            log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
-            log_probs = log_prob_tensor.data.cpu().numpy()
+            inputs_ = pharn.xpu.to_xpu_var(*inputs_)
 
-            # Just reload rgb data without trying to go through the reverse
-            # transform
-            img = imutil.imread(pharn.dataset.inputs.im_paths[ix])
+            outputs = pharn.model.forward(inputs_)
+            if not isinstance(outputs, (list, tuple)):
+                outputs = [outputs]
 
-            # output = prob_tensor.data.cpu().numpy()[0]
+            for ox in range(len(outputs)):
+                suffix = '' if ox == 0 else str(ox)
 
-            pred = log_probs.argmax(axis=0)
+                output_tensor = outputs[ox]
+                log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
+                log_probs = log_prob_tensor.data.cpu().numpy()
 
-            fname = pharn.dataset.inputs.dump_im_names[ix]
-            fname = os.path.splitext(fname)[0] + '.png'
+                # Just reload rgb data without inverting the transform
+                img = imutil.imread(pharn.dataset.inputs.im_paths[ix])
 
-            # pred = argmax.data.cpu().numpy()[0]
-            blend_pred = pharn.dataset.task.colorize(pred, img)
+                # output = prob_tensor.data.cpu().numpy()[0]
 
-            output_dict = {
-                'blend_pred': blend_pred,
-                # 'color_pred': color_pred,
-                'pred': pred,
-            }
+                pred = log_probs.argmax(axis=0)
 
-            if False:
-                from clab.torch import filters
-                posterior = filters.crf_posterior(img, log_probs)
-                pred_crf = posterior.argmax(axis=0)
-                blend_pred_crf = pharn.dataset.task.colorize(pred_crf, img)
-                # color_pred = task.colorize(pred)
-                output_dict.update({
-                    'log_probs': log_probs,
-                    'blend_pred_crf': blend_pred_crf,
-                    'pred_crf': pred_crf,
-                })
+                # pred = argmax.data.cpu().numpy()[0]
+                blend_pred = pharn.dataset.task.colorize(pred, img)
 
-            if pharn.dataset.with_gt:
-                true = imutil.imread(pharn.dataset.inputs.gt_paths[ix])
-                blend_true = pharn.dataset.task.colorize(true, img, alpha=.5)
-                # color_true = task.colorize(true, alpha=.5)
-                output_dict['true'] = true
-                output_dict['blend_true'] = blend_true
-                # output_dict['color_true'] = color_true
+                output_dict = {
+                    'blend_pred' + suffix: blend_pred,
+                    # 'color_pred': color_pred,
+                    'pred' + suffix: pred,
+                }
 
-            for key, img in output_dict.items():
-                dpath = join(pharn.test_dump_dpath, key)
-                ub.ensuredir(dpath)
-                fpath = join(dpath, fname)
-                if key == 'log_probs':
-                    np.savez(fpath.replace('.png', ''), img)
-                else:
-                    imutil.imwrite(fpath, img)
+                if False:
+                    from clab.torch import filters
+                    posterior = filters.crf_posterior(img, log_probs)
+                    pred_crf = posterior.argmax(axis=0)
+                    blend_pred_crf = pharn.dataset.task.colorize(pred_crf, img)
+                    # color_pred = task.colorize(pred)
+                    output_dict.update({
+                        'log_probs' + suffix: log_probs,
+                        'blend_pred_crf' + suffix: blend_pred_crf,
+                        'pred_crf' + suffix: pred_crf,
+                    })
+
+                if pharn.dataset.with_gt:
+                    true = imutil.imread(pharn.dataset.inputs.gt_paths[ix])
+                    blend_true = pharn.dataset.task.colorize(true, img, alpha=.5)
+                    # color_true = task.colorize(true, alpha=.5)
+                    output_dict['true' + suffix] = true
+                    output_dict['blend_true' + suffix] = blend_true
+                    # output_dict['color_true'] = color_true
+
+                for key, img in output_dict.items():
+                    dpath = join(pharn.test_dump_dpath, key)
+                    ub.ensuredir(dpath)
+                    fpath = join(dpath, fname)
+                    if key == 'log_probs' + suffix:
+                        np.savez(fpath.replace('.png', ''), img)
+                    else:
+                        imutil.imwrite(fpath, img)
 
 
 # def erode_ccs(ccs):
