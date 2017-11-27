@@ -34,6 +34,9 @@ def urban_mapper_eval_dataset():
 def eval_contest_testset():
     """
     hacked together script to get the testing data and run prediction for submission
+
+    train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4')
+
     """
 
     # train_dpath = ub.truepath(
@@ -56,48 +59,97 @@ def eval_contest_testset():
         eval_dataset = urban_mapper_eval_dataset()
         eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
 
+    if False:
+        eval_dataset = urban_mapper_eval_dataset()
+        from clab.live.urban_train import load_task_dataset
+        datasets = load_task_dataset('urban_mapper_3d')
+        eval_dataset.center_inputs = datasets['train']._make_normalizer()
+
+        load_path = get_snapshot(train_dpath, epoch=100)
+
     pharn = PredictHarness(eval_dataset)
     pharn.hack_dump_path(load_path)
     pharn.load_snapshot(load_path)
     pharn.run()
 
-    mode = 'pred'
     # mode = 'pred_crf'
-    restitched_pred = pharn._restitch_type(mode, blend='vote')
+    def two_channel_version():
+        task = eval_dataset.task
+        restitched_pred0 = pharn._restitch_type('pred', blend='vote')
+        restitched_pred1 = pharn._restitch_type('pred1', blend='vote')
+        pharn._restitch_type('blend_pred', blend=None)
+        pharn._restitch_type('blend_pred1', blend=None)
 
-    if True:
-        pharn._restitch_type('blend_' + mode, blend=None)
+        out_fpaths = unet2_instance_restitch(restitched_pred0, restitched_pred1, task)
 
-    restitched_pred = eval_dataset.fullres.align(restitched_pred)
+        lines = []
+        for fpath in sorted(out_fpaths):
+            pred = imutil.imread(fpath)
+            import cv2
+            cc_labels = cv2.connectedComponents(pred, connectivity=4)[1]
 
-    def compact_idstr(dict_):
-        short_keys = util.shortest_unique_prefixes(dict_.keys())
-        short_dict = ub.odict(sorted(zip(short_keys, dict_.values())))
-        idstr = ub.repr2(short_dict, nobr=1, itemsep='', si=1, nl=0,
-                         explicit=1)
-        return idstr
+            fname = splitext(basename(fpath))[0]
+            (width, height), runlen = imutil.run_length_encoding(cc_labels)
 
-    # Convert to submission output format
-    post_kw = dict(k=15, n_iters=1, dist_thresh=5, watershed=True)
-    # post_kw = dict(k=0, watershed=False)
-    post_idstr = compact_idstr(post_kw)
+            lines.append(fname)
+            lines.append('{},{}'.format(width, height))
+            lines.append(','.join(list(map(str, runlen))))
 
-    lines = []
-    for ix, fpath in enumerate(ub.ProgIter(restitched_pred, label='rle')):
-        pred = imutil.imread(fpath)
-        cc_labels = eval_dataset.task.instance_label(pred, **post_kw)
+        text = '\n'.join(lines)
+        post_idstr = 'dualout'
+        mode = 'pred'
+        suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
+        fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
+        print('fpath = {!r}'.format(fpath))
+        ub.writeto(fpath, text)
+        print(ub.codeblock(
+            '''
+            # Execute on remote computer
+            cd ~/Dropbox/TopCoder
+            rsync aretha:{fpath} .
+            '''
+        ).format(fpath=fpath))
 
-        fname = splitext(basename(fpath))[0]
-        (width, height), runlen = imutil.run_length_encoding(cc_labels)
+    def one_channel_version():
+        mode = 'pred'
+        restitched_pred = pharn._restitch_type(mode, blend='vote')
+        if True:
+            pharn._restitch_type('blend_' + mode, blend=None)
+        restitched_pred = eval_dataset.fullres.align(restitched_pred)
 
-        lines.append(fname)
-        lines.append('{},{}'.format(width, height))
-        lines.append(','.join(list(map(str, runlen))))
+        def compact_idstr(dict_):
+            short_keys = util.shortest_unique_prefixes(dict_.keys())
+            short_dict = ub.odict(sorted(zip(short_keys, dict_.values())))
+            idstr = ub.repr2(short_dict, nobr=1, itemsep='', si=1, nl=0,
+                             explicit=1)
+            return idstr
 
-    text = '\n'.join(lines)
-    suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
-    fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
-    ub.writeto(fpath, text)
+        # Convert to submission output format
+        post_kw = dict(k=15, n_iters=1, dist_thresh=5, watershed=True)
+        # post_kw = dict(k=0, watershed=False)
+        post_idstr = compact_idstr(post_kw)
+
+        lines = []
+        for ix, fpath in enumerate(ub.ProgIter(restitched_pred, label='rle')):
+            pred = imutil.imread(fpath)
+            cc_labels = eval_dataset.task.instance_label(pred, **post_kw)
+
+            fname = splitext(basename(fpath))[0]
+            (width, height), runlen = imutil.run_length_encoding(cc_labels)
+
+            lines.append(fname)
+            lines.append('{},{}'.format(width, height))
+            lines.append(','.join(list(map(str, runlen))))
+
+        text = '\n'.join(lines)
+        suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
+        fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
+        ub.writeto(fpath, text)
+
+    if '/unet2/' in train_dpath:
+        two_channel_version()
+    else:
+        one_channel_version()
 
     # Submission URL
     # https://community.topcoder.com/longcontest/
@@ -197,6 +249,12 @@ def eval_internal_testset():
 
     import pandas as pd
     task = test_dataset.task
+
+    restitched_pred0 = pharn._restitch_type('pred', blend='vote')
+    restitched_pred1 = pharn._restitch_type('pred1', blend='vote')
+
+    out_fpaths = unet2_instance_restitch(restitched_pred0, restitched_pred1, task)
+    test_instance_restitch(out_fpaths, task)
 
     # Evaluate the binary predictions by themselves
     mode = 'pred1'
@@ -478,7 +536,7 @@ class PredictHarness(object):
 #     pass
 
 
-def draw_gt_contours(img, gti):
+def draw_gt_contours(img, gti, thickness=4):
     import cv2
     rc_locs = np.where(gti > 0)
     grouped_cc_xys = util.group_items(
@@ -491,7 +549,7 @@ def draw_gt_contours(img, gti):
     draw_img = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
     draw_img = cv2.drawContours(
         image=draw_img, contours=list(gt_hulls.values()), contourIdx=-1,
-        color=BGR_GREEN, thickness=1)
+        color=BGR_GREEN, thickness=thickness)
     return draw_img
 
 
@@ -499,6 +557,63 @@ def draw_with_gt(task, pred, gti, bgr):
     blend_pred = task.instance_colorize(pred, bgr)
     draw_img = draw_gt_contours(blend_pred, gti)
     return draw_img
+
+
+def unet2_instance_restitch(restitched_pred0, restitched_pred1, task):
+    from os.path import dirname
+    out_fpaths = []
+    # restitched_pred0 = eval_dataset.fullres.align(restitched_pred1)
+    for pred1_fpath in ub.ProgIter(restitched_pred1):
+        # CUSTOM INSTANCE RESTITCHING
+        pred_seg0 = util.imread(pred1_fpath.replace('/pred1/', '/pred/'))
+        pred_seg1 = util.imread(pred1_fpath)
+
+        seed = (pred_seg0 == task.classname_to_id['inner_building']).astype(np.uint8)
+        mask = (pred_seg1 == 1)
+        pred = seeded_instance_label(seed, mask, min_seed_size=75)
+        out_fpath = pred1_fpath.replace('/pred1/', '/instance_pred/')
+
+        ub.ensuredir(dirname(out_fpath))
+        util.imwrite(out_fpath, (pred > 0).astype(np.uint8))
+        out_fpaths.append(out_fpath)
+    return out_fpaths
+
+
+def test_instance_restitch(out_fpaths, task):
+    from os.path import dirname, exists
+    import cv2
+    all_scores = []
+    for out_fpath in ub.ProgIter(out_fpaths, freq=1, adjust=False):
+        gtl_fname = basename(out_fpath).replace('.png', '_GTL.tif')
+        gti_fname = basename(out_fpath).replace('.png', '_GTI.tif')
+        dsm_fname = basename(out_fpath).replace('.png', '_DSM.tif')
+        bgr_fname = basename(out_fpath).replace('.png', '_RGB.tif')
+        gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+        gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+        dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+        bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+
+        blend_fpath = out_fpath.replace('/instance_pred', '/blend_instance_pred')
+        ub.ensuredir(dirname(blend_fpath))
+
+        if exists(gti_fpath):
+            bgr = util.imread(bgr_fpath)
+
+            pred = util.imread(out_fpath)
+
+            pred_ccs = cv2.connectedComponents(pred, connectivity=4)[1]
+            blend_pred = task.instance_colorize(pred_ccs, bgr)
+            gti = util.imread(gti_fpath)
+            gtl = util.imread(gtl_fpath)
+            dsm = util.imread(dsm_fpath)
+            uncertain = (gtl == 65)
+
+            scores, assign = instance_fscore(gti, uncertain, dsm, pred_ccs, info=True)
+            all_scores.append(scores)
+
+            blend_pred = draw_gt_contours(blend_pred, gti)
+            util.imwrite(blend_fpath, blend_pred)
+    return out_fpaths
 
 
 def seeded_instance_label(seed, mask, only_inner=False, inner_k=0,
@@ -577,7 +692,7 @@ def seeded_instance_label(seed, mask, only_inner=False, inner_k=0,
     return pred_ccs
 
 
-def instance_fscore(gti, uncertain, dsm, pred):
+def instance_fscore(gti, uncertain, dsm, pred, info=False):
     """
     path = '/home/local/KHQ/jon.crall/data/work/urban_mapper/eval/input_4224-rwyxarza/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3/_epoch_00000236/restiched/pred'
 
@@ -737,7 +852,7 @@ def instance_fscore(gti, uncertain, dsm, pred):
                     best_label = true_label
 
         if best_label is not None:
-            assignment.append((pred_label, true_label))
+            assignment.append((pred_label, true_label, best_score[0]))
             unused_true_keys.remove(best_label)
             if pred_label not in uncertain_labels:
                 TP += 1
@@ -751,6 +866,9 @@ def instance_fscore(gti, uncertain, dsm, pred):
     f_score = 2 * precision * recall / (precision + recall)
 
     # They multiply by 1e6, but lets not do that.
+    if info:
+        return (f_score, precision, recall), assignment
+
     return (f_score, precision, recall)
 
 if __name__ == '__main__':

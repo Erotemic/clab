@@ -320,6 +320,11 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         mfweight_dict = gtstats['mf_weight'].to_dict()
         class_weights = np.array(list(ub.take(mfweight_dict, self.task.classnames)))
         class_weights[self.task.ignore_labels] = 0
+
+        if 'inner-building' in self.task.classnames:
+            # increase weight of inner building
+            class_weights[1] *= 2
+
         # HACK
         # class_weights[0] = 1.0
         # class_weights[1] = 0.7
@@ -521,7 +526,8 @@ def urban_fit():
         }),
         scheduler=('Exponential', {
             'gamma': 0.99,
-            'base_lr': 0.0015,
+            # 'base_lr': 0.0015,
+            'base_lr': 0.001,
             'stepsize': 2,
         }),
         other={
@@ -540,9 +546,14 @@ def urban_fit():
         # "ImageCenterScale", {"im_mean": [[[0.3750553785198646]]], "im_scale": [[[1.026544662398811]]]}
         # "DTMCenterScale", "std": 2.5136079110849674, "nan_value": -32767.0 }
 
+        # 'unet_rgb_8k': ub.truepath(
+        #     '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
+        #     'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/torch_snapshots/_epoch_00000189.pt'
+        # )
+
         'unet_rgb_8k': ub.truepath(
-            '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
-            'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/torch_snapshots/_epoch_00000189.pt'
+            '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/'
+            'solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4/torch_snapshots/_epoch_00000100.pt'
         )
     }
 
