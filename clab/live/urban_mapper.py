@@ -717,6 +717,8 @@ def instance_fscore(gti, uncertain, dsm, pred):
     FP = TP = FN = 0
     unused_true_keys = set(unused_true_rcs.keys())
 
+    assignment = []
+
     for pred_label, pred_rc_set in pred_rcs_.items():
 
         best_score = (-np.inf, -np.inf)
@@ -735,6 +737,7 @@ def instance_fscore(gti, uncertain, dsm, pred):
                     best_label = true_label
 
         if best_label is not None:
+            assignment.append((pred_label, true_label))
             unused_true_keys.remove(best_label)
             if pred_label not in uncertain_labels:
                 TP += 1
