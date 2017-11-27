@@ -297,6 +297,8 @@ class PredictHarness(object):
             n_channels = pharn.dataset.n_channels
 
         # Infer which model this belongs to
+        # FIXME: The model must be constructed with the EXACT same kwargs This
+        # will be easier when onnx supports model serialization.
         if snapshot['model_class_name'] == 'UNet':
             pharn.model = models.UNet(in_channels=n_channels,
                                       n_classes=n_classes,
@@ -304,7 +306,8 @@ class PredictHarness(object):
         elif snapshot['model_class_name'] == 'SegNet':
             pharn.model = models.SegNet(in_channels=n_channels, n_classes=n_classes)
         elif snapshot['model_class_name'] == 'UNet2':
-            pharn.model = models.UNet2(
+            from clab.live import unet2
+            pharn.model = unet2.UNet2(
                 in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
                 nonlinearity='leaky_relu'
             )
