@@ -134,6 +134,7 @@ def eval_internal_testset():
 
     Ignore:
         import ubelt as ub
+        epoch = 100
         train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4')
 
     Script:
@@ -161,6 +162,7 @@ def eval_internal_testset():
     #     'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
     epoch = ub.argval('--epoch', default=None)
     epoch = int(epoch) if epoch is not None else epoch
+
     load_path = get_snapshot(train_dpath, epoch=epoch)
 
     pharn = PredictHarness(test_dataset)
@@ -168,6 +170,7 @@ def eval_internal_testset():
     pharn.load_snapshot(load_path)
     pharn.run()
 
+    # Recombined predictions on chips into predictions on the original inputs
     paths = {}
     for mode in ['pred', 'pred1']:
         restitched_paths = pharn._restitch_type(mode, blend='vote')
@@ -175,6 +178,61 @@ def eval_internal_testset():
             pharn._restitch_type('blend_' + mode, blend=None)
         paths[mode] = restitched_paths
 
+    def read_gt_info(pred_fpath):
+        gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
+        gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
+        dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
+        bgr_fname = basename(pred_fpath).replace('.png', '_RGB.tif')
+        gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+        gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+        dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+        bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+
+        gti = util.imread(gti_fpath)
+        gtl = util.imread(gtl_fpath)
+        dsm = util.imread(dsm_fpath)
+        bgr = util.imread(bgr_fpath)
+        uncertain = (gtl == 65)
+        return gti, uncertain, dsm, bgr
+
+    import pandas as pd
+    task = test_dataset.task
+
+    # Evaluate the binary predictions by themselves
+    mode = 'pred1'
+    restitched_paths = paths[mode]
+    scores1 = []
+    for pred_fpath in ub.ProgIter(restitched_paths, label='scoring 1'):
+        gti, uncertain, dsm, bgr = read_gt_info(pred_fpath)
+        pred_seg = util.imread(pred_fpath)
+        pred = task.instance_label(pred_seg, dist_thresh=5, k=12, watershed=True)
+        scores1.append(instance_fscore(gti, uncertain, dsm, pred))
+
+    scores_df1 = pd.DataFrame(scores1, columns=['fscore', 'precision', 'recall'])
+    print('binary fscore {}'.format(scores_df1['fscore'].mean()))
+
+    # ----------------------------------------
+    # Combine the binary and inner predictions.
+
+    mode = 'pred'
+    restitched_paths = paths[mode]
+    scores0 = []
+    for pred_fpath in ub.ProgIter(restitched_paths, label='scoring seeds'):
+        gti, uncertain, dsm, bgr = read_gt_info(pred_fpath)
+
+        pred_seg0 = util.imread(pred_fpath)
+        pred_seg1 = util.imread(pred_fpath.replace('/pred/', '/pred1/'))
+
+        seed = (pred_seg0 == task.classname_to_id['inner_building']).astype(np.uint8)
+        mask = (pred_seg1 == 1)
+        pred = seeded_instance_label(seed, mask, min_seed_size=50)
+
+        scores0.append(instance_fscore(gti, uncertain, dsm, pred))
+
+    scores_df0 = pd.DataFrame(scores0, columns=['fscore', 'precision', 'recall'])
+    print('binary scores\n{}'.format(scores_df0.mean(axis=0)))
+
+    # -------- OLD ---------
     # hack
     if 0:
         for mode in ['blend_pred', 'blend_pred_crf']:
@@ -429,73 +487,94 @@ def draw_gt_contours(img, gti):
     )
     gt_hulls = ub.map_vals(cv2.convexHull, grouped_cc_xys)
     BGR_GREEN = (0, 255, 0)
-    draw_img = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
     img = util.rectify_to_float01(img)
+    draw_img = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
     draw_img = cv2.drawContours(
         image=draw_img, contours=list(gt_hulls.values()), contourIdx=-1,
         color=BGR_GREEN, thickness=1)
     return draw_img
 
 
-def draw_with_gt(task, pred_fpath, gtl, gti, bgr):
-    from clab.util import nputil
+def draw_with_gt(task, pred, gti, bgr):
+    blend_pred = task.instance_colorize(pred, bgr)
+    draw_img = draw_gt_contours(blend_pred, gti)
+    return draw_img
 
+
+def seeded_instance_label(seed, mask, only_inner=False, inner_k=0,
+                          outer_k=0, post_k=0, min_seed_size=0):
     import cv2
 
-    pred_seg = util.imread(pred_fpath)
+    mask = mask.astype(np.uint8)
+    seed = seed.astype(np.uint8)
 
-    mask = (pred_seg > 0).astype(np.uint8)
-    k = 15
-    kernel = np.ones((k, k), dtype=np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    if inner_k > 0:
+        kernel = np.ones((inner_k, inner_k), np.uint8)
+        seed = cv2.morphologyEx(seed, cv2.MORPH_OPEN, kernel,
+                                 iterations=1)
 
-    topology = np.dstack([mask] * 3)
+    def cc_locs(mask):
+        ccs = cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)[1]
+        rc_locs = np.where(mask > 0)
+        rc_ids = ccs[rc_locs]
+        rc_arrs = np.ascontiguousarray(np.vstack(rc_locs).T)
+        cc_to_loc = util.group_items(rc_arrs, rc_ids, axis=0)
+        return cc_to_loc
 
-    pred_seg[pred_seg == 1] = 5
-    pred_seg[pred_seg == 2] = 1
-    pred_seg[pred_seg == 5] = 2
+    if min_seed_size > 0:
+        # Remove very small seeds
+        for inner_id, inner_rcs in cc_locs(seed).items():
+            if len(inner_rcs) < min_seed_size:
+                seed[tuple(inner_rcs.T)] = 0
 
-    seeds = cv2.connectedComponents((pred_seg == 2).astype(np.uint8), connectivity=4)[1]
+    seed_ccs = cv2.connectedComponents(seed, connectivity=4)[1]
 
-    seeds[mask == 0] = -1
-    markers = cv2.watershed(topology, seeds.copy())
-    markers[mask == 0] = 0
-    markers[markers == -1] = 0
+    if only_inner:
+        return seed_ccs
 
-    blend_mask = task.colorize(mask, bgr)
-    seed_mask = util.ensure_alpha_channel(task.instance_colorize(seeds), alpha=.6)
-    seed_mask.T[3][seeds < 0] = 0
-    draw_img = util.overlay_alpha_images(seed_mask, blend_mask)
-    draw_img = (draw_img * 255).astype(np.uint8)
+    # Remove seeds not surrounded by a mask
+    seed[(seed & ~mask)] = 0
 
-    draw_img = draw_gt_contours(draw_img, gti)
-    pt.clf()
-    pt.imshow(draw_img)
+    if outer_k > 1:
+        mask = cv2.morphologyEx(mask, cv2.MORPH_ERODE,
+                                np.ones((outer_k, outer_k), np.uint8),
+                                iterations=1)
+        # Ensure we dont clobber a seed
+        mask[seed.astype(np.bool)] = 1
 
-    import cv2
-    contours = cv2.findContours(gtl, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    drawContours
+    dmask1 = cv2.dilate(mask, np.ones((3, 3)))
+    dmask2 = cv2.dilate(dmask1, np.ones((3, 3)))
 
+    # Build a topological wall between mask components
+    twall = dmask1 - mask
 
-def instance_label2(pred_seg):
-    import cv2
+    # Pixels beyond the wall region are sure background
+    sure_bg = 1 - dmask2
 
-    mask = (pred_seg > 0).astype(np.uint8)
-    topology = np.dstack([mask] * 3)
-    seeds = cv2.connectedComponents((pred_seg == 1).astype(np.uint8), connectivity=4)[1]
+    # prepare watershed seeds
+    # Label sure background as 1
+    wseed = sure_bg.astype(np.int)
+    # Add the seeds starting at 2
+    seed_mask = seed_ccs > 0
+    seed_labels = seed_ccs[seed_mask]
+    wseed[seed_mask] = seed_labels + 1
+    # The unsure region is now labeled as zero
 
-    seeds[mask == 0] = -1
-    markers = cv2.watershed(topology, seeds.copy())
-    markers[mask == 0] = 0
-    markers[markers == -1] = 0
+    topology = np.dstack([twall * 255] * 3)
+    markers = np.ascontiguousarray(wseed.astype(np.int32).copy())
+    markers = cv2.watershed(topology, markers)
+    # Remove background and border labels
+    markers[markers <= 1] = 0
 
-    pt.imshow(task.instance_colorize(gtl, task.instance_colorize(markers)))
+    instance_mask = (markers > 0).astype(np.uint8)
 
-    pt.imshow(task.instance_colorize(markers))
-    pt.imshow(task.instance_colorize(seeds))
+    if post_k > 0:
+        mask = cv2.morphologyEx(mask, cv2.MORPH_ERODE,
+                                np.ones((post_k, post_k), np.uint8),
+                                iterations=1)
 
-    n_ccs, cc_labels = cv2.connectedComponents(seeds.astype(np.uint8), connectivity=4)
-    return cc_labels
+    pred_ccs = cv2.connectedComponents(instance_mask, connectivity=4)[1]
+    return pred_ccs
 
 
 def instance_fscore(gti, uncertain, dsm, pred):
@@ -562,31 +641,34 @@ def instance_fscore(gti, uncertain, dsm, pred):
     fscore = instance_fscore_(gti, uncertain, dsm, pred)
     instance_fscore_.profile.profile.print_stats()
     """
+    def _bbox(arr):
+        # r1, c1, r2, c2
+        return np.hstack([arr.min(axis=0), arr.max(axis=0)])
+
     def cc_locs(ccs):
         rc_locs = np.where(ccs > 0)
         rc_ids = ccs[rc_locs]
         rc_arr = np.ascontiguousarray(np.vstack(rc_locs).T)
         unique_labels, groupxs = util.group_indices(rc_ids)
         grouped_arrs = util.apply_grouping(rc_arr, groupxs, axis=0)
-        id_to_rc = dict(zip(unique_labels, grouped_arrs))
-
-        # using nums instead of tuples gives the intersection a modest speedup
-        # rc_int = rc_arr.T[0] + pred.shape[0] + rc_arr.T[1]
-        # id_to_rc_int = dict(zip(unique_labels, map(set, util.apply_grouping(rc_int, groupxs))))
+        id_to_rc = ub.odict(zip(unique_labels, grouped_arrs))
         return id_to_rc, unique_labels, groupxs, rc_arr
 
-    (true_rcs_arr, group_true_labels, true_groupxs,
-     gti_rc_arr) = cc_locs(gti)
+    (true_rcs_arr, group_true_labels,
+     true_groupxs, true_rc_arr) = cc_locs(gti)
 
-    (pred_rcs_arr, group_pred_labels, pred_groupxs,
-     pred_rc_arr) = cc_locs(pred)
+    (pred_rcs_arr, group_pred_labels,
+     pred_groupxs, pred_rc_arr) = cc_locs(pred)
 
     DSM_NAN = -32767
     MIN_SIZE = 100
+    MIN_IOU = 0.45
     # H, W = pred.shape[0:2]
 
-    # Find uncertain truth
+    # --- Find uncertain truth ---
+    # any gt-building explicitly labeled in the GTL is uncertain
     uncertain_labels = set(np.unique(gti[uncertain.astype(np.bool)]))
+    # Any gt-building less than 100px or at the boundary is uncertain.
     for label, rc_arr in true_rcs_arr.items():
         if len(rc_arr) < MIN_SIZE:
             rc_arr = np.array(list(rc_arr))
@@ -596,7 +678,6 @@ def instance_fscore(gti, uncertain, dsm, pred):
                 rc_loc = tuple(rc_arr.T)
                 is_invisible = (dsm[rc_loc] == DSM_NAN)
                 if np.any(is_invisible):
-                    print('is_invisible = {!r}'.format(is_invisible))
                     invisible_rc = rc_arr.compress(is_invisible, axis=0)
                     invisible_rc_set = set(map(tuple, invisible_rc))
                     # Remove invisible pixels
@@ -604,52 +685,54 @@ def instance_fscore(gti, uncertain, dsm, pred):
                     true_rcs_arr[label] = np.array(remain_rc_set)
                     uncertain_labels.add(label)
 
-    # using nums instead of tuples gives the intersection a modest speedup
-    pred_rc_int = pred_rc_arr.T[0] + pred.shape[0] + pred_rc_arr.T[1]
-    true_rc_int = gti_rc_arr.T[0] + pred.shape[0] + gti_rc_arr.T[1]
-    true_rcs_ = dict(zip(group_true_labels, map(set, util.apply_grouping(true_rc_int, true_groupxs))))
-    pred_rcs_ = dict(zip(group_pred_labels, map(set, util.apply_grouping(pred_rc_int, pred_groupxs))))
+    def make_int_coords(rc_arr, unique_labels, groupxs):
+        # using nums instead of tuples gives the intersection a modest speedup
+        rc_int = rc_arr.T[0] + pred.shape[0] + rc_arr.T[1]
+        id_to_rc_int = ub.odict(zip(unique_labels,
+                                    map(set, util.apply_grouping(rc_int, groupxs))))
+        return id_to_rc_int
 
     # Make intersection a bit faster by filtering via bbox fist
-    def _bbox(arr):
-        r1, c1 = arr.min(axis=0)
-        r2, c2 = arr.max(axis=0)
-        return np.array([r1, c1, r2, c2])
-
-    def _bbox_isect_area(bbox1, bbox2):
-        i2 = np.minimum(bbox1[2:4], bbox2[2:4])
-        i1 = np.minimum(np.maximum(bbox1[0:2], bbox2[0:2]), i2)
-        return np.prod(i2 - i1)
-
     true_rcs_bbox = ub.map_vals(_bbox, true_rcs_arr)
     pred_rcs_bbox = ub.map_vals(_bbox, pred_rcs_arr)
+
+    true_bboxes = np.array(list(true_rcs_bbox.values()))
+    pred_bboxes = np.array(list(pred_rcs_bbox.values()))
+
+    candidate_matches = {}
+    for plabel, pb in zip(group_pred_labels, pred_bboxes):
+        irc1 = np.maximum(pb[0:2], true_bboxes[:, 0:2])
+        irc2 = np.minimum(pb[2:4], true_bboxes[:, 2:4])
+        irc1 = np.minimum(irc1, irc2, out=irc1)
+        isect_area = np.prod(np.abs(irc2 - irc1), axis=1)
+        tlabels = list(ub.take(group_true_labels, np.where(isect_area)[0]))
+        candidate_matches[plabel] = set(tlabels)
+
+    # using nums instead of tuples gives the intersection a modest speedup
+    pred_rcs_ = make_int_coords(pred_rc_arr, group_pred_labels, pred_groupxs)
+    true_rcs_ = make_int_coords(true_rc_arr, group_true_labels, true_groupxs)
 
     # Greedy matching
     unused_true_rcs = true_rcs_.copy()
     FP = TP = FN = 0
-    unused_true_keys = sorted(unused_true_rcs.keys())
-    for pred_label, pred_rc_set in sorted(pred_rcs_.items()):
+    unused_true_keys = set(unused_true_rcs.keys())
+
+    for pred_label, pred_rc_set in pred_rcs_.items():
 
         best_score = (-np.inf, -np.inf)
         best_label = None
 
-        bbox1 = pred_rcs_bbox[pred_label]
-
-        for true_label in unused_true_keys:
-            bbox2 = true_rcs_bbox[true_label]
-
-            # Try and short circuit the intersection code
-            if _bbox_isect_area(bbox1, bbox2) > 0:
-                true_rc_set = unused_true_rcs[true_label]
-
-                n_isect = len(pred_rc_set.intersection(true_rc_set))
-                # n_isect = len(np.intersect1d(pred_rc_set, true_rc_set, assume_unique=True))
-                iou = n_isect / (len(true_rc_set) + len(pred_rc_set) - n_isect)
-                if iou > .45:
-                    score = (iou, -len(true_rc_set))
-                    if score > best_score:
-                        best_score = score
-                        best_label = true_label
+        # Only check unused true labels that intersect with the predicted bbox
+        true_cand = candidate_matches[pred_label] & unused_true_keys
+        for true_label in true_cand:
+            true_rc_set = unused_true_rcs[true_label]
+            n_isect = len(pred_rc_set.intersection(true_rc_set))
+            iou = n_isect / (len(true_rc_set) + len(pred_rc_set) - n_isect)
+            if iou > MIN_IOU:
+                score = (iou, -true_label)
+                if score > best_score:
+                    best_score = score
+                    best_label = true_label
 
         if best_label is not None:
             unused_true_keys.remove(best_label)
