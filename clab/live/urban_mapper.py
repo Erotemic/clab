@@ -298,9 +298,18 @@ class PredictHarness(object):
 
         # Infer which model this belongs to
         if snapshot['model_class_name'] == 'UNet':
-            pharn.model = models.UNet(in_channels=n_channels, n_classes=n_classes)
+            pharn.model = models.UNet(in_channels=n_channels,
+                                      n_classes=n_classes,
+                                      nonlinearity='leaky_relu')
         elif snapshot['model_class_name'] == 'SegNet':
             pharn.model = models.SegNet(in_channels=n_channels, n_classes=n_classes)
+        elif snapshot['model_class_name'] == 'UNet2':
+            pharn.model = models.UNet2(
+                in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
+                nonlinearity='leaky_relu'
+            )
+        else:
+            raise NotImplementedError(snapshot['model_class_name'])
 
         pharn.model = pharn.xpu.to_xpu(pharn.model)
         pharn.model.load_state_dict(snapshot['model_state_dict'])
