@@ -11,10 +11,10 @@ from clab.torch import xpu_device
 from clab.torch import models
 from clab.util import imutil
 from clab.torch.fit_harness import get_snapshot
-from clab.live.urban_train import get_task, SSegInputsWrapper
 
 
 def urban_mapper_eval_dataset():
+    from clab.live.urban_train import get_task, SSegInputsWrapper
     from clab import preprocess
     task = get_task('urban_mapper_3d')
     eval_fullres = task.load_fullres_inputs('testing')
@@ -31,7 +31,7 @@ def urban_mapper_eval_dataset():
     return eval_dataset
 
 
-def hack_urban_mapper_eval_submission():
+def eval_contest_testset():
     """
     hacked together script to get the testing data and run prediction for submission
     """
@@ -39,7 +39,6 @@ def hack_urban_mapper_eval_submission():
     # train_dpath = ub.truepath(
     #     '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
     # load_path = get_snapshot(train_dpath, epoch=202)
-
     if False:
         train_dpath = ub.truepath(
             '~/remote/aretha/data/work/urban_mapper/arch/unet/train/'
@@ -48,16 +47,14 @@ def hack_urban_mapper_eval_submission():
 
         eval_dataset = urban_mapper_eval_dataset()
         eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
-
     elif True:
         train_dpath = ub.truepath(
             '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
             'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
+        load_path = get_snapshot(train_dpath)
 
         eval_dataset = urban_mapper_eval_dataset()
         eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
-
-    # load_path = get_snapshot(train_dpath)
 
     pharn = PredictHarness(eval_dataset)
     pharn.hack_dump_path(load_path)
@@ -68,9 +65,8 @@ def hack_urban_mapper_eval_submission():
     # mode = 'pred_crf'
     restitched_pred = pharn._restitch_type(mode, blend='vote')
 
-    # if True:
-    #     pharn._restitch_type('blend_pred', blend=None)
-    #     pharn._restitch_type('blend_pred_crf', blend=None)
+    if True:
+        pharn._restitch_type('blend_' + mode, blend=None)
 
     restitched_pred = eval_dataset.fullres.align(restitched_pred)
 
@@ -127,9 +123,17 @@ def hack_urban_mapper_eval_submission():
     """
 
 
-def evaulate_internal_testset():
+def eval_internal_testset():
     """
     Working with the testing set (don't submit with this)
+
+    CommandLine:
+        python -m clab.live.urban_mapper eval_internal_testset --arch=unet2 \
+            --epoch=386 \
+            --train-dpath ~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4
+
+    Script:
+        >>> eval_internal_testset()
     """
     from clab.live.urban_train import load_task_dataset
     datasets = load_task_dataset('urban_mapper_3d')
@@ -140,20 +144,20 @@ def evaulate_internal_testset():
         test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
     else:
         datasets['test'].center_inputs = datasets['train']._make_normalizer()
-
     test_dataset.tag = 'test'
-
-    # 3D3__epoch_00000202
 
     # if False:
     #     train_dpath = ub.truepath(
     #         '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
     # load_path = get_snapshot(train_dpath, epoch=202)
 
-    train_dpath = ub.truepath(
-        '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
-        'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
-    load_path = get_snapshot(train_dpath)
+    train_dpath = ub.argval('--train-dpath', default=None)
+    # train_dpath = ub.truepath(
+    #     '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
+    #     'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
+    epoch = ub.argval('--epoch', default=None)
+    epoch = int(epoch) if epoch is not None else epoch
+    load_path = get_snapshot(train_dpath, epoch=epoch)
 
     pharn = PredictHarness(test_dataset)
     pharn.hack_dump_path(load_path)
@@ -631,3 +635,11 @@ def instance_fscore(gti, uncertain, dsm, pred):
 
     # They multiply by 1e6, but lets not do that.
     return (f_score, precision, recall)
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.live.urban_mapper
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

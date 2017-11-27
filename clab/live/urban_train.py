@@ -331,9 +331,14 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 def get_task(taskname):
     if taskname == 'urban_mapper_3d':
         from clab.tasks.urban_mapper_3d import UrbanMapper3D
+        boundary = True
+        if boundary:
+            workdir = '~/data/work/urban_mapper2'
+        else:
+            workdir = '~/data/work/urban_mapper'
+
         task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
-                             workdir='~/data/work/urban_mapper2',
-                             boundary=True)
+                             workdir=workdir, boundary=boundary)
         print(task.classnames)
         task.prepare_fullres_inputs()
         task.preprocess()
