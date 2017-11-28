@@ -127,9 +127,9 @@ class UNet(nn.Module):
         >>> labels = Variable((torch.rand(B, W, H) * n_classes).long())
         >>> self = UNet(in_channels=C, n_classes=n_classes)
         >>> outputs = self.forward(inputs)
-        >>> print('inputs.shape = {!r}'.format(inputs.shape))
-        >>> print('outputs.shape = {!r}'.format(outputs.shape))
-        >>> print(np.array(inputs.shape) - np.array(outputs.shape))
+        >>> print('inputs.size() = {!r}'.format(inputs.size()))
+        >>> print('outputs.size() = {!r}'.format(outputs.size()))
+        >>> print(np.array(inputs.size()) - np.array(outputs.size()))
 
     Example:
         >>> from clab.torch.models.unet import *  # NOQA
@@ -140,9 +140,9 @@ class UNet(nn.Module):
         >>> labels = Variable((torch.rand(B, W, H) * n_classes).long())
         >>> self = UNet(in_channels=C, n_classes=n_classes)
         >>> outputs = self.forward(inputs)
-        >>> print('inputs.shape = {!r}'.format(inputs.shape))
-        >>> print('outputs.shape = {!r}'.format(outputs.shape))
-        >>> print(np.array(inputs.shape) - np.array(outputs.shape))
+        >>> print('inputs.size() = {!r}'.format(inputs.size()))
+        >>> print('outputs.size() = {!r}'.format(outputs.size()))
+        >>> print(np.array(inputs.size()) - np.array(outputs.size()))
     """
     def __init__(self, feature_scale=4, n_classes=21, is_deconv=True,
                  in_channels=3, is_batchnorm=True, nonlinearity='relu'):
@@ -354,8 +354,8 @@ class UNet(nn.Module):
         return prepad, postcrop
 
     def prepad(self, inputs):
-        # do appropriate mirroring so final.shape[-2:] >= input.shape[:-2]
-        pad_wh, crop_wh = self.find_padding_and_crop_for(inputs.shape)
+        # do appropriate mirroring so final.size()[-2:] >= input.size()[:-2]
+        pad_wh, crop_wh = self.find_padding_and_crop_for(inputs.size())
         padw, padh = pad_wh
         halfw, halfh = padw / 2, padh / 2
         padding = [
@@ -369,15 +369,15 @@ class UNet(nn.Module):
         return mirrored, crop_wh
 
     def postcrop(self, final, crop_wh):
-        # do appropriate mirroring so final.shape[-2:] >= input.shape[:-2]
+        # do appropriate mirroring so final.size()[-2:] >= input.size()[:-2]
         w, h = crop_wh
 
         halfw, halfh = w / 2, h / 2
         # Padding starts from the final dimension and then move backwards.
         y1 = math.floor(halfh)
-        y2 = final.shape[-1] - math.ceil(halfh)
+        y2 = final.size()[-1] - math.ceil(halfh)
         x1 = math.floor(halfw)
-        x2 = final.shape[-2] - math.ceil(halfw)
+        x2 = final.size()[-2] - math.ceil(halfw)
 
         cropped = final[:, :, x1:x2, y1:y2]
         return cropped

@@ -629,13 +629,17 @@ def draw_instance_contours(img, gti, thickness=2, alpha=1):
         rc_off_int = rc_off[:, 0, :] * shape[0] + rc_off[:, 1, :]
         rc_int = rcs.T[0] * shape[0] + rcs.T[1]
 
-        # Any RC position is on a boundary if any of its neighbors are not in
-        # the original set of locations
-        n_neighbs = np.array([len(np.intersect1d(rc_int, neigbs, assume_unique=True))
-                              for neigbs in rc_off_int])
-        on_bound |= n_neighbs < len(offsets)
-        # might not be in a good order though
-        bound_rcs = rcs.compress(on_bound, axis=0)
+        # import ubelt
+        # for timer in ubelt.Timerit(10):
+        #     with timer:
+
+        #         # Any RC position is on a boundary if any of its neighbors are not in
+        #         # the original set of locations
+        #         n_neighbs = np.array([len(np.intersect1d(rc_int, neigbs, assume_unique=True))
+        #                               for neigbs in rc_off_int])
+        #         on_bound |= n_neighbs < len(offsets)
+        #         # might not be in a good order though
+        #         bound_rcs = rcs.compress(on_bound, axis=0)
         return bound_rcs
 
     grouped_contours = {}
