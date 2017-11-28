@@ -509,6 +509,9 @@ def script_overlay_aux():
     for paths in ub.ProgIter(fullres):
         bgr = util.imread(paths['im'])
 
+        # gt = util.imread(paths['gt']) > 2
+        gti = util.imread(paths['gt'].replace('GTL', 'GTI'))
+
         dsm = util.imread(paths['aux']['dsm'])
         dsm[(NAN_VAL == dsm)] = np.nan
 
@@ -522,21 +525,35 @@ def script_overlay_aux():
             max_val = np.nanmin(chan)
             is_nan = np.isnan(chan)
             norm = chan.copy()
-            norm[~is_nan] = (norm[~is_nan] - min_val) / max_val
+            norm[~is_nan] = (norm[~is_nan] - min_val) / (max_val - min_val)
             norm[is_nan] = 0
-            return norm
+            return norm, min_val, max_val
 
-        color_dsm = util.make_heatmask(normalize(dsm))[:, :, 0:3]
-        color_dsm[np.isnan(dsm)] = [[0, 0, 1]]
-        blend_dsm = util.overlay_colorized(color_dsm, bgr, alpha=.2)
+        def colorize(chan):
+            norm, min_val, max_val = normalize(chan)
 
-        color_dtm = util.make_heatmask(normalize(dtm))[:, :, 0:3]
-        color_dtm[np.isnan(dtm)] = [[0, 0, 1]]
-        blend_dtm = util.overlay_colorized(color_dtm, bgr, alpha=.2)
+            domain = np.linspace(min_val, max_val)
 
-        color_diff = util.make_heatmask(normalize(diff))[:, :, 0:3]
-        color_diff[np.isnan(diff)] = [[0, 0, 1]]
-        blend_diff = util.overlay_colorized(color_diff, bgr, alpha=.2)
+            shape = (norm.shape[0], norm.shape[0] / 25)
+            cb = colorutil.colorbar_image(domain, dpi=200, shape=shape)[:, :, 0: 3]
+            sfy = norm.shape[0] / cb.shape[0]
+            cb = imutil.imscale(cb, scale=(sfy, sfy))[0]
+
+            color_chan = util.make_heatmask(norm)[:, :, 0:3]
+            color_chan[np.isnan(chan)] = [[0, 0, 1]]
+            blend_chan = util.overlay_colorized(color_chan, bgr, alpha=.2)[:, :, 0:3]
+
+            blend_gt_chan = draw_mask_contours(blend_chan, gt, thickness=2, alpha=.3)
+
+            # Add a colorbar
+            blend_chan = np.hstack([blend_chan, cb])
+            blend_gt_chan = np.hstack([blend_gt_chan, cb])
+
+            return blend_chan, blend_gt_chan
+
+        blend_dsm, blend_gt_dsm = colorize(dsm)
+        blend_dtm, blend_gt_dtm = colorize(dtm)
+        blend_diff, blend_gt_diff = colorize(diff)
 
         base_dpath = ub.ensuredir(join(task.workdir, 'viz'))
 
@@ -544,6 +561,10 @@ def script_overlay_aux():
             'blend_diff': blend_diff,
             'blend_dsm': blend_dsm,
             'blend_dtm': blend_dtm,
+
+            'blend_gt_diff': blend_gt_diff,
+            'blend_gt_dsm': blend_gt_dsm,
+            'blend_gt_dtm': blend_gt_dtm,
         }
 
         for key, val in outputs.items():
@@ -551,6 +572,106 @@ def script_overlay_aux():
             out_fpath = join(out_dpath, ub.augpath(paths['dump_fname'], ext='.png'))
             util.imwrite(out_fpath, val)
         # util.overlay
+
+
+def draw_mask_contours(img, gt, thickness=2, alpha=1):
+    import cv2
+
+    gt = gt.astype(np.uint8)
+    border = cv2.copyMakeBorder(gt, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0 )
+    _, contours, hierarchy = cv2.findContours(border, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE, offset=(-1, -1))
+
+    BGR_GREEN = (0, 255, 0)
+    img = util.ensure_float01(img)
+    base = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
+    if alpha >= 1:
+        draw_img = cv2.drawContours(
+            image=base, contours=contours, contourIdx=-1, color=BGR_GREEN,
+            thickness=thickness)
+    else:
+        # Draw an image to overlay first
+        draw_img = cv2.drawContours(
+            image=np.zeros(base.shape, dtype=np.uint8), contours=contours,
+            contourIdx=-1, color=BGR_GREEN, thickness=thickness)
+        contour_overlay = util.ensure_alpha_channel(draw_img, alpha=0)
+        contour_overlay.T[3].T[draw_img.sum(axis=2) > 0] = alpha
+
+        # zero out the edges to avoid visualization errors
+        contour_overlay[0:thickness, :, :] = 0
+        contour_overlay[-thickness:, :, :] = 0
+        contour_overlay[:, 0:thickness, :] = 0
+        contour_overlay[:, -thickness:, :] = 0
+
+        draw_img = util.overlay_alpha_images(contour_overlay, base)
+        draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))
+    return draw_img
+
+def draw_instance_contours(img, gti, thickness=2, alpha=1):
+    import cv2
+
+    rc_locs = np.where(gti > 0)
+    grouped_cc_rcs = util.group_items(
+        np.ascontiguousarray(np.vstack(rc_locs).T),
+        gti[rc_locs], axis=0
+    )
+
+    def pointset_boundary(rcs, shape):
+        offsets = [[0, 1], [1, 1], [1, 0], [0, -1], [-1, -1], [-1, 0], [1, -1],
+                   [-1, 1]]
+
+        rc_off = rcs[:, :, None] + np.array(offsets).T[None, :]
+
+        on_bound = np.any(rcs == 0, axis=-1)
+        on_bound |= np.any(rcs.T[0] == shape[0], axis=-1)
+        on_bound |= np.any(rcs.T[1] == shape[1], axis=-1)
+
+        # encode offset as an integer for intersection
+        rc_off_int = rc_off[:, 0, :] * shape[0] + rc_off[:, 1, :]
+        rc_int = rcs.T[0] * shape[0] + rcs.T[1]
+
+        # Any RC position is on a boundary if any of its neighbors are not in
+        # the original set of locations
+        n_neighbs = np.array([len(np.intersect1d(rc_int, neigbs, assume_unique=True))
+                              for neigbs in rc_off_int])
+        on_bound |= n_neighbs < len(offsets)
+        # might not be in a good order though
+        bound_rcs = rcs.compress(on_bound, axis=0)
+        return bound_rcs
+
+    grouped_contours = {}
+
+    for label, rcs in grouped_cc_rcs.items():
+        shape = gti.shape
+        bound_rcs = pointset_boundary(rcs, shape)
+        grouped_contours[label] = bound_rcs
+
+    border = cv2.copyMakeBorder(gt, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0 )
+    _, contours, hierarchy = cv2.findContours(border, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE, offset=(-1, -1))
+
+    BGR_GREEN = (0, 255, 0)
+    img = util.ensure_float01(img)
+    base = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
+    if alpha >= 1:
+        draw_img = cv2.drawContours(
+            image=base, contours=contours, contourIdx=-1, color=BGR_GREEN,
+            thickness=thickness)
+    else:
+        # Draw an image to overlay first
+        draw_img = cv2.drawContours(
+            image=np.zeros(base.shape, dtype=np.uint8), contours=contours,
+            contourIdx=-1, color=BGR_GREEN, thickness=thickness)
+        contour_overlay = util.ensure_alpha_channel(draw_img, alpha=0)
+        contour_overlay.T[3].T[draw_img.sum(axis=2) > 0] = alpha
+
+        # zero out the edges to avoid visualization errors
+        contour_overlay[0:thickness, :, :] = 0
+        contour_overlay[-thickness:, :, :] = 0
+        contour_overlay[:, 0:thickness, :] = 0
+        contour_overlay[:, -thickness:, :] = 0
+
+        draw_img = util.overlay_alpha_images(contour_overlay, base)
+        draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))
+    return draw_img
 
 
 def touching_ccs(instance_markers):

@@ -502,9 +502,9 @@ class PredictHarness(object):
             pharn._restitch_type('blend_log_probs1/c1_building', blend=None)
         """
 
+        mode = 'log_probs1'
         mode = 'log_probs'
 
-        mode = 'log_probs1'
         dpath = join(pharn.test_dump_dpath, mode)
 
         out_dpath = join(pharn.test_dump_dpath, 'blend_' + mode)
@@ -541,6 +541,8 @@ class PredictHarness(object):
 
                 draw_img = draw_gt_contours2(blend_probs, gt, thickness=2, alpha=.5)
                 util.imwrite(c_fpath, draw_img)
+        pharn._restitch_type('blend_log_probs1/c0_non-building', blend='ave')
+        pharn._restitch_type('blend_log_probs1/c1_building', blend='ave')
 
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))

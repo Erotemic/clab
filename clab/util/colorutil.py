@@ -57,3 +57,41 @@ def make_heatmask(probs, cmap='plasma'):
     heatmask[:, :, 0:3] = heatmask[:, :, 0:3][:, :, ::-1]
     heatmask[:, :, 3] = probs
     return heatmask
+
+
+def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20)):
+    """
+
+    note that shape is approximate
+
+    domain = np.linspace(-30, 200)
+    cmap='plasma'
+    dpi = 80
+    dsize = (20, 200)
+
+    """
+    import matplotlib as mpl
+    from clab.util import utildraw
+    mpl.use('agg', force=False, warn=False)
+    from matplotlib import pyplot as plt
+
+    fig = plt.figure(dpi=dpi)
+
+    w, h = shape[1] / dpi, shape[0] / dpi
+    # w, h = 1, 10
+    fig.set_size_inches(w, h)
+
+    ax = fig.add_subplot('111')
+
+    sm = plt.cm.ScalarMappable(cmap=plt.get_cmap(cmap))
+    sm.set_array(domain)
+
+    plt.colorbar(sm, cax=ax)
+
+    cb = utildraw.render_figure_to_image(fig, dpi=dpi)
+
+    plt.close(fig)
+
+    return cb
+    # from clab import util
+    # util.imwrite('foo.png', img)
