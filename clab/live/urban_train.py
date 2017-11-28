@@ -365,7 +365,9 @@ def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None):
     vali.tag = 'vali'
     train.tag = 'train'
 
-    combine = ub.argflag('--combine', default=combine)
+    if combine is None:
+        combine = ub.argflag('--combine')
+
     if combine:
         # HACK EVERYTHING TOGETHER
         train = learn + test
