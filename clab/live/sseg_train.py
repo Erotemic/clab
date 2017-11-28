@@ -395,6 +395,7 @@ def directory_structure(workdir, arch, datasets, pretrained=None,
     }
     if hasattr(datasets['train'], 'center_inputs'):
         # Hack in centering information
+        # TODO: better serialization
         train_info['hack_centers'] = [
             (t.__class__.__name__, t.__getstate__())
             # ub.map_vals(str, t.__dict__)

@@ -37,6 +37,9 @@ def eval_contest_testset():
 
     train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4')
 
+    # Submission URL
+    # https://community.topcoder.com/longcontest/
+
     CommandLine:
         python -m clab.live.urban_mapper eval_contest_testset --arch=unet2 --combine
 
@@ -209,14 +212,14 @@ def eval_internal_testset():
         >>> eval_internal_testset()
     """
     from clab.live.urban_train import load_task_dataset
-    datasets = load_task_dataset('urban_mapper_3d')
+    datasets = load_task_dataset('urban_mapper_3d', combine=False)
     test_dataset = datasets['test']
     test_dataset.with_gt = False
     test_dataset.inputs.make_dumpsafe_names()
-    if False:
-        test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
-    else:
-        datasets['test'].center_inputs = datasets['train']._make_normalizer()
+    # if False:
+    #     test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
+    # else:
+    #     datasets['test'].center_inputs = datasets['train']._make_normalizer()
     test_dataset.tag = 'test'
 
     # if False:
@@ -234,6 +237,7 @@ def eval_internal_testset():
     load_path = get_snapshot(train_dpath, epoch=epoch)
 
     pharn = PredictHarness(test_dataset)
+    test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
     pharn.load_snapshot(load_path)
     pharn.run()
@@ -425,6 +429,20 @@ class PredictHarness(object):
         pharn.model = None
         pharn.test_dump_dpath = None
 
+    def load_normalize_center(pharn, train_dpath):
+        info_dpath = join(train_dpath, 'train_info.json')
+        info = util.read_json(info_dpath)
+        # TODO: better deserialization
+        from clab.torch import transforms
+        transform_list = []
+        for tup in info['hack_centers']:
+            classname = tup[0]
+            state = tup[1]
+            cls = getattr(transforms, classname, None)
+            transform_list.append(cls(**state))
+        centering = transforms.ZipTransforms(transform_list)
+        return centering
+
     def load_snapshot(pharn, load_path):
         print('Loading snapshot onto {}'.format(pharn.xpu))
         snapshot = torch.load(load_path, map_location=pharn.xpu.map_location())
@@ -516,6 +534,7 @@ class PredictHarness(object):
                     'blend_pred' + suffix: blend_pred,
                     # 'color_pred': color_pred,
                     'pred' + suffix: pred,
+                    'log_probs' + suffix: log_probs,
                 }
 
                 if False:
@@ -525,7 +544,6 @@ class PredictHarness(object):
                     blend_pred_crf = pharn.dataset.task.colorize(pred_crf, img)
                     # color_pred = task.colorize(pred)
                     output_dict.update({
-                        'log_probs' + suffix: log_probs,
                         'blend_pred_crf' + suffix: blend_pred_crf,
                         'pred_crf' + suffix: pred_crf,
                     })

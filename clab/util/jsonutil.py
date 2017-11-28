@@ -89,3 +89,10 @@ def write_json(fpath, data):
         raise TypeError(type(data))
 
     ub.writeto(fpath, json_text)
+
+
+def read_json(fpath):
+    """
+    Write human readable json files
+    """
+    return json.load(open(fpath, 'r'))
