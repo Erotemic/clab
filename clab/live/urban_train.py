@@ -352,7 +352,7 @@ def get_task(taskname):
     return task
 
 
-def load_task_dataset(taskname, vali_frac=0, colorspace='RGB'):
+def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None):
     task = get_task(taskname)
     learn, test = next(task.xval_splits())
     learn.tag = 'learn'
@@ -365,7 +365,8 @@ def load_task_dataset(taskname, vali_frac=0, colorspace='RGB'):
     vali.tag = 'vali'
     train.tag = 'train'
 
-    if ub.argflag('--all'):
+    combine = ub.argflag('--combine', default=combine)
+    if combine:
         # HACK EVERYTHING TOGETHER
         train = learn + test
         from clab import inputs
@@ -459,12 +460,12 @@ def urban_fit():
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --dry
 
-        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB --all
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB --combine
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --dry
 
-        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --all
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --combine
 
     Example:
         >>> from clab.torch.fit_harness import *
@@ -479,7 +480,7 @@ def urban_fit():
     # TODO: save normalization type with the model
     # datasets['train'].center_inputs = datasets['train']._make_normalizer()
 
-    # if ub.argflag('--all'):
+    # if ub.argflag('--combine'):
     #     # custom centering from the initialization point I'm going to use
     #     datasets['train'].center_inputs = datasets['train']._custom_urban_mapper_normalizer(
     #         0.3750553785198646, 1.026544662398811, 2.5136079110849674)
@@ -561,7 +562,7 @@ def urban_fit():
         pretrained = 'vgg'
     else:
         pretrained = None
-        if ub.argflag('--all'):
+        if ub.argflag('--combine'):
             pretrained = starting_points['unet_rgb_8k']
         else:
             pretrained = starting_points['unet_rgb_4k']
