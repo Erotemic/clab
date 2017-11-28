@@ -491,6 +491,33 @@ class PredictHarness(object):
         restitched_mode = pharn.dataset.task.restitch(restitched_mode_dpath, mode_paths, blend=blend)
         return restitched_mode
 
+    def color_log_probs(pharn, task):
+        dpath = join(pharn.test_dump_dpath, 'log_probs')
+
+        out_dpath = join(pharn.test_dump_dpath, 'blend_log_probs')
+
+        fpaths = glob.glob(join(dpath, '*.npz'))
+        for fpath in fpaths:
+            npz = np.load(fpath)
+            log_probs = npz['arr_0']
+
+            probs = np.exp(log_probs)
+            # Dump each channel
+            for c in range(probs.shape[0]):
+                name = task.classnames[c]
+                if name in task.ignore_classnames:
+                    continue
+                c_dpath = ub.ensuredir(join(out_dpath, 'c{}_{}'.format(c, name)))
+                fname = ub.augpath(basename(fpath), ext='.png')
+
+                c_fpath = join(c_dpath, cname)
+
+                color_probs = imutil.make_heatmask(probs[c])
+
+                util.imwrite(c_fpath, channel)
+
+                pass
+
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
         pharn.model.train(False)
@@ -579,7 +606,7 @@ def draw_gt_contours(img, gti, thickness=4):
     )
     gt_hulls = ub.map_vals(cv2.convexHull, grouped_cc_xys)
     BGR_GREEN = (0, 255, 0)
-    img = util.rectify_to_float01(img)
+    img = util.ensure_float01(img)
     draw_img = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
     draw_img = cv2.drawContours(
         image=draw_img, contours=list(gt_hulls.values()), contourIdx=-1,

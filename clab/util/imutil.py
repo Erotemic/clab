@@ -90,7 +90,7 @@ def adjust_gamma(img, gamma=1.0):
         >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
         >>> img = imread(fpath)
         >>> gamma = .5
-        >>> imgf = rectify_to_float01(img)
+        >>> imgf = ensure_float01(img)
         >>> img2 = adjust_gamma(img, gamma)
         >>> img3 = adjust_gamma(imgf, gamma)
         >>> import plottool as pt
@@ -114,14 +114,14 @@ def adjust_gamma(img, gamma=1.0):
         # apply gamma correction using the lookup table
         return cv2.LUT(img, table)
     else:
-        np_img = rectify_to_float01(img)
+        np_img = ensure_float01(img)
         gain = 1
         np_img = gain * (np_img ** (1 / gamma))
         np_img = np.clip(np_img, 0, 1)
         return np_img
 
 
-def rectify_to_float01(img, dtype=np.float32):
+def ensure_float01(img, dtype=np.float32):
     """ Ensure that an image is encoded using a float properly """
     if img.dtype.kind in ('i', 'u'):
         assert img.max() <= 255
@@ -224,8 +224,8 @@ def overlay_alpha_images(img1, img2, keepalpha=True):
         http://stackoverflow.com/questions/25182421/overlay-numpy-alpha
         https://en.wikipedia.org/wiki/Alpha_compositing#Alpha_blending
     """
-    img1 = rectify_to_float01(img1)
-    img2 = rectify_to_float01(img2)
+    img1 = ensure_float01(img1)
+    img2 = ensure_float01(img2)
 
     img1, img2 = make_channels_comparable(img1, img2)
 
@@ -259,7 +259,7 @@ def overlay_alpha_images(img1, img2, keepalpha=True):
 
 
 def ensure_alpha_channel(img, alpha=1.0):
-    img = rectify_to_float01(img)
+    img = ensure_float01(img)
     c = get_num_channels(img)
     if c == 4:
         return img
@@ -274,7 +274,7 @@ def ensure_alpha_channel(img, alpha=1.0):
 
 
 def ensure_grayscale(img, colorspace_hint='BGR'):
-    img = rectify_to_float01(img)
+    img = ensure_float01(img)
     c = get_num_channels(img)
     if c == 1:
         return img

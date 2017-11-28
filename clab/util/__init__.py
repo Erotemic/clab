@@ -21,7 +21,7 @@ else:
     from clab.util import nputil
     from clab.util import utildraw
     from clab.util.colorutil import (convert_hex_to_255, lookup_bgr255,
-                                     make_distinct_bgr01_colors,)
+                                     make_distinct_bgr01_colors, make_heatmask,)
     from clab.util.fnameutil import (align_paths, check_aligned, dumpsafe,
                                      shortest_unique_prefixes,
                                      shortest_unique_suffixes,)
@@ -34,11 +34,11 @@ else:
                                   imread, imscale, imwrite, load_image_paths,
                                   logger, make_channels_comparable,
                                   overlay_alpha_images, overlay_colorized,
-                                  rectify_to_float01, run_length_encoding,
+                                  ensure_float01, run_length_encoding,
                                   wide_strides_1d,)
     from clab.util.jsonutil import (JSONEncoder, NumpyAwareJSONEncoder,
-                                    NumpyEncoder, json_numpy_obj_hook, walk_json,
-                                    write_json,)
+                                    NumpyEncoder, json_numpy_obj_hook, read_json,
+                                    walk_json, write_json,)
     from clab.util.misc import (isiterable, roundrobin, super2,)
     from clab.util.nputil import (apply_grouping, atleast_nd, group_indices,
                                   group_items, isect_flags, iter_reduce_ufunc,)

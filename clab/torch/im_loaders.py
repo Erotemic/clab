@@ -200,7 +200,7 @@ def _ignore():
 
     fpath = task.fullres.im_paths[0]
     bgr = cv2.imread(fpath)
-    bgr = imutil.rectify_to_float01(bgr)
+    bgr = imutil.ensure_float01(bgr)
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 

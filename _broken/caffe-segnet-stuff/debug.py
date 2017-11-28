@@ -267,14 +267,14 @@ def viz_overlay_layers(task):
             # Initialize groundtruth image
             layer = np.full((shape[0], shape[1], 4), fill_value=0, dtype=np.uint8)
             layer = cv2.fillPoly(layer, coords, color)
-            layer = imutil.rectify_to_float01(layer)
+            layer = imutil.ensure_float01(layer)
             yield layer
             # outline to see more clearly
             alpha = int(.95 * 255)
             color = list(task.class_colors[classname]) + [alpha]
             layer = np.full((shape[0], shape[1], 4), fill_value=0, dtype=np.uint8)
             layer = cv2.drawContours(layer, [coords], -1, color, 3)
-            layer = imutil.rectify_to_float01(layer)
+            layer = imutil.ensure_float01(layer)
             yield layer
 
         priority = ['Crosswalk', 'Intersection', 'Trees', 'Grass', 'Parking_Lot']

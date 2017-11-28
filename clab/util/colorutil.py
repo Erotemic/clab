@@ -34,3 +34,26 @@ def convert_hex_to_255(hex_color):
 def lookup_bgr255(key):
     from matplotlib import colors as mcolors
     return convert_hex_to_255(mcolors.CSS4_COLORS[key])[::-1]
+
+
+def make_heatmask(probs, cmap='plasma'):
+    """
+    Colorizes a single-channel intensity mask (with an alpha channel)
+    """
+    # import matplotlib as mpl
+    # current_backend = mpl.get_backend()
+    # for backend in ['Qt5Agg', 'Agg']:
+    #     try:
+    #         mpl.use(backend, warn=True, force=False)
+    #         break
+    #     except Exception:
+    #         pass
+    import matplotlib as mpl
+    from clab.util import imutil
+    assert len(probs.shape) == 2
+    cmap_ = mpl.cm.get_cmap(cmap)
+    probs = imutil.ensure_float01(probs)
+    heatmask = cmap_(probs)
+    heatmask[:, :, 0:3] = heatmask[:, :, 0:3][:, :, ::-1]
+    heatmask[:, :, 3] = probs
+    return heatmask
