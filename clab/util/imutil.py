@@ -220,6 +220,10 @@ def overlay_alpha_images(img1, img2, keepalpha=True):
     """
     places img1 on top of img2 respecting alpha channels
 
+    Args:
+        img1 (ndarray): top image to overlay over img2
+        img2 (ndarray): base image to superimpose on
+
     References:
         http://stackoverflow.com/questions/25182421/overlay-numpy-alpha
         https://en.wikipedia.org/wiki/Alpha_compositing#Alpha_blending
@@ -342,6 +346,12 @@ def _lookup_colorspace_code(dst_space, src_space='BGR'):
 def overlay_colorized(colorized, orig, alpha=.6):
     """
     Overlays a color segmentation mask on an original image
+
+    Args:
+        colorized (ndarray): the color mask to be overlayed on top of the original image
+        orig (ndarray): the original image to superimpose on
+        alpha (float): blend level to use if colorized is not an alpha image
+
     """
     color_mask = ensure_alpha_channel(colorized, alpha=alpha)
     gray_orig = ensure_grayscale(orig)

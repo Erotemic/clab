@@ -492,31 +492,55 @@ class PredictHarness(object):
         return restitched_mode
 
     def color_log_probs(pharn, task):
-        dpath = join(pharn.test_dump_dpath, 'log_probs')
+        """
+        Ignore:
+            pharn._restitch_type('blend_log_probs/c0_non-building', blend=None)
+            pharn._restitch_type('blend_log_probs/c1_inner-building', blend=None)
+            pharn._restitch_type('blend_log_probs/c2_outer-building', blend=None)
 
-        out_dpath = join(pharn.test_dump_dpath, 'blend_log_probs')
+            pharn._restitch_type('blend_log_probs1/c0_non-building', blend=None)
+            pharn._restitch_type('blend_log_probs1/c1_building', blend=None)
+        """
 
-        fpaths = glob.glob(join(dpath, '*.npz'))
-        for fpath in fpaths:
+        mode = 'log_probs'
+
+        mode = 'log_probs1'
+        dpath = join(pharn.test_dump_dpath, mode)
+
+        out_dpath = join(pharn.test_dump_dpath, 'blend_' + mode)
+
+        npz_fpaths = glob.glob(join(dpath, '*.npz'))
+
+        bgr_paths = pharn.dataset.inputs.paths['im']
+        gtl_paths = pharn.dataset.inputs.paths['gt']
+        npz_fpaths = pharn.dataset.inputs.align(npz_fpaths)
+
+        for ix, fpath in enumerate(ub.ProgIter(npz_fpaths)):
+            gt = util.imread(gtl_paths[ix])
+            bgr = util.imread(bgr_paths[ix])
+
             npz = np.load(fpath)
             log_probs = npz['arr_0']
 
             probs = np.exp(log_probs)
             # Dump each channel
-            for c in range(probs.shape[0]):
-                name = task.classnames[c]
+            for c in reversed(range(probs.shape[0])):
+                if mode.endswith('1'):
+                    # hack
+                    name = ['non-building', 'building', 'uncertain'][c]
+                else:
+                    name = task.classnames[c]
                 if name in task.ignore_classnames:
                     continue
                 c_dpath = ub.ensuredir(join(out_dpath, 'c{}_{}'.format(c, name)))
-                fname = ub.augpath(basename(fpath), ext='.png')
+                c_fname = ub.augpath(basename(fpath), ext='.png')
+                c_fpath = join(c_dpath, c_fname)
 
-                c_fpath = join(c_dpath, cname)
+                color_probs = util.make_heatmask(probs[c])[:, :, 0:3]
+                blend_probs = util.overlay_colorized(color_probs, bgr, alpha=.3)
 
-                color_probs = imutil.make_heatmask(probs[c])
-
-                util.imwrite(c_fpath, channel)
-
-                pass
+                draw_img = draw_gt_contours2(blend_probs, gt, thickness=2, alpha=.5)
+                util.imwrite(c_fpath, draw_img)
 
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
@@ -597,8 +621,41 @@ class PredictHarness(object):
 #     pass
 
 
+def draw_gt_contours2(img, gt, thickness=4, alpha=1):
+    import cv2
+
+    border = cv2.copyMakeBorder(gt, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0 )
+    _, contours, hierarchy = cv2.findContours(border, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE, offset=(-1, -1))
+
+    BGR_GREEN = (0, 255, 0)
+    img = util.ensure_float01(img)
+    base = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
+    if alpha >= 1:
+        draw_img = cv2.drawContours(
+            image=base, contours=contours, contourIdx=-1, color=BGR_GREEN,
+            thickness=thickness)
+    else:
+        # Draw an image to overlay first
+        draw_img = cv2.drawContours(
+            image=np.zeros(base.shape, dtype=np.uint8), contours=contours,
+            contourIdx=-1, color=BGR_GREEN, thickness=thickness)
+        contour_overlay = util.ensure_alpha_channel(draw_img, alpha=0)
+        contour_overlay.T[3].T[draw_img.sum(axis=2) > 0] = alpha
+
+        # zero out the edges to avoid visualization errors
+        contour_overlay[0:thickness, :, :] = 0
+        contour_overlay[-thickness:, :, :] = 0
+        contour_overlay[:, 0:thickness, :] = 0
+        contour_overlay[:, -thickness:, :] = 0
+
+        draw_img = util.overlay_alpha_images(contour_overlay, base)
+        draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))
+    return draw_img
+
+
 def draw_gt_contours(img, gti, thickness=4):
     import cv2
+
     rc_locs = np.where(gti > 0)
     grouped_cc_xys = util.group_items(
         np.ascontiguousarray(np.vstack(rc_locs[::-1]).T),

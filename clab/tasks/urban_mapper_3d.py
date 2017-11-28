@@ -7,6 +7,7 @@ import glob
 import ubelt as ub
 import numpy as np
 from clab.tasks._sseg import SemanticSegmentationTask
+from clab import util
 from clab.util import imutil
 from clab.util import colorutil
 from clab.util import fnameutil  # NOQA
@@ -392,6 +393,39 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 stiched_pred[r1:r2, c1:c2] = tile
             return stiched_pred
 
+        def stitch_tiles_ave(rc_locs, tiles):
+            """
+            Recombine parts back into an entire image
+            (TODO: blending / averaging to remove boundry effects)
+
+            Example:
+                >>> rc_locs = [(0, 0), (0, 5), (0, 10)]
+                >>> tiles = [np.ones((1, 7, 3)) + i for i in range(len(rc_locs))]
+                >>> tiles = [np.ones((1, 7)) + i for i in range(len(rc_locs))]
+            """
+            shapes = [t.shape[0:2] for t in tiles]
+            n_channels = 1 if len(tiles[0].shape) == 2 else tiles[0].shape[2]
+            bboxes = np.array([
+                (r, c, r + h, c + w)
+                for ((r, c), (h, w)) in zip(rc_locs, shapes)
+            ])
+            stiched_wh = tuple(bboxes.T[2:4].max(axis=1))
+            stiched_shape = stiched_wh
+            if n_channels > 1:
+                stiched_shape = stiched_wh + (n_channels,)
+            sums = np.zeros(stiched_shape)
+            nums = np.zeros(stiched_wh)
+            for bbox, tile in zip(bboxes, tiles):
+                r1, c1, r2, c2 = bbox
+                sums[r1:r2, c1:c2] += tile
+                nums[r1:r2, c1:c2] += 1
+
+            if len(sums.shape) == 2:
+                stiched_pred = sums / nums
+            else:
+                stiched_pred = sums / nums[:, :, None]
+            return stiched_pred
+
         def stitch_tiles_vote(rc_locs, tiles):
             """
             Recombine parts back into an entire image
@@ -431,8 +465,12 @@ class UrbanMapper3D(SemanticSegmentationTask):
             rc_locs = _extract_part_grid(paths)
             if blend == 'vote':
                 stiched_pred = stitch_tiles_vote(rc_locs, tiles)
-            else:
+            elif blend == 'ave':
+                stiched_pred = stitch_tiles_ave(rc_locs, tiles)
+            elif blend is None:
                 stiched_pred = stitch_tiles(rc_locs, tiles)
+            else:
+                raise KeyError(blend)
             # Write them to disk.
             fpath = join(output_dpath, tileid + '.png')
             imutil.imwrite(fpath, stiched_pred)
@@ -458,6 +496,61 @@ class UrbanMapper3D(SemanticSegmentationTask):
         mask = mask.astype(np.uint8)
         n_ccs, cc_labels = cv2.connectedComponents(mask, connectivity=4)
         return cc_labels
+
+
+def script_overlay_aux():
+    """
+    """
+    task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
+                         workdir='~/data/work/urban_mapper')
+    fullres = task.load_fullres_inputs(subdir='training')
+    NAN_VAL = -32767
+
+    for paths in ub.ProgIter(fullres):
+        bgr = util.imread(paths['im'])
+
+        dsm = util.imread(paths['aux']['dsm'])
+        dsm[(NAN_VAL == dsm)] = np.nan
+
+        dtm = util.imread(paths['aux']['dtm'])
+        dtm[(NAN_VAL == dtm)] = np.nan
+
+        diff = dtm - dsm
+
+        def normalize(chan):
+            min_val = np.nanmax(chan)
+            max_val = np.nanmin(chan)
+            is_nan = np.isnan(chan)
+            norm = chan.copy()
+            norm[~is_nan] = (norm[~is_nan] - min_val) / max_val
+            norm[is_nan] = 0
+            return norm
+
+        color_dsm = util.make_heatmask(normalize(dsm))[:, :, 0:3]
+        color_dsm[np.isnan(dsm)] = [[0, 0, 1]]
+        blend_dsm = util.overlay_colorized(color_dsm, bgr, alpha=.2)
+
+        color_dtm = util.make_heatmask(normalize(dtm))[:, :, 0:3]
+        color_dtm[np.isnan(dtm)] = [[0, 0, 1]]
+        blend_dtm = util.overlay_colorized(color_dtm, bgr, alpha=.2)
+
+        color_diff = util.make_heatmask(normalize(diff))[:, :, 0:3]
+        color_diff[np.isnan(diff)] = [[0, 0, 1]]
+        blend_diff = util.overlay_colorized(color_diff, bgr, alpha=.2)
+
+        base_dpath = ub.ensuredir(join(task.workdir, 'viz'))
+
+        outputs = {
+            'blend_diff': blend_diff,
+            'blend_dsm': blend_dsm,
+            'blend_dtm': blend_dtm,
+        }
+
+        for key, val in outputs.items():
+            out_dpath = ub.ensuredir((base_dpath, key))
+            out_fpath = join(out_dpath, ub.augpath(paths['dump_fname'], ext='.png'))
+            util.imwrite(out_fpath, val)
+        # util.overlay
 
 
 def touching_ccs(instance_markers):
