@@ -37,6 +37,12 @@ def eval_contest_testset():
 
     train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4')
 
+    CommandLine:
+        python -m clab.live.urban_mapper eval_contest_testset --arch=unet2 --combine
+
+    Script:
+        >>> eval_contest_testset()
+
     """
 
     # train_dpath = ub.truepath(
