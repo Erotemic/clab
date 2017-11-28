@@ -78,7 +78,7 @@ def eval_contest_testset():
         from clab.live.urban_train import load_task_dataset
         datasets = load_task_dataset('urban_mapper_3d', combine=True)
         eval_dataset.center_inputs = datasets['train']._make_normalizer()
-        train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4')
+        train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_8438-xqwzrwfj/solver_8438-xqwzrwfj_unet2_edmtxaov_gksatgso_a=1,c=RGB,n_ch=5,n_cl=4')
         # TODO: just read the normalization from the train_dpath instead of
         # hacking it together from the train dataset
         load_path = get_snapshot(train_dpath, epoch=75)
