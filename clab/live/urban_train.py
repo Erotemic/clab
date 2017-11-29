@@ -73,7 +73,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             self.aux_keys = []
 
         self.center_inputs = None
-        self.use_residual_aux = ub.argflag('--auxsix')
+        self.use_residual_aux = ub.argflag('--use_residual_aux')
 
     def _make_normalizer(self):
         transforms = []
@@ -333,10 +333,9 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         return class_weights
 
 
-def get_task(taskname):
+def get_task(taskname, boundary=True):
     if taskname == 'urban_mapper_3d':
         from clab.tasks.urban_mapper_3d import UrbanMapper3D
-        boundary = True
         if boundary:
             workdir = '~/data/work/urban_mapper4'
             workdir = '~/data/work/urban_mapper2'
@@ -353,8 +352,8 @@ def get_task(taskname):
     return task
 
 
-def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None):
-    task = get_task(taskname)
+def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, boundary=True):
+    task = get_task(taskname, boundary=boundary)
     learn, test = next(task.xval_splits())
     learn.tag = 'learn'
 
@@ -469,7 +468,7 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --dry
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --combine
-        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --auxsix
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_residual_aux
 
 
     Example:
