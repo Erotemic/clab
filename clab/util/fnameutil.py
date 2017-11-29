@@ -10,9 +10,7 @@ from collections import deque
 import pygtrie
 
 
-from clab import profiler
-@profiler.profile_onthefly
-def shortest_unique_prefixes(items, sep=None):
+def shortest_unique_prefixes(items, sep=None, allow_simple=True):
     """
     The shortest unique prefix algorithm.
 
@@ -20,6 +18,8 @@ def shortest_unique_prefixes(items, sep=None):
         items (list of str): returned prefixes will be unique wrt this set
         sep (str): if specified, all characters between separators are treated
             as a single symbol. Makes the algo much faster.
+        allow_simple (bool): if True tries to construct a simple feasible
+            solution before resorting to the optimal trie algorithm.
 
     Returns:
         list of str: a prefix for each item that uniquely identifies it
@@ -69,14 +69,15 @@ def shortest_unique_prefixes(items, sep=None):
         trie = pygtrie.CharTrie.fromkeys(items, value=0)
     else:
         # In some simple cases we can avoid constructing a trie
-        tokens = [item.split(sep) for item in items]
-        naive_solution = [t[0] for t in tokens]
-        if len(naive_solution) == len(set(naive_solution)):
-            return naive_solution
-        for i in range(2, 10):
-            naive_solution = ['-'.join(t[:i]) for t in tokens]
-            if len(naive_solution) == len(set(naive_solution)):
-                return naive_solution
+        if allow_simple:
+            tokens = [item.split(sep) for item in items]
+            simple_solution = [t[0] for t in tokens]
+            if len(simple_solution) == len(set(simple_solution)):
+                return simple_solution
+            for i in range(2, 7):
+                simple_solution = ['-'.join(t[:i]) for t in tokens]
+                if len(simple_solution) == len(set(simple_solution)):
+                    return simple_solution
 
         trie = pygtrie.StringTrie.fromkeys(items, value=0, separator=sep)
 
