@@ -381,6 +381,7 @@ class Inputs(ub.NiceRepr):
             return
 
         self.prepare_image_paths()
+        print('Preparing {} images'.format(self.tag))
 
         if self.aux_paths:
             # new way
@@ -392,12 +393,14 @@ class Inputs(ub.NiceRepr):
             if self.gt_paths:
                 # HACK: We will assume image data depends only on the filename
                 # HACK: be respectful of gt label changes (ignore aug)
-                label_hashid = hashutil.hash_data(
-                    # stride=32 is fast but might break
-                    # stride=1 is the safest
-                    [hashutil.get_file_hash(p, stride=32) for p in self.gt_paths
-                     if 'aug' not in basename(p) and 'part' not in basename(p)]
-                )
+                # stride>1 is faster but might break
+                # stride=1 is the safest
+                hashes = [
+                    hashutil.get_file_hash(p, stride=32)
+                    for p in ub.ProgIter(self.gt_paths, label='hashing')
+                    if 'aug' not in basename(p) and 'part' not in basename(p)
+                ]
+                label_hashid = hashutil.hash_data(hashes)
                 depends.append(label_hashid)
         n_im = None if self.im_paths is None else len(self.im_paths)
         n_gt = None if self.gt_paths is None else len(self.gt_paths)
