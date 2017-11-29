@@ -252,6 +252,31 @@ def sparse(tensor, sparsity, std=0.01):
         return tensor
 
 
+def shock_he(tensor, gain=.00001):
+    """
+    Adds a very small he initial values to current tensor state.
+    Helps tensor achieve full rank in case it lost it.
+
+    Example:
+        >>> tensor = torch.eye(3, 3)
+        >>> tensor[0, 0] = 0
+        >>> np.linalg.matrix_rank(tensor.numpy())
+        2
+        >>> shock_he(tensor, gain=.00001)
+        >>> np.linalg.matrix_rank(tensor.numpy())
+        3
+    """
+    if isinstance(tensor, Variable):
+        shock(tensor.data, gain)
+        return tensor
+    else:
+        fan_in, _ = _calculate_fan_in_and_fan_out(tensor)
+        std = gain * np.sqrt(1.0 / fan_in)
+        prb = torch.randn(tensor.shape) * std
+        tensor += prb
+        return tensor
+
+
 def shock(tensor, scale=.1):
     if isinstance(tensor, Variable):
         shock(tensor.data, scale)

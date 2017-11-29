@@ -53,13 +53,13 @@ class UrbanMapper3D(SemanticSegmentationTask):
         >>> task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
         >>>                      workdir='~/data/work/urban_mapper3', boundary=True)
         >>> print(task.classnames)
-        >>> task.prepare_fullres_inputs(force=True)
+        >>> task.prepare_fullres_inputs()
         >>> print(task.classnames)
         >>> task.preprocess()
         >>> (train, test), = task.xval_splits()
         >>> inputs_base = ub.ensuredir((task.workdir, 'inputs'))
         >>> train.base_dpath = inputs_base
-        >>> train.prepare_images(force=True)
+        >>> train.prepare_images()
         >>> train.prepare_input()
         >>> gtstats = train.prepare_gtstats(task)
         >>> nan_value = -32767.0  # hack: specific number for DTM
@@ -112,7 +112,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         lookup_bgr255 = colorutil.lookup_bgr255
         task.class_colors['non-building'] = lookup_bgr255('black')
 
-    def preprocess(task):
+    def preprocess(task, force=False):
         task.prepare_fullres_inputs()
         datadir = ub.ensuredir((task.workdir, 'data'))
         prep = preprocess.Preprocessor(datadir)
@@ -120,9 +120,9 @@ class UrbanMapper3D(SemanticSegmentationTask):
 
         prep.ignore_label = task.ignore_label
 
-        clear = 0
+        clear = force
         fullres = task.fullres
-        task.input_modes['lowres'] = prep.make_lowres(fullres, clear=clear)
+        # task.input_modes['lowres'] = prep.make_lowres(fullres, clear=clear)
         task.input_modes['part-scale1'] = prep.make_parts(
             fullres, scale=1, clear=clear)
 

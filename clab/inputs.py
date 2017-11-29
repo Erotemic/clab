@@ -540,14 +540,14 @@ class Inputs(ub.NiceRepr):
             info = pickle.load(file)
         return info
 
-    def prepare_gtstats(self, task):
+    def prepare_gtstats(self, task, force=False):
         """
         Caches stats like class frequency to disk, before we start training
         """
         self.prepare_input()
 
         gtstats_fpath = join(self.input_dpath, 'gtstats_v1.json')
-        if exists(gtstats_fpath):
+        if force or exists(gtstats_fpath):
             gtstats = pd.read_json(gtstats_fpath)
         else:
             self.prepare_images()

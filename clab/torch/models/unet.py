@@ -3,6 +3,7 @@ import functools
 import math
 import torch
 import torch.nn.functional as F
+import torchvision
 from clab.torch import nninit
 from clab.torch.models.output_shape_for import OutputShapeFor
 
@@ -18,18 +19,19 @@ class UNetConv2(nn.Module):
         elif nonlinearity == 'leaky_relu':
             nonlinearity = functools.partial(nn.LeakyReLU, inplace=False)
 
+        conv2d_1 = nn.Conv2d(in_size, out_size, kernel_size=3, stride=1,
+                             padding=0)
+        conv2d_2 = nn.Conv2d(out_size, out_size, kernel_size=3, stride=1,
+                             padding=0)
+
         if is_batchnorm:
-            self.conv1 = nn.Sequential(nn.Conv2d(in_size, out_size, 3, 1, 0),
-                                       nn.BatchNorm2d(out_size),
+            self.conv1 = nn.Sequential(conv2d_1, nn.BatchNorm2d(out_size),
                                        nonlinearity(),)
-            self.conv2 = nn.Sequential(nn.Conv2d(out_size, out_size, 3, 1, 0),
-                                       nn.BatchNorm2d(out_size),
+            self.conv2 = nn.Sequential(conv2d_2, nn.BatchNorm2d(out_size),
                                        nonlinearity(),)
         else:
-            self.conv1 = nn.Sequential(nn.Conv2d(in_size, out_size, 3, 1, 0),
-                                       nonlinearity(),)
-            self.conv2 = nn.Sequential(nn.Conv2d(out_size, out_size, 3, 1, 0),
-                                       nonlinearity(),)
+            self.conv1 = nn.Sequential(conv2d_1, nonlinearity(),)
+            self.conv2 = nn.Sequential(conv2d_2, nonlinearity(),)
     def forward(self, inputs):
         outputs = self.conv1(inputs)
         outputs = self.conv2(outputs)
@@ -81,7 +83,8 @@ class UNetUp(nn.Module):
         else:
             self.up = nn.UpsamplingBilinear2d(scale_factor=2)
         self.pad = PadToAgree()
-        self.conv = UNetConv2(in_size, out_size, False, nonlinearity=nonlinearity)
+        self.conv = UNetConv2(in_size, out_size, is_batchnorm=False,
+                              nonlinearity=nonlinearity)
 
     def output_shape_for(self, input1_shape, input2_shape):
         output2_shape = OutputShapeFor(self.up)(input2_shape)
@@ -453,7 +456,19 @@ class UNet(nn.Module):
             # shock inward
             layer.bias.data *= .1
 
-    def load_partial_state(model, model_state_dict):
+    def load_partial_state(model, model_state_dict, shock_partial=True):
+        """
+        Example:
+            >>> from clab.torch.models.unet import *  # NOQA
+            >>> self1 = UNet(in_channels=5, n_classes=3)
+            >>> self2 = UNet(in_channels=6, n_classes=4)
+            >>> model_state_dict = self1.state_dict()
+            >>> self2.load_partial_state(model_state_dict)
+
+            >>> key = 'conv1.conv1.0.weight'
+            >>> model = self2
+            >>> other_value = model_state_dict[key]
+        """
         self_state = model.state_dict()
         unused_keys = set(self_state.keys())
 
@@ -463,6 +478,26 @@ class UNet(nn.Module):
                 if other_value.size() == self_value.size():
                     self_state[key] = other_value
                     unused_keys.remove(key)
+                elif len(other_value.size()) == len(self_value.size()):
+                    if key.endswith('bias'):
+                        print('Skipping {} due to incompatable size'.format(key))
+                    else:
+                        import numpy as np
+                        print('Partially add {} with incompatable size'.format(key))
+                        # Initialize all weights in case any are unspecified
+                        nninit.he_normal(self_state[key])
+
+                        # Transfer as much as possible
+                        min_size = np.minimum(self_state[key].shape, other_value.shape)
+                        sl = tuple([slice(0, s) for s in min_size])
+                        self_state[key][sl] = other_value[sl]
+
+                        if shock_partial:
+                            # Shock weights because we are doing something weird
+                            # might help the network recover in case this is
+                            # not a good idea
+                            nninit.shock_he(self_state[key], gain=1e-5)
+                        unused_keys.remove(key)
                 else:
                     print('Skipping {} due to incompatable size'.format(key))
             else:
