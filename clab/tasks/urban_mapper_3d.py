@@ -51,7 +51,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
     Example:
         >>> from clab.tasks.urban_mapper_3d import *
         >>> task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
-        >>>                      workdir='~/data/work/urban_mapper')
+        >>>                      workdir='~/data/work/urban_mapper3', boundary=True)
         >>> print(task.classnames)
         >>> task.prepare_fullres_inputs()
         >>> print(task.classnames)
