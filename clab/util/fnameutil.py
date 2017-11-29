@@ -10,8 +10,8 @@ from collections import deque
 import pygtrie
 
 
-# from clab import profiler
-# @profiler.profile_onthefly
+from clab import profiler
+@profiler.profile_onthefly
 def shortest_unique_prefixes(items, sep=None):
     """
     The shortest unique prefix algorithm.
@@ -116,6 +116,7 @@ def shortest_unique_prefixes(items, sep=None):
     return unique
 
 
+@profiler.profile_onthefly
 def shortest_unique_suffixes(items, sep=None):
     """
     Example:
@@ -204,6 +205,7 @@ def shortest_unique_suffixes(items, sep=None):
 #     list(ub.take(paths2, sortx))
 
 
+@profiler.profile_onthefly
 def dumpsafe(paths, repl='<sl>'):
     """
     enforces that filenames will not conflict.
@@ -231,6 +233,7 @@ def dumpsafe(paths, repl='<sl>'):
     return dump_paths
 
 
+@profiler.profile_onthefly
 def _safepaths(paths):
     """
     x = '/home/local/KHQ/jon.crall/code/clab/clab/live/urban_train.py'
@@ -258,6 +261,7 @@ def _safepaths(paths):
     return safe_paths
 
 
+@profiler.profile_onthefly
 def align_paths(paths1, paths2):
     """
     return path2 in the order of path1
