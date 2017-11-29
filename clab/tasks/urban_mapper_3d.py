@@ -61,7 +61,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         >>> train.base_dpath = inputs_base
         >>> train.prepare_images(force=True)
         >>> train.prepare_input()
-        >>> gtstats = train.prepare_gtstats(task, force=True)
+        >>> gtstats = train.prepare_gtstats(task)
         >>> nan_value = -32767.0  # hack: specific number for DTM
         >>> center_stats = self.inputs.prepare_center_stats(
         >>>     task, nan_value=nan_value, colorspace='RGB')
@@ -251,16 +251,16 @@ class UrbanMapper3D(SemanticSegmentationTask):
         def instance_boundary(gti_data, gtl_data):
             """
                 gti_data = np.array([
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 5, 5, 5, 5, 5, 0, 0, 0],
-                  [0, 0, 5, 5, 5, 5, 5, 2, 2, 2],
-                  [0, 0, 5, 5, 5, 5, 5, 2, 2, 2],
-                  [0, 5, 5, 5, 5, 5, 5, 2, 2, 2],
-                  [0, 5, 5, 5, 5, 5, 5, 0, 0, 0],
-                  [0, 5, 5, 5, 5, 5, 5, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  [0, 0, 0, 0, 0, 3, 3, 0, 4, 0],
-                  [1, 0, 0, 0, 0, 3, 3, 0, 0, 0],
+                  [0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0],
+                  [0, 0, 5, 5, 5, 5, 5, 5, 0, 0, 0],
+                  [0, 0, 5, 5, 5, 5, 5, 5, 2, 2, 2],
+                  [0, 0, 5, 5, 5, 5, 5, 5, 2, 2, 2],
+                  [0, 5, 5, 5, 5, 5, 5, 5, 2, 2, 2],
+                  [0, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0],
+                  [0, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0],
+                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                  [0, 0, 0, 0, 0, 3, 3, 0, 4, 0, 0],
+                  [1, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0],
                 ], dtype=np.uint8)
 
                 kernel = np.ones((2, 2))
@@ -269,32 +269,20 @@ class UrbanMapper3D(SemanticSegmentationTask):
             out_data = np.full(gti_data.shape, dtype=np.uint8,
                                fill_value=NON_BUILDING)
 
-            # Map old unknown value to the a new one
-            out_data[gtl_data == 65] = UNKNOWN
-
+            # 5x5 erosion is equivalent to two iterations of a 3x3 erosion
             kernel = np.ones((3, 3))
-            touching_labels = touching_ccs(gti_data)
+            for label, submask, rc_off, rc_sl in instance_submasks(gti_data):
+                pad = 1
+                border = cv2.copyMakeBorder(submask, pad, pad, pad, pad,
+                                            cv2.BORDER_CONSTANT, value=0)
+                inner = cv2.erode(border, kernel, iterations=2)[1:-1, 1:-1]
+                outer = submask - inner
+                newmask = ((inner * INNER_INSTANCE) | (outer * OUTER_INSTANCE))
+                out_data[rc_sl] = newmask
 
-            # for each touching label
-            simple_gti = gti_data.copy()
-            for label in touching_labels:
-                touching_mask = (gti_data == label)
-                # remove it from the simple ones
-                simple_gti[touching_mask] = 0
-                # and it by itself
-                ccmask = touching_mask.astype(np.uint8)
-                inner = cv2.erode(ccmask, kernel, iterations=2)
-                outer = ccmask - inner
-                out_data[inner > 0] = INNER_INSTANCE
-                out_data[outer > 0] = OUTER_INSTANCE
-
-            # Then remove everything that is disjoint at once
-            # (probably can do better in terms of speed)
-            ccmask = (simple_gti > 0).astype(np.uint8)
-            inner = cv2.erode(ccmask, kernel, iterations=2)
-            outer = ccmask - inner
-            out_data[inner > 0] = INNER_INSTANCE
-            out_data[outer > 0] = OUTER_INSTANCE
+            # Map old unknown value to the a new one
+            is_unknown = gtl_data == 65
+            out_data[is_unknown] = UNKNOWN
             return out_data
 
         # Augment the groundtruth so the network must also predict instance
@@ -618,11 +606,38 @@ def draw_mask_contours(img, gt, thickness=2, alpha=1):
     return draw_img
 
 
+def instance_submasks(gti):
+    """
+    Iterate over a cropped mask for each instance in an instance segmentation
+    """
+    rc_locs = np.where(gti > 0)
+    grouped_cc_rcs = util.group_items(
+        np.ascontiguousarray(np.vstack(rc_locs).T),
+        gti[rc_locs], axis=0
+    )
+
+    def bounding_box(rcs):
+        rc1 = rcs.min(axis=0)
+        rc2 = rcs.max(axis=0)
+        return rc1, rc2
+
+    for label, rcs in grouped_cc_rcs.items():
+        rc1, rc2 = bounding_box(rcs)
+        r_slice = slice(rc1[0], rc2[0] + 1)
+        c_slice = slice(rc1[1], rc2[1] + 1)
+        rc_sl = (r_slice, c_slice)
+        subimg = gti[rc_sl]
+        submask = (subimg == label).astype(np.uint8)
+
+        rc_off = rc1
+        yield label, submask, rc_off, rc_sl
+
+
 def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1):
     """
 
     img = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_RGB.tif')
-    gti = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTI.tif')
+    gti = util.imread(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTI.tif'))
     gtl = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTL.tif')
     thickness = 2
     alpha = 1
@@ -647,19 +662,19 @@ def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1):
     for label, rcs in grouped_cc_rcs.items():
         rc1, rc2 = bounding_box(rcs)
         sl = (slice(rc1[0], rc2[0] + 2), slice(rc1[1], rc2[1] + 2))
-        subimg = (gti[sl] == label).astype(np.uint8)
+        submask = (gti[sl] == label).astype(np.uint8)
 
         xy_offset = rc1[::-1]
         offset = xy_offset + [-2, -2]
 
-        border = cv2.copyMakeBorder(subimg, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=0 )
+        border = cv2.copyMakeBorder(submask, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=0 )
         _, contors, hierarchy = cv2.findContours(border, cv2.RETR_TREE,
                                                  cv2.CHAIN_APPROX_SIMPLE,
                                                  offset=tuple(offset))
         """
         offset = [0, 0]
         BGR_GREEN = (0, 255, 0)
-        x = np.ascontiguousarray(util.ensure_alpha_channel(subimg)[:, :, 0:3]).astype(np.uint8)
+        x = np.ascontiguousarray(util.ensure_alpha_channel(submask)[:, :, 0:3]).astype(np.uint8)
         draw_img = cv2.drawContours(
             image=x, contours=contors,
             contourIdx=-1, color=BGR_GREEN, thickness=2)

@@ -3,7 +3,6 @@ import functools
 import math
 import torch
 import torch.nn.functional as F
-import torchvision
 from clab.torch import nninit
 from clab.torch.models.output_shape_for import OutputShapeFor
 
