@@ -68,7 +68,7 @@ def shortest_unique_prefixes(items, sep=None):
     if sep is None:
         trie = pygtrie.CharTrie.fromkeys(items, value=0)
     else:
-        # Short circuit check
+        # In some simple cases we can avoid constructing a trie
         tokens = [item.split(sep) for item in items]
         naive_solution = [t[0] for t in tokens]
         if len(naive_solution) == len(set(naive_solution)):
