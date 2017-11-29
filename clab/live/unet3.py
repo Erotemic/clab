@@ -225,6 +225,9 @@ class DenseUNetUp(nn.Module):
         output_shape  = OutputShapeFor(self.bottleneck)(conv_shape)
         return output_shape
 
+    def activation_shapes(self, input1_shape, input2_shape):
+        pass
+
     def forward(self, inputs1, inputs2):
         """
         inputs1 = (37 x 52)
