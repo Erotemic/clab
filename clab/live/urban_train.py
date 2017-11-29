@@ -338,6 +338,7 @@ def get_task(taskname):
         from clab.tasks.urban_mapper_3d import UrbanMapper3D
         boundary = True
         if boundary:
+            workdir = '~/data/work/urban_mapper4'
             workdir = '~/data/work/urban_mapper2'
         else:
             workdir = '~/data/work/urban_mapper'
