@@ -637,7 +637,7 @@ def urban_fit():
 
     xpu = xpu_device.XPU.from_argv()
 
-    if arch == 'unet2':
+    if arch in ['unet2', 'dense_unet']:
 
         from clab.live import fit_harn2
         harn = fit_harn2.FitHarness(
@@ -658,7 +658,7 @@ def urban_fit():
             # Compute the loss
             loss1 = harn.criterion(output1, label1)
             loss2 = harn.criterion2(output2, label2)
-            loss = (loss1 + loss2) / 2.0
+            loss = (.45 * loss1 + .55 * loss2)
             return loss
 
         harn.compute_loss = compute_loss
@@ -673,7 +673,7 @@ def urban_fit():
             ignore_label = datasets['train'].ignore_label
             labels = datasets['train'].task.labels
 
-            metrics_dict = metrics._sseg_metrics(output[0], label[0],
+            metrics_dict = metrics._sseg_metrics(output[1], label[1],
                                                  labels=labels,
                                                  ignore_label=ignore_label)
             return metrics_dict
