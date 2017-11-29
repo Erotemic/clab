@@ -53,7 +53,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         >>> task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
         >>>                      workdir='~/data/work/urban_mapper3', boundary=True)
         >>> print(task.classnames)
-        >>> task.prepare_fullres_inputs()
+        >>> task.prepare_fullres_inputs(force=True)
         >>> print(task.classnames)
         >>> task.preprocess()
         >>> (train, test), = task.xval_splits()
@@ -210,7 +210,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         fullres.tag = 'fullres'
         return fullres
 
-    def rebase_groundtruth(task, fullres):
+    def rebase_groundtruth(task, fullres, force=False):
         """
         Inplace / lazy modification of groundtruth labels
 
@@ -231,7 +231,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
             name = fullres.dump_im_names[ix]
             out_dpath = join(dpath, name)
             # Hacky cache
-            if not exists(out_dpath):
+            if force or not exists(out_dpath):
                 in_data = imutil.imread(path)
                 out_data = mapping[in_data]
                 imutil.imwrite(out_dpath, out_data)
@@ -317,13 +317,13 @@ class UrbanMapper3D(SemanticSegmentationTask):
         fullres.paths['gt'] = new_gt_paths
         return fullres
 
-    def prepare_fullres_inputs(task):
+    def prepare_fullres_inputs(task, force=False):
         if not task.fullres:
             fullres = task.load_fullres_inputs('training')
             if task.boundary_mode_enabled:
-                fullres = task.create_boundary_groundtruth(fullres)
+                fullres = task.create_boundary_groundtruth(fullres, force=force)
             else:
-                fullres = task.rebase_groundtruth(fullres)
+                fullres = task.rebase_groundtruth(fullres, force=force)
 
             # aux can currently only contain the real aux channels
             del fullres.paths['gti']
