@@ -131,6 +131,7 @@ class UNetUp(nn.Module):
 
     def output_shape_for(self, input1_shape, input2_shape):
         """
+        Example:
             >>> self = UNetUp(256, 128)
             >>> input1_shape = [4, 128, 24, 24]
             >>> input2_shape = [4, 256, 8, 8]

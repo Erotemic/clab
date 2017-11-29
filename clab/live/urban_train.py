@@ -73,7 +73,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             self.aux_keys = []
 
         self.center_inputs = None
-        self.use_residual_aux = False
+        self.use_residual_aux = ub.argflag('--auxsix')
 
     def _make_normalizer(self):
         transforms = []
