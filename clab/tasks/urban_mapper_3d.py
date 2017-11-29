@@ -609,6 +609,20 @@ def draw_mask_contours(img, gt, thickness=2, alpha=1):
 def instance_submasks(gti):
     """
     Iterate over a cropped mask for each instance in an instance segmentation
+
+    Example:
+        >>> gti = np.array([
+        >>>   [0, 0, 5, 5, 5, 2, 2],
+        >>>   [0, 0, 5, 5, 5, 2, 2],
+        >>>   [0, 0, 0, 0, 0, 0, 0],
+        >>>   [0, 0, 0, 1, 9, 0, 0],
+        >>>   [3, 0, 0, 1, 1, 0, 0],
+        >>> ], dtype=np.uint8)
+        >>> first, *rest = instance_submasks(gti)
+        >>> (label, submask, rc_off, rc_sl) = first
+        >>> submask
+        array([[1, 0],
+               [1, 1]], dtype=uint8)
     """
     rc_locs = np.where(gti > 0)
     grouped_cc_rcs = util.group_items(
