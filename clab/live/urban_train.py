@@ -463,11 +463,13 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --dry
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB --combine
-        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --colorspace=RGB
+
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --dry
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --combine
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --auxsix
+
 
     Example:
         >>> from clab.torch.fit_harness import *
