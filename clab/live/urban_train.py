@@ -184,9 +184,9 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
         if self.inputs.gt_paths:
             gt_fpath = self.inputs.gt_paths[index]
-            gt = self.loader(gt_fpath, colorspace=None)
+            gt_hwc = self.loader(gt_fpath, colorspace=None)
         else:
-            gt = None
+            gt_hwc = None
 
         # Load in RGB for now, we will convert right before we center the data
         im = self.loader(im_fpath, colorspace='RGB')
@@ -206,23 +206,25 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             # Augment intensity independently
             im = self.im_augment(im)
             # Augment geometry consistently
-            im, aux_channels, gt = self.rand_aff.sseg_warp(
-                im, aux_channels, gt)
+            im, aux_channels, gt_hwc = self.rand_aff.sseg_warp(
+                im, aux_channels, gt_hwc)
 
         im = imutil.convert_colorspace(im, src_space='RGB',
                                        dst_space=self.colorspace)
 
         # Do centering of inputs
-        input_tuple = [im] + aux_channels
-        input_tuple = self.center_inputs(input_tuple)
+        input_tuple_hwc = [im] + aux_channels
+        input_tuple_hwc = self.center_inputs(input_tuple_hwc)
 
         if self.use_aux_diff:
             # add residual between dtm and dsm
-            dtm_dsm = input_tuple[-1]
-            residual = dtm_dsm[0] - dtm_dsm[1]
-            input_tuple += [residual]
+            dtm_dsm = input_tuple_hwc[-1]
+            residual = dtm_dsm[:, :, 0:1] - dtm_dsm[:, :, 1:2]
+            input_tuple_hwc += [residual]
 
-        return input_tuple, gt
+        # gt_tuple_hwc = [], if gt_hwc is None else [gt_hwc]
+
+        return input_tuple_hwc, gt_hwc
 
     def __getitem__(self, index):
         """
@@ -237,8 +239,8 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             >>> self.use_aux_diff = True
             >>> im, gt = self[0]
         """
-        input_tuple, gt = self.load_inputs(index)
-        input_tuple, gt_tensor = self.to_tensor(input_tuple, gt)
+        input_tuple_hwc, gt_hwc = self.load_inputs(index)
+        input_tuple, gt_tensor = self.to_tensor(input_tuple_hwc, gt_hwc)
 
         data_tensor = torch.cat(input_tuple, dim=0)
 
