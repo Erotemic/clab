@@ -82,7 +82,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         if len(self.inputs):
             self.center_stats = self.inputs.prepare_center_stats(
                 self.task, nan_value=nan_value, colorspace=self.colorspace,
-                with_im=(mode == 3), stride=10,
+                with_im=(mode == 3), stride=100,
             )
             # self.center_stats['image'].pop('detail')
             # if self.aux_keys:
@@ -105,6 +105,8 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
                 else:
                     raise KeyError(mode)
                 # self.im_center = ub.identity
+                print('im_mean = {!r}'.format(im_mean))
+                print('im_scale = {!r}'.format(im_scale))
             else:
                 raise Exception()
 
@@ -126,6 +128,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
                 # zero the median on a per-chip basis, but use
                 # the global internal_std to normalize extent
                 # aux_std =
+                print('aux scale = {!r}'.format(scale))
                 aux_center = DTMCenterScale(scale,  # 2.8718751612937639
                                             nan_value=nan_value, fill='median')
                 transforms.append(aux_center)

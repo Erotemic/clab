@@ -359,13 +359,13 @@ class Inputs(ub.NiceRepr):
 
         if any_loaded:
             # Ensure alignment between loaded data
-            print('Align paths')
+            print('Align {} paths'.format(len(self.im_paths)))
             if self.im_paths and self.gt_paths:
                 self.gt_paths = fnameutil.align_paths(self.im_paths,
                                                       self.gt_paths)
             if self.aux_paths:
-                print('Align aux paths')
                 base = self.im_paths or self.gt_paths
+                print('Align {} aux paths'.format(len(base)))
                 for k in self.aux_paths.keys():
                     self.aux_paths[k] = fnameutil.align_paths(
                         base, self.aux_paths[k])
@@ -540,7 +540,8 @@ class Inputs(ub.NiceRepr):
             # Write a simpler version of the file
             if simple_info['aux']:
                 simple_info['aux'].pop('detail')
-            simple_info['image'].pop('detail')
+            if simple_info['image']:
+                simple_info['image'].pop('detail')
 
             # pretty writing of json stats
             json_text = json.dumps(simple_info, cls=jsonutil.NumpyAwareJSONEncoder, indent=4)
