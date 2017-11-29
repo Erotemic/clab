@@ -117,7 +117,6 @@ def shortest_unique_prefixes(items, sep=None):
     return unique
 
 
-@profiler.profile_onthefly
 def shortest_unique_suffixes(items, sep=None):
     """
     Example:
@@ -206,7 +205,6 @@ def shortest_unique_suffixes(items, sep=None):
 #     list(ub.take(paths2, sortx))
 
 
-@profiler.profile_onthefly
 def dumpsafe(paths, repl='<sl>'):
     """
     enforces that filenames will not conflict.
@@ -234,7 +232,12 @@ def dumpsafe(paths, repl='<sl>'):
     return dump_paths
 
 
-@profiler.profile_onthefly
+def _fast_name_we(fname):
+    # Assume that extensions are no more than 7 chars for extra speed
+    pos = fname.rfind('.', -7)
+    return fname if pos == -1 else fname[:pos]
+
+
 def _safepaths(paths):
     """
     x = '/home/local/KHQ/jon.crall/code/clab/clab/live/urban_train.py'
@@ -242,20 +245,15 @@ def _safepaths(paths):
     %timeit splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
     %timeit splitext(re.sub('<sl>|_', '-', x))
     %timeit x[:x.rfind('.')].replace('<sl>', '-').replace('_', '-')
-    %timeit fast_name_we(x)
+    %timeit _fast_name_we(x)
     %timeit x[:x.rfind('.')]
 
     >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
     >>> _safepaths(paths)
     """
-    def fast_name_we(fname):
-        # Assume that extensions are no more than 7 chars for extra speed
-        pos = fname.rfind('.', -7)
-        return fname if pos == -1 else fname[:pos]
-
     safe_paths = [
         # faster than splitext
-        fast_name_we(x).replace('_', '-').replace('<sl>', '-')
+        _fast_name_we(x).replace('_', '-').replace('<sl>', '-')
         # splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
         for x in dumpsafe(paths, repl='-')
     ]
