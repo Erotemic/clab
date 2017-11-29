@@ -431,7 +431,8 @@ class Inputs(ub.NiceRepr):
             print('{} input_fpath = {!r}'.format(self.tag,
                                                  ub.compressuser(self.input_fpath)))
 
-    def prepare_center_stats(self, task, nan_value=-32767.0, colorspace='RGB'):
+    def prepare_center_stats(self, task, nan_value=-32767.0, colorspace='RGB',
+                             with_im=False, stride=1):
         """
         Ignore:
             >>> from clab.torch.sseg_train import *
@@ -448,9 +449,9 @@ class Inputs(ub.NiceRepr):
         # colorspace = 'RGB'
         import pickle
         import copy
-        from .util import jsonutil
-        from .torch.transforms import NaNInputer
-        from .torch import im_loaders
+        from clab.util import jsonutil
+        from clab.torch.transforms import NaNInputer
+        from clab.torch import im_loaders
 
         self.prepare_input()
         fpath = join(self.input_dpath, 'center_stats{}.pkl'.format(colorspace))
@@ -496,17 +497,26 @@ class Inputs(ub.NiceRepr):
                         'internal': image_internal_info,
                     }
 
-            run_im = IntensityStats()
-            for path in ub.ProgIter(im_paths, label='computing mean image', verbose=1):
-                im = im_loaders.np_loader(path, colorspace=colorspace)
-                run_im.update(im)
+            if with_im:
+                run_im = IntensityStats()
+                im_paths = im_paths[::stride]
+                for path in ub.ProgIter(im_paths, label='computing mean image', verbose=1):
+                    im = im_loaders.np_loader(path, colorspace=colorspace)
+                    run_im.update(im)
+                im_info = run_im.info()
+                im_info['colorspace'] = colorspace
+            else:
+                im_info = None
 
             if self.aux_paths:
                 # nan_value = -32767.0
                 nan_inputer = NaNInputer(fill='median', nan_value=nan_value)
                 run_aux = IntensityStats()
                 prog = ub.ProgIter(label='aux stats', verbose=1)
-                for aux_paths in prog(list(zip(*self.aux_paths.values()))):
+
+                paths_list = list(zip(*self.aux_paths.values()))[::stride]
+
+                for aux_paths in prog(paths_list):
                     aux = np.dstack([im_loaders.np_loader(path) for path in aux_paths])
                     aux = nan_inputer(aux)
                     run_aux.update(aux)
@@ -516,9 +526,6 @@ class Inputs(ub.NiceRepr):
                 aux_info['channel_names'] = aux_channel_names
             else:
                 aux_info = None
-
-            im_info = run_im.info()
-            im_info['colorspace'] = colorspace
 
             detail_info = {
                 'aux': aux_info,

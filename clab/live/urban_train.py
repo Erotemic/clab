@@ -81,7 +81,9 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         nan_value = -32767.0  # hack: specific number for DTM
         if len(self.inputs):
             self.center_stats = self.inputs.prepare_center_stats(
-                self.task, nan_value=nan_value, colorspace=self.colorspace)
+                self.task, nan_value=nan_value, colorspace=self.colorspace,
+                with_im=(mode == 3), stride=10,
+            )
             # self.center_stats['image'].pop('detail')
             # if self.aux_keys:
             #     self.center_stats['aux'].pop('detail')
