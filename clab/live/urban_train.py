@@ -528,7 +528,10 @@ def urban_fit():
     if arch == 'segnet':
         batch_size = 6
     elif arch == 'dense_unet':
-        batch_size = 5
+        batch_size = 6
+
+        # 3 ~= 5000MiB
+        # 5 = 8280MiB
 
     n_classes = datasets['train'].n_classes
     n_channels = datasets['train'].n_channels
