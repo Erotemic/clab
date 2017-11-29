@@ -26,6 +26,21 @@ def dynamic_profile(func):
     return new_func
 
 
+def profile_onthefly(func):
+    import line_profiler
+    profile = line_profiler.LineProfiler()
+    new_func = profile(func)
+    new_func.profile_info = KernprofParser(profile)
+    new_func.print_report = new_func.profile_info.print_report
+
+    def wraper(*args, **kwargs):
+        retval = new_func(*args, **kwargs)
+        new_func.print_report()
+        return retval
+
+    return wraper
+
+
 class KernprofParser(object):
 
     def __init__(self, profile):

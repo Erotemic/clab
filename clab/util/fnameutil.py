@@ -215,7 +215,10 @@ def _safepaths(paths):
     ]
     return safe_paths
 
+from clab import profiler
 
+
+@profiler.profile_onthefly
 def align_paths(paths1, paths2):
     """
     return path2 in the order of path1
