@@ -359,6 +359,7 @@ class Inputs(ub.NiceRepr):
 
         if any_loaded:
             # Ensure alignment between loaded data
+            print('Align paths')
             if self.im_paths and self.gt_paths:
                 self.gt_paths = fnameutil.align_paths(self.im_paths,
                                                       self.gt_paths)
