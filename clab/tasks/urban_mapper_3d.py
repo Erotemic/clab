@@ -56,6 +56,15 @@ class UrbanMapper3D(SemanticSegmentationTask):
         >>> task.prepare_fullres_inputs()
         >>> print(task.classnames)
         >>> task.preprocess()
+        >>> (train, test), = task.xval_splits()
+        >>> inputs_base = ub.ensuredir((task.workdir, 'inputs'))
+        >>> train.base_dpath = inputs_base
+        >>> train.prepare_images(force=True)
+        >>> train.prepare_input()
+        >>> gtstats = train.prepare_gtstats(task)
+        >>> nan_value = -32767.0  # hack: specific number for DTM
+        >>> center_stats = self.inputs.prepare_center_stats(
+        >>>     task, nan_value=nan_value, colorspace='RGB')
     """
     def __init__(task, root=None, workdir=None, boundary=False):
         if root is None:
@@ -230,7 +239,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         fullres.paths['gt'] = new_gt_paths
         return fullres
 
-    def create_boundary_groundtruth(task, fullres):
+    def create_boundary_groundtruth(task, fullres, force=False):
         # Hack: transform task into boundary mode
         task._boundary_mode()
 
@@ -261,7 +270,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
                                fill_value=NON_BUILDING)
 
             # Map old unknown value to the a new one
-            out_data[gtl_data == 65] == UNKNOWN
+            out_data[gtl_data == 65] = UNKNOWN
 
             kernel = np.ones((3, 3))
             touching_labels = touching_ccs(gti_data)
@@ -298,7 +307,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
             path = fullres.paths['gti'][ix]
             name = fullres.dump_im_names[ix]
             out_dpath = join(dpath, name)
-            if not exists(out_dpath):
+            if force or not exists(out_dpath):
                 gtl_data = imutil.imread(fullres.paths['gt'][ix])
                 gti_data = imutil.imread(path)
                 out_data = instance_boundary(gti_data, gtl_data)
