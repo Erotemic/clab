@@ -807,7 +807,7 @@ class DivaV1(SemanticSegmentationTask):
                 im_paths, gt_paths = task._scene_data_subset(scenes, [key])
             gt_paths = fnameutil.align_paths(im_paths, gt_paths)
 
-            overlay_fnames = fnameutil.dumpsafe(im_paths)
+            overlay_fnames = list(fnameutil.dumpsafe(im_paths))
 
             if sl is not None:
                 im_paths = im_paths[sl]

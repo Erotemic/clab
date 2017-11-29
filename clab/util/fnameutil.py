@@ -7,23 +7,11 @@ pip install pygtrie
 from __future__ import print_function, division
 from os.path import commonprefix, isdir, dirname, relpath, splitext
 from collections import deque
+import pygtrie
 
 
-def dumpsafe(paths):
-    """
-    enforces that filenames will not conflict.
-    Removes common the common prefix, and replaces slashes with <sl>
-    """
-    im_pref = commonprefix(paths)
-    if not isdir(im_pref):
-        im_pref = dirname(im_pref)
-    dump_paths = [
-        relpath(p, im_pref).replace('/', '<sl>').replace('\\', '<sl>')
-        for p in paths
-    ]
-    return dump_paths
-
-
+# from clab import profiler
+# @profiler.profile_onthefly
 def shortest_unique_prefixes(items, sep=None):
     """
     The shortest unique prefix algorithm.
@@ -73,7 +61,6 @@ def shortest_unique_prefixes(items, sep=None):
         >>> %timeit shortest_unique_prefixes(items)
         3.55 s ± 23 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
     """
-    import pygtrie
     if len(set(items)) != len(items):
         raise ValueError('inputs must be unique')
 
@@ -81,6 +68,15 @@ def shortest_unique_prefixes(items, sep=None):
     if sep is None:
         trie = pygtrie.CharTrie.fromkeys(items, value=0)
     else:
+        # Short circuit check
+        tokens = [item.split(sep) for item in items]
+        naive_solution = [t[0] for t in tokens]
+        if len(naive_solution) == len(set(naive_solution)):
+            return naive_solution
+        # naive_solution = ['-'.join(t[0:2]) for t in tokens]
+        # if len(naive_solution) == len(set(naive_solution)):
+        #     return naive_solution
+
         trie = pygtrie.StringTrie.fromkeys(items, value=0, separator=sep)
 
     # Hack into the internal structure and insert frequencies at each node
@@ -208,6 +204,33 @@ def shortest_unique_suffixes(items, sep=None):
 #     list(ub.take(paths2, sortx))
 
 
+def dumpsafe(paths, repl='<sl>'):
+    """
+    enforces that filenames will not conflict.
+    Removes common the common prefix, and replaces slashes with <sl>
+
+    >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
+    >>> list(dumpsafe(paths, '-'))
+    """
+    common_pref = commonprefix(paths)
+    if not isdir(common_pref):
+        im_pref = dirname(common_pref)
+        if common_pref[len(im_pref):len(im_pref) + 1] == '/':
+            im_pref += '/'
+        elif common_pref[len(im_pref):len(im_pref) + 1] == '\\':
+            im_pref += '\\'
+    else:
+        im_pref = common_pref
+
+    start = len(im_pref)
+    dump_paths = (
+        p[start:].replace('/', repl).replace('\\', repl)  # faster
+        # relpath(p, im_pref).replace('/', repl).replace('\\', repl)
+        for p in paths
+    )
+    return dump_paths
+
+
 def _safepaths(paths):
     """
     x = '/home/local/KHQ/jon.crall/code/clab/clab/live/urban_train.py'
@@ -215,19 +238,26 @@ def _safepaths(paths):
     %timeit splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
     %timeit splitext(re.sub('<sl>|_', '-', x))
     %timeit x[:x.rfind('.')].replace('<sl>', '-').replace('_', '-')
+    %timeit fast_name_we(x)
+    %timeit x[:x.rfind('.')]
 
+    >>> paths = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
+    >>> _safepaths(paths)
     """
+    def fast_name_we(fname):
+        # Assume that extensions are no more than 7 chars for extra speed
+        pos = fname.rfind('.', -7)
+        return fname if pos == -1 else fname[:pos]
+
     safe_paths = [
         # faster than splitext
-        x[:x.rfind('.')].replace('<sl>', '-').replace('_', '-')
+        fast_name_we(x).replace('_', '-').replace('<sl>', '-')
         # splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
-        for x in dumpsafe(paths)
+        for x in dumpsafe(paths, repl='-')
     ]
     return safe_paths
 
 
-# from clab import profiler
-# @profiler.profile_onthefly
 def align_paths(paths1, paths2):
     """
     return path2 in the order of path1
@@ -242,7 +272,7 @@ def align_paths(paths1, paths2):
     paths1, paths2 = gt_paths, pred_paths
 
     Doctest:
-        >>> from clab.fnameutil import *
+        >>> from clab.util.fnameutil import *
         >>> def test_gt_arrangements(paths1, paths2, paths2_):
         >>>     # no matter what order paths2_ comes in, it should align with the groundtruth
         >>>     assert align_paths(paths1, paths2_) == paths2
@@ -264,6 +294,15 @@ def align_paths(paths1, paths2):
         >>> paths1 = ['foo/{:04d}/{:04d}'.format(i, j) for i in range(2) for j in range(20)]
         >>> paths2 = ['bar<sl>{:04d}<sl>{:04d}'.format(i, j) for i in range(2) for j in range(20)]
         >>> test_input_arrangements(paths1, paths2)
+
+    Speed:
+        >>> import ubelt as ub
+        >>> paths1 = [ub.truepath('~/foo/{:04d}/{:04d}').format(i, j) for i in range(2) for j in range(10000)]
+        >>> paths2 = [ub.truepath('~/bar/{:04d}/{:04d}').format(i, j) for i in range(2) for j in range(10000)]
+        >>> np.random.shuffle(paths2)
+        >>> aligned = align_paths(paths1, paths2)
+
+        items = [p[::-1] for p in _safepaths(paths1)]
 
     Ignore:
         >>> # pathological case (can we support this?)

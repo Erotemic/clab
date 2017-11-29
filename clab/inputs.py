@@ -319,7 +319,7 @@ class Inputs(ub.NiceRepr):
         makes paths suitable for dumping into a single directory
         """
         if self.dump_im_names is None:
-            self.dump_im_names = fnameutil.dumpsafe(self.im_paths)
+            self.dump_im_names = list(fnameutil.dumpsafe(self.im_paths))
 
     def set_ims(self, ims):
         """ Can be a directory or a list of images """
