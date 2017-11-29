@@ -80,19 +80,8 @@ def shortest_unique_prefixes(items, sep=None):
 
         trie = pygtrie.StringTrie.fromkeys(items, value=0, separator=sep)
 
-    # Hack into the internal structure and insert frequencies at each node
-    def _iternodes(self):
-        """
-        Generates all nodes in the trie
-        """
-        stack = deque([[self._root]])
-        while stack:
-            for node in stack.pop():
-                yield node
-                stack.append(node.children.values())
-
     # Set the value (frequency) of all nodes to zero.
-    for node in _iternodes(trie):
+    for node in _trie_iternodes(trie):
         node.value = 0
 
     # For each item trace its path and increment frequencies
@@ -115,6 +104,19 @@ def shortest_unique_prefixes(items, sep=None):
         assert freq == 1, 'item={} has no unique prefix'.format(item)
         unique.append(prefix)
     return unique
+
+
+def _trie_iternodes(self):
+    """
+    Generates all nodes in the trie
+
+    # Hack into the internal structure and insert frequencies at each node
+    """
+    stack = deque([[self._root]])
+    while stack:
+        for node in stack.pop():
+            yield node
+            stack.append(node.children.values())
 
 
 def shortest_unique_suffixes(items, sep=None):
