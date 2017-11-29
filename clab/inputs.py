@@ -364,6 +364,7 @@ class Inputs(ub.NiceRepr):
                 self.gt_paths = fnameutil.align_paths(self.im_paths,
                                                       self.gt_paths)
             if self.aux_paths:
+                print('Align aux paths')
                 base = self.im_paths or self.gt_paths
                 for k in self.aux_paths.keys():
                     self.aux_paths[k] = fnameutil.align_paths(
