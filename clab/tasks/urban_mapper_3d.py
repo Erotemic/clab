@@ -506,10 +506,10 @@ def script_overlay_aux():
     fullres = task.load_fullres_inputs(subdir='training')
     NAN_VAL = -32767
 
-    for paths in ub.ProgIter(fullres):
+    for paths in ub.ProgIter(fullres, adjust=False, freq=1):
         bgr = util.imread(paths['im'])
 
-        # gt = util.imread(paths['gt']) > 2
+        gtl = util.imread(paths['gt'])
         gti = util.imread(paths['gt'].replace('GTL', 'GTI'))
 
         dsm = util.imread(paths['aux']['dsm'])
@@ -543,7 +543,8 @@ def script_overlay_aux():
             color_chan[np.isnan(chan)] = [[0, 0, 1]]
             blend_chan = util.overlay_colorized(color_chan, bgr, alpha=.2)[:, :, 0:3]
 
-            blend_gt_chan = draw_mask_contours(blend_chan, gt, thickness=2, alpha=.3)
+            blend_gt_chan = draw_instance_contours(blend_chan, gti, gtl,
+                                                   thickness=2, alpha=.3)
 
             # Add a colorbar
             blend_chan = np.hstack([blend_chan, cb])
@@ -606,7 +607,17 @@ def draw_mask_contours(img, gt, thickness=2, alpha=1):
         draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))
     return draw_img
 
-def draw_instance_contours(img, gti, thickness=2, alpha=1):
+
+def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1):
+    """
+
+    img = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_RGB.tif')
+    gti = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTI.tif')
+    gtl = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTL.tif')
+    thickness = 2
+    alpha = 1
+
+    """
     import cv2
 
     rc_locs = np.where(gti > 0)
@@ -615,66 +626,75 @@ def draw_instance_contours(img, gti, thickness=2, alpha=1):
         gti[rc_locs], axis=0
     )
 
-    def pointset_boundary(rcs, shape):
-        offsets = [[0, 1], [1, 1], [1, 0], [0, -1], [-1, -1], [-1, 0], [1, -1],
-                   [-1, 1]]
+    def bounding_box(rcs):
+        rc1 = rcs.min(axis=0)
+        rc2 = rcs.max(axis=0)
+        return rc1, rc2
 
-        rc_off = rcs[:, :, None] + np.array(offsets).T[None, :]
-
-        on_bound = np.any(rcs == 0, axis=-1)
-        on_bound |= np.any(rcs.T[0] == shape[0], axis=-1)
-        on_bound |= np.any(rcs.T[1] == shape[1], axis=-1)
-
-        # encode offset as an integer for intersection
-        rc_off_int = rc_off[:, 0, :] * shape[0] + rc_off[:, 1, :]
-        rc_int = rcs.T[0] * shape[0] + rcs.T[1]
-
-        # import ubelt
-        # for timer in ubelt.Timerit(10):
-        #     with timer:
-
-        #         # Any RC position is on a boundary if any of its neighbors are not in
-        #         # the original set of locations
-        #         n_neighbs = np.array([len(np.intersect1d(rc_int, neigbs, assume_unique=True))
-        #                               for neigbs in rc_off_int])
-        #         on_bound |= n_neighbs < len(offsets)
-        #         # might not be in a good order though
-        #         bound_rcs = rcs.compress(on_bound, axis=0)
-        return bound_rcs
-
+    # slice out a bounding region around each instance, detect the contour and
+    # then offset it back into image coordinates
     grouped_contours = {}
-
     for label, rcs in grouped_cc_rcs.items():
-        shape = gti.shape
-        bound_rcs = pointset_boundary(rcs, shape)
-        grouped_contours[label] = bound_rcs
+        rc1, rc2 = bounding_box(rcs)
+        sl = (slice(rc1[0], rc2[0] + 2), slice(rc1[1], rc2[1] + 2))
+        subimg = (gti[sl] == label).astype(np.uint8)
 
-    border = cv2.copyMakeBorder(gt, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0 )
-    _, contours, hierarchy = cv2.findContours(border, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE, offset=(-1, -1))
+        xy_offset = rc1[::-1]
+        offset = xy_offset + [-2, -2]
+
+        border = cv2.copyMakeBorder(subimg, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=0 )
+        _, contors, hierarchy = cv2.findContours(border, cv2.RETR_TREE,
+                                                 cv2.CHAIN_APPROX_SIMPLE,
+                                                 offset=tuple(offset))
+        """
+        offset = [0, 0]
+        BGR_GREEN = (0, 255, 0)
+        x = np.ascontiguousarray(util.ensure_alpha_channel(subimg)[:, :, 0:3]).astype(np.uint8)
+        draw_img = cv2.drawContours(
+            image=x, contours=contors,
+            contourIdx=-1, color=BGR_GREEN, thickness=2)
+        """
+        # note when len(contours > 1, there is a hole in the building)
+        # assert len(contors) == 1
+        grouped_contours[label] = contors[0]
+
+    if gtl is not None:
+        unknown_labels = set(np.unique(gti[gtl == 65]))
+    else:
+        unknown_labels = set()
+
+    known_labels = set(grouped_contours.keys()) - unknown_labels
 
     BGR_GREEN = (0, 255, 0)
+    BGR_BLUE = (255, 0, 0)
     img = util.ensure_float01(img)
     base = np.ascontiguousarray((255 * img[:, :, 0:3]).astype(np.uint8))
-    if alpha >= 1:
-        draw_img = cv2.drawContours(
-            image=base, contours=contours, contourIdx=-1, color=BGR_GREEN,
-            thickness=thickness)
-    else:
-        # Draw an image to overlay first
-        draw_img = cv2.drawContours(
-            image=np.zeros(base.shape, dtype=np.uint8), contours=contours,
-            contourIdx=-1, color=BGR_GREEN, thickness=thickness)
-        contour_overlay = util.ensure_alpha_channel(draw_img, alpha=0)
-        contour_overlay.T[3].T[draw_img.sum(axis=2) > 0] = alpha
 
-        # zero out the edges to avoid visualization errors
-        contour_overlay[0:thickness, :, :] = 0
-        contour_overlay[-thickness:, :, :] = 0
-        contour_overlay[:, 0:thickness, :] = 0
-        contour_overlay[:, -thickness:, :] = 0
+    # Draw an image to overlay first
+    draw_img = np.zeros(base.shape, dtype=np.uint8)
 
-        draw_img = util.overlay_alpha_images(contour_overlay, base)
-        draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))
+    known_contours = list(ub.take(grouped_contours, known_labels))
+    draw_img = cv2.drawContours(
+        image=draw_img, contours=known_contours,
+        contourIdx=-1, color=BGR_GREEN, thickness=thickness)
+
+    if unknown_labels:
+        unknown_contours = list(ub.take(grouped_contours, unknown_labels))
+        draw_img = cv2.drawContours(
+            image=draw_img, contours=unknown_contours,
+            contourIdx=-1, color=BGR_BLUE, thickness=thickness)
+
+    contour_overlay = util.ensure_alpha_channel(draw_img, alpha=0)
+    contour_overlay.T[3].T[draw_img.sum(axis=2) > 0] = alpha
+
+    # zero out the edges to avoid visualization errors
+    contour_overlay[0:thickness, :, :] = 0
+    contour_overlay[-thickness:, :, :] = 0
+    contour_overlay[:, 0:thickness, :] = 0
+    contour_overlay[:, -thickness:, :] = 0
+
+    draw_img = util.overlay_alpha_images(contour_overlay, base)
+    draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))
     return draw_img
 
 

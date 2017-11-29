@@ -21,7 +21,8 @@ def dynamic_profile(func):
     import line_profiler
     profile = line_profiler.LineProfiler()
     new_func = profile(func)
-    new_func.profile = KernprofParser(profile)
+    new_func.profile_info = KernprofParser(profile)
+    new_func.print_report = new_func.profile_info.print_report
     return new_func
 
 
@@ -32,10 +33,13 @@ class KernprofParser(object):
 
     def raw_text(self):
         file_ = cStringIO()
-        profile.print_stats(stream=file_, stripzeros=True)
+        self.profile.print_stats(stream=file_, stripzeros=True)
         file_.seek(0)
         text =  file_.read()
         return text
+
+    def print_report(self):
+        print(self.raw_text())
 
     def get_text(self):
         text = self.raw_text()
