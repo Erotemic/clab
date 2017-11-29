@@ -163,6 +163,13 @@ class PadToAgree(nn.Module):
             outputs1 = F.pad(inputs1, padding)
         return outputs1
 
+    def activation_shapes(self, input1_shape, input2_shape):
+        padding = self.padding(input1_shape, input2_shape)
+        if np.all(padding == 0):
+            return []
+        else:
+            return [input2_shape]
+
     def output_shape_for(self, input_shape1, input_shape2):
         N1, C1, W1, H1 = input_shape1
         N2, C2, W2, H2 = input_shape2
@@ -220,13 +227,25 @@ class DenseUNetUp(nn.Module):
         # output1_shape = OutputShapeFor(self.pad)(input1_shape, output2_shape)
         # cat_shape     = OutputShapeFor(torch.cat)([output1_shape, output2_shape], 1)
 
-        cat_shape     = OutputShapeFor(torch.cat)([input1_shape, output2_shape], 1)
+        cat_shape   = OutputShapeFor(torch.cat)([input1_shape, output2_shape], 1)
         conv_shape  = OutputShapeFor(self.conv)(cat_shape)
         output_shape  = OutputShapeFor(self.bottleneck)(conv_shape)
         return output_shape
 
     def activation_shapes(self, input1_shape, input2_shape):
-        pass
+        up2_shape = OutputShapeFor(self.up)(input2_shape)
+        pad2_shape = OutputShapeFor(self.pad)(up2_shape, input1_shape)
+
+        cat_shape   = OutputShapeFor(torch.cat)([input1_shape, pad2_shape], 1)
+        conv_shape  = OutputShapeFor(self.conv)(cat_shape)
+        output_shape  = OutputShapeFor(self.bottleneck)(conv_shape)
+
+        activations = [up2_shape]
+        activations += self.pad.activation_shapes(up2_shape, input1_shape)
+        activations += [cat_shape]
+        activations += self.conv.activation_shapes(cat_shape)
+        activations += [output_shape]
+        return activations
 
     def forward(self, inputs1, inputs2):
         """
@@ -266,7 +285,7 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         >>> B, C, W, H = (4, 3, 480, 360)
         >>> input_shape = (B, C, W, H)
 
-        >>> self = DenseUNet(in_channels=C, is_deconv=False)
+        >>> self = DenseUNet(n_classes=4, in_channels=C, is_deconv=False)
         >>> print('output shapes')
         >>> print(ub.repr2(self.output_shapes(input_shape), nl=1))
         >>> print('nParams = {}'.format(self.number_of_parameters()))
@@ -304,7 +323,7 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         util.super2(DenseUNet, self).__init__()
         self.in_channels = in_channels
 
-        n_feat0 = 48
+        n_feat0 = 36
         from torch import nn
         features = nn.Sequential(ub.odict([
             ('conv0', nn.Conv2d(in_channels, n_feat0, kernel_size=7, stride=1,
@@ -316,9 +335,9 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         ]))
 
         block_config = [2, 3, 3, 3, 3]
-        bn_size = 4
-        compress = .5
-        growth_rate = 32
+        bn_size = 2
+        compress = .4
+        growth_rate = 16
 
         n_feat = n_feat0
 
@@ -411,15 +430,18 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         #     prev = node
         # print('output_shapes = {}'.format(ub.repr2(output_shapes, nl=1)))
 
-    def n_activation_shapes(self, input_shape):
+    def activation_shapes(self, input_shape):
         """
         >>> from clab.live.unet3 import *
         >>> from torch.autograd import Variable
         >>> input_shape = (10, 3, 480, 360)
         >>> self = DenseUNet(in_channels=3, is_deconv=False)
+        >>> activations = self.activation_shapes(input_shape)
+        >>> print(ut.byte_str2(sum(map(np.prod, activations)) * 4))
         """
         conn = self.connectivity()
         conn.io_shapes(input_shape)
+        conn.output_shapes
 
         activations = []
         for node in conn.topsort:
@@ -428,9 +450,9 @@ class DenseUNet(nn.Module, mixin.NetMixin):
             if hasattr(module, 'activation_shapes'):
                 activations += module.activation_shapes(*in_shapes)
             else:
+                print('module = {!r}'.format(module))
                 activations += [conn.output_shapes[node]]
-
-        # print(ut.byte_str2(sum(map(np.prod, activations)) * 4))
+        return activations
 
     def connectivity(self):
         class ConnectivityInfo(object):
