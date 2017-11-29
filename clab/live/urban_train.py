@@ -74,6 +74,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
         self.center_inputs = None
         self.use_aux_diff = ub.argflag('--use_aux_diff')
+        self.use_dual_gt = ub.argval('--arch', default='unet')
 
     def _make_normalizer(self, mode=2):
         transforms = []
@@ -247,7 +248,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         if self.with_gt:
             # print('gotitem: ' + str(data_tensor.shape))
             # print('gt_tensor: ' + str(gt_tensor.shape))
-            if ub.argval('--arch', default='unet') == 'unet2':
+            if self.use_dual_gt:
                 mask = gt_tensor >= 2
                 gt_tensor_alt = gt_tensor.clone()
                 gt_tensor_alt[mask] = gt_tensor_alt[mask] - 1
