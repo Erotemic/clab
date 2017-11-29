@@ -349,8 +349,9 @@ def get_task(taskname, boundary=True):
     if taskname == 'urban_mapper_3d':
         from clab.tasks.urban_mapper_3d import UrbanMapper3D
         if boundary:
-            workdir = '~/data/work/urban_mapper4'
             workdir = '~/data/work/urban_mapper2'
+            if ub.argval('--arch') == 'dense_unet':
+                workdir = '~/data/work/urban_mapper4'
         else:
             workdir = '~/data/work/urban_mapper'
 
@@ -482,6 +483,8 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --combine
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff
 
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=dense_unet --colorspace=RGB --use_aux_diff
+
 
     Example:
         >>> from clab.torch.fit_harness import *
@@ -501,7 +504,7 @@ def urban_fit():
     #     datasets['train'].center_inputs = datasets['train']._custom_urban_mapper_normalizer(
     #         0.3750553785198646, 1.026544662398811, 2.5136079110849674)
     # else:
-    datasets['train'].center_inputs = datasets['train']._make_normalizer()
+    datasets['train'].center_inputs = datasets['train']._make_normalizer(mode=2)
     # datasets['train'].center_inputs = _custom_urban_mapper_normalizer(0, 1, 2.5)
 
     datasets['test'].center_inputs = datasets['train'].center_inputs
@@ -519,6 +522,8 @@ def urban_fit():
     batch_size = 14
     if arch == 'segnet':
         batch_size = 6
+    elif arch == 'dense_unet':
+        batch_size = 20
 
     n_classes = datasets['train'].n_classes
     n_channels = datasets['train'].n_channels
@@ -615,6 +620,11 @@ def urban_fit():
         model_state_dict = snapshot['model_state_dict']
         model.load_partial_state(model_state_dict)
 
+    elif arch == 'dense_unet':
+        from clab.live import unet3
+        model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
+                                n_classes=n_classes)
+        model.init_he_normal()
     elif arch == 'dummy':
         model = models.SSegDummy(in_channels=n_channels, n_classes=n_classes)
     else:

@@ -209,16 +209,25 @@ def shortest_unique_suffixes(items, sep=None):
 
 
 def _safepaths(paths):
+    """
+    x = '/home/local/KHQ/jon.crall/code/clab/clab/live/urban_train.py'
+    import re
+    %timeit splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
+    %timeit splitext(re.sub('<sl>|_', '-', x))
+    %timeit x[:x.rfind('.')].replace('<sl>', '-').replace('_', '-')
+
+    """
     safe_paths = [
-        splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
+        # faster than splitext
+        x[:x.rfind('.')].replace('<sl>', '-').replace('_', '-')
+        # splitext(x.replace('<sl>', '-').replace('_', '-'))[0]
         for x in dumpsafe(paths)
     ]
     return safe_paths
 
-from clab import profiler
 
-
-@profiler.profile_onthefly
+# from clab import profiler
+# @profiler.profile_onthefly
 def align_paths(paths1, paths2):
     """
     return path2 in the order of path1

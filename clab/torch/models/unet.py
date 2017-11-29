@@ -1,4 +1,5 @@
 import torch.nn as nn
+from clab.torch.models import mixin
 import functools
 import math
 import torch
@@ -168,7 +169,7 @@ class UNetUp(nn.Module):
         return self.conv(outputs_cat)
 
 
-class UNet(nn.Module):
+class UNet(nn.Module, mixin.NetMixin):
     """
     Note input shapes should be a power of 2.
 
