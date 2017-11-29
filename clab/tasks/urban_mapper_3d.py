@@ -59,9 +59,9 @@ class UrbanMapper3D(SemanticSegmentationTask):
         >>> (train, test), = task.xval_splits()
         >>> inputs_base = ub.ensuredir((task.workdir, 'inputs'))
         >>> train.base_dpath = inputs_base
-        >>> train.prepare_images()
+        >>> train.prepare_images(force=True)
         >>> train.prepare_input()
-        >>> gtstats = train.prepare_gtstats(task)
+        >>> gtstats = train.prepare_gtstats(task, force=True)
         >>> nan_value = -32767.0  # hack: specific number for DTM
         >>> center_stats = self.inputs.prepare_center_stats(
         >>>     task, nan_value=nan_value, colorspace='RGB')

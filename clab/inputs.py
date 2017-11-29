@@ -545,9 +545,9 @@ class Inputs(ub.NiceRepr):
         Caches stats like class frequency to disk, before we start training
         """
         self.prepare_input()
-
         gtstats_fpath = join(self.input_dpath, 'gtstats_v1.json')
-        if force or exists(gtstats_fpath):
+        print('gtstats_fpath = {!r}'.format(gtstats_fpath))
+        if not force and exists(gtstats_fpath):
             gtstats = pd.read_json(gtstats_fpath)
         else:
             self.prepare_images()
