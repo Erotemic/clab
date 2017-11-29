@@ -548,7 +548,7 @@ def urban_fit():
         optimizer=(torch.optim.SGD, {
             # 'weight_decay': .0006,
             'weight_decay': .0005,
-            'momentum': 0.9,
+            'momentum': 0.99 if arch == 'dense_unet' else .9,
             'nesterov': True,
         }),
         scheduler=('Exponential', {
