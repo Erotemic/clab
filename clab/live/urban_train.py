@@ -73,9 +73,9 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             self.aux_keys = []
 
         self.center_inputs = None
-        self.use_residual_aux = ub.argflag('--use_residual_aux')
+        self.use_aux_diff = ub.argflag('--use_aux_diff')
 
-    def _make_normalizer(self):
+    def _make_normalizer(self, mode=2):
         transforms = []
         nan_value = -32767.0  # hack: specific number for DTM
         if len(self.inputs):
@@ -93,11 +93,14 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             elif self.colorspace == 'RGB':
                 # Normalize across channels for RGB
                 # scalar_stats = self.center_stats['image']['simple']['image']
-                # im_mean = scalar_stats['mean']  # [[[ 0.35233748]]]
-                # im_scale = scalar_stats['std']  # [[[ 0.19598562]]]
-                # scalar_stats = self.center_stats['image']['simple']['image']
-                im_mean = 0
-                im_scale = 1
+                if mode == 1:
+                    im_mean = 0
+                    im_scale = 1
+                elif mode == 2:
+                    im_mean = .5
+                    im_scale = .75
+                else:
+                    raise KeyError(mode)
                 # self.im_center = ub.identity
             else:
                 raise Exception()
@@ -110,12 +113,17 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             if self.aux_keys:
                 # Note: Internal stats are not gaurenteed to make sense outside
                 # the DTM domain.
-                internal_aux_stats = self.center_stats['aux']['internal']
-                mean_deviation = internal_aux_stats['image']['mean_absdev_from_median']['mean']
+                if mode == 1:
+                    internal_aux_stats = self.center_stats['aux']['internal']
+                    scale = internal_aux_stats['image']['mean_absdev_from_median']['mean']
+                elif mode == 2:
+                    scale = self.center_stats['aux']['internal']['image']['std']['mean']
+                else:
+                    raise KeyError(mode)
                 # zero the median on a per-chip basis, but use
                 # the global internal_std to normalize extent
                 # aux_std =
-                aux_center = DTMCenterScale(mean_deviation,  # 2.8718751612937639
+                aux_center = DTMCenterScale(scale,  # 2.8718751612937639
                                             nan_value=nan_value, fill='median')
                 transforms.append(aux_center)
 
@@ -208,7 +216,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         input_tuple = [im] + aux_channels
         input_tuple = self.center_inputs(input_tuple)
 
-        if self.use_residual_aux:
+        if self.use_aux_diff:
             # add residual between dtm and dsm
             dtm_dsm = input_tuple[-1]
             residual = dtm_dsm[0] - dtm_dsm[1]
@@ -226,6 +234,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             >>> self.augment = True
             >>> index = 0
             >>> self.center_inputs = self._make_normalizer()
+            >>> self.use_aux_diff = True
             >>> im, gt = self[0]
         """
         input_tuple, gt = self.load_inputs(index)
@@ -295,7 +304,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             c = 3 + len(self.aux_keys)
         else:
             c = 3
-        return c + int(self.use_residual_aux)
+        return c + int(self.use_aux_diff)
         # return c + 1
 
     @property
@@ -468,7 +477,7 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --dry
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --combine
-        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_residual_aux
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff
 
 
     Example:
