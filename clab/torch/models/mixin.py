@@ -23,13 +23,15 @@ class NetMixin(object):
         # up_blocks = [self.up5, self.up4, self.up3, self.up2, self.up1]
         for layer in self.trainable_layers():
             nninit.he_normal(layer.weight)
-            layer.bias.data.fill_(0)
+            if layer.bias is not None:
+                layer.bias.data.fill_(0)
 
     def shock_outward(self):
         for layer in self.trainable_layers():
             nninit.shock_outward(layer.weight)
             # shock inward
-            layer.bias.data *= .1
+            if layer.bias is not None:
+                layer.bias.data *= .1
 
     def load_partial_state(model, model_state_dict, shock_partial=True):
         """
