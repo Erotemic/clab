@@ -107,6 +107,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         task.prepare_fullres_inputs()
         datadir = ub.ensuredir((task.workdir, 'data'))
         prep = preprocess.Preprocessor(datadir)
+        prep.part_config['overlap'] = .75
 
         prep.ignore_label = task.ignore_label
 

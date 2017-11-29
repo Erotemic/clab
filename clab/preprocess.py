@@ -33,7 +33,6 @@ class Preprocessor(object):
     def __init__(prep, datadir):
         prep.datadir = datadir
         prep.input_shape = (360, 480)
-        prep.part_overlap = .25
         prep.ignore_label = None
         prep.part_config = {
             'overlap': .25,
