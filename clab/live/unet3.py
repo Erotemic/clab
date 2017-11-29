@@ -382,6 +382,11 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         return (output_shapes['final1'], output_shapes['final2'])
 
     def forward(self, inputs):
+        if isinstance(inputs, (list, tuple)):
+            if len(inputs) != 1:
+                raise ValueError('Only accepts one input')
+            inputs = inputs[0]
+
         features = self.features(inputs)
 
         conv1 = self.denseblock1(features)
