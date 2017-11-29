@@ -18,6 +18,10 @@ def default_nonlinearity():
 
 
 class DenseLayer(nn.Sequential):
+    """
+    self = DenseLayer(32, 32, 4)
+
+    """
     def __init__(self, num_input_features, growth_rate, bn_size, drop_rate=0):
         util.super2(DenseLayer, self).__init__()
         self.bn_size = bn_size
@@ -26,11 +30,11 @@ class DenseLayer(nn.Sequential):
         self.n_feat_out = num_input_features + growth_rate
 
         self.add_module('norm.1', nn.BatchNorm2d(num_input_features)),
-        self.add_module('noli.1', nn.ReLU(inplace=True)),
+        self.add_module('noli.1', default_nonlinearity()),
         self.add_module('conv.1', nn.Conv2d(num_input_features, bn_size *
                         growth_rate, kernel_size=1, stride=1, bias=False)),
         self.add_module('norm.2', nn.BatchNorm2d(self.n_feat_internal)),
-        self.add_module('noli.2', nn.ReLU(inplace=True)),
+        self.add_module('noli.2', default_nonlinearity()),
         self.add_module('conv.2', nn.Conv2d(self.n_feat_internal, growth_rate,
                         kernel_size=3, stride=1, padding=1, bias=False)),
         self.drop_rate = drop_rate
@@ -41,6 +45,30 @@ class DenseLayer(nn.Sequential):
             new_features = F.dropout(new_features, p=self.drop_rate, training=self.training)
         return torch.cat([x, new_features], 1)
 
+    def activation_shapes(self, input_shape):
+        norm1_shape = OutputShapeFor(self._modules['norm.1'])(input_shape)
+        noli1_shape = OutputShapeFor(self._modules['noli.1'])(norm1_shape)
+        conv1_shape = OutputShapeFor(self._modules['conv.1'])(noli1_shape)
+        norm2_shape = OutputShapeFor(self._modules['norm.2'])(conv1_shape)
+        noli2_shape = OutputShapeFor(self._modules['noli.2'])(norm2_shape)
+        conv2_shape = OutputShapeFor(self._modules['conv.2'])(noli2_shape)
+
+        activations = [
+            norm1_shape,
+        ]
+        if not self._modules['noli.1'].inplace:
+            activations.append(np.prod(noli1_shape))
+        activations += [
+            conv1_shape,
+            norm2_shape,
+        ]
+        if not self._modules['noli.2'].inplace:
+            activations.append(np.prod(noli2_shape))
+        activations += [
+            conv2_shape,
+        ]
+        return activations
+
     def output_shape_for(self, input_shape):
         N1, C1, W1, H1 = input_shape
         output_shape = (N1, self.n_feat_out, W1, H1)
@@ -48,6 +76,9 @@ class DenseLayer(nn.Sequential):
 
 
 class DenseBlock(nn.Sequential):
+    """
+    self = DenseBlock(4, 32)
+    """
     def __init__(self, num_layers, num_input_features, bn_size=4, growth_rate=32, drop_rate=0):
         util.super2(DenseBlock, self).__init__()
         self.num_layers = num_layers
@@ -56,15 +87,40 @@ class DenseBlock(nn.Sequential):
             self.add_module('denselayer%d' % (i + 1), layer)
         self.n_feat_out = layer.n_feat_out
 
+    def activation_shapes(self, input_shape):
+        shape = input_shape
+        activations = []
+        for i in range(self.num_layers):
+            module = self._modules['denselayer%d' % (i + 1)]
+            activations += module.activation_shapes(shape)
+            shape = OutputShapeFor(module)(shape)
+        return activations
+
 
 class Transition(nn.Sequential):
+    """
+    self = Transition(64, 32)
+    """
     def __init__(self, num_input_features, num_output_features):
         util.super2(Transition, self).__init__()
         self.add_module('norm', nn.BatchNorm2d(num_input_features))
-        self.add_module('noli', nn.ReLU(inplace=True))
+        self.add_module('noli', default_nonlinearity())
         self.add_module('conv', nn.Conv2d(num_input_features, num_output_features,
                                           kernel_size=1, stride=1, bias=False))
         self.add_module('pool', nn.AvgPool2d(kernel_size=2, stride=2))
+
+    def activation_shapes(self, input_shape):
+        norm_shape = OutputShapeFor(self._modules['norm'])(input_shape)
+        noli_shape = OutputShapeFor(self._modules['noli'])(norm_shape)
+        conv_shape = OutputShapeFor(self._modules['conv'])(noli_shape)
+        pool_shape = OutputShapeFor(self._modules['pool'])(conv_shape)
+        activations = [
+            norm_shape
+        ]
+        if not self._modules['noli'].inplace:
+            activations.append(np.prod(noli_shape))
+        activations += [conv_shape, pool_shape]
+        return activations
 
 
 class PadToAgree(nn.Module):
@@ -126,14 +182,15 @@ class DenseUNetUp(nn.Module):
     def __init__(self, in_size1, in_size2, compress=.5, num_layers=2,
                  growth_rate=4, is_deconv=True):
         util.super2(DenseUNetUp, self).__init__()
-        out_size2 = int(compress * in_size2)
-        in_size = in_size1 + out_size2
-        bneck_size = int(in_size1 * compress)
         if is_deconv:
+            out_size2 = int(compress * in_size2)
             self.up = nn.ConvTranspose2d(in_size2, out_size2, kernel_size=2,
                                          stride=2, bias=False)
         else:
-            self.up = nn.UpsamplingBilinear2d(scale_factor=2)
+            out_size2 = in_size2
+            self.up = nn.Upsample(scale_factor=2, mode='bilinear')
+        in_size = in_size1 + out_size2
+        bneck_size = int(in_size1 * compress)
         self.pad = PadToAgree()
         self.conv = DenseBlock(num_layers, in_size, growth_rate=growth_rate,
                                 bn_size=4)
@@ -206,10 +263,21 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         >>> B, C, W, H = (4, 3, 480, 360)
         >>> input_shape = (B, C, W, H)
 
-        >>> self = DenseUNet(in_channels=C)
+        >>> self = DenseUNet(in_channels=C, is_deconv=False)
         >>> print('output shapes')
         >>> print(ub.repr2(self.output_shapes(input_shape), nl=1))
-        >>> self.number_of_parameters()
+        >>> print('nParams = {}'.format(self.number_of_parameters()))
+
+        # Rough estimate of how many floating point numbers need to be alloced
+        x = self.output_shapes(input_shape)
+        float_n_bytes = 4
+
+        rough_num_floats = sum([np.prod(val) for val in x.values()])
+        param_bytes = float_n_bytes * self.number_of_parameters()
+        activation_bytes = float_n_bytes * rough_num_floats
+        print(ut.byte_str2(activation_bytes))
+        print(ut.byte_str2(param_bytes))
+
         >>> inputs = Variable(torch.rand(B, C, W, H), volatile=True)
         >>> outputs = self(inputs)
 
@@ -229,11 +297,11 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         >>> print(np.array(inputs.size()) - np.array(outputs.size()))
 
     """
-    def __init__(self, n_classes=21, n_alt_classes=3, in_channels=3):
+    def __init__(self, n_classes=21, n_alt_classes=3, in_channels=3, is_deconv=True):
         util.super2(DenseUNet, self).__init__()
         self.in_channels = in_channels
 
-        n_feat0 = 64
+        n_feat0 = 48
         from torch import nn
         features = nn.Sequential(ub.odict([
             ('conv0', nn.Conv2d(in_channels, n_feat0, kernel_size=7, stride=1,
@@ -244,7 +312,7 @@ class DenseUNet(nn.Module, mixin.NetMixin):
             # ('pool0', nn.MaxPool2d(kernel_size=3, stride=2, padding=1)),
         ]))
 
-        block_config = [3, 4, 4, 4, 4]
+        block_config = [2, 3, 3, 3, 3]
         bn_size = 4
         compress = .5
         growth_rate = 32
@@ -279,10 +347,10 @@ class DenseUNet(nn.Module, mixin.NetMixin):
 
         center5.n_feat_out
 
-        up_concat4 = DenseUNetUp(self.denseblock4.n_feat_out, center5.n_feat_out)
-        up_concat3 = DenseUNetUp(self.denseblock3.n_feat_out, up_concat4.n_feat_out)
-        up_concat2 = DenseUNetUp(self.denseblock2.n_feat_out, up_concat3.n_feat_out)
-        up_concat1 = DenseUNetUp(self.denseblock1.n_feat_out, up_concat2.n_feat_out)
+        up_concat4 = DenseUNetUp(self.denseblock4.n_feat_out, center5.n_feat_out, is_deconv=is_deconv)
+        up_concat3 = DenseUNetUp(self.denseblock3.n_feat_out, up_concat4.n_feat_out, is_deconv=is_deconv)
+        up_concat2 = DenseUNetUp(self.denseblock2.n_feat_out, up_concat3.n_feat_out, is_deconv=is_deconv)
+        up_concat1 = DenseUNetUp(self.denseblock1.n_feat_out, up_concat2.n_feat_out, is_deconv=is_deconv)
 
         self.features = features
         self.center5 = center5
@@ -328,20 +396,81 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         # self.down_net = down_net
 
     def output_shapes(self, input_shape):
-        graph = self.connectivity()
-        output_shapes = ub.odict()
-        # prev = None
-        import networkx as nx
-        for node in list(nx.topological_sort(graph)):
-            preds = graph.pred[node]
-            if not preds:
-                in_shapes = [input_shape]
+        conn = self.connectivity()
+        conn.io_shapes(input_shape)
+        return conn.output_shapes
+
+        #     print('* {}'.format(node))
+        #     implicit_input_shape = len(preds) == 1 and prev in preds
+        #     if not implicit_input_shape:
+        #         print('   * in_shapes  = {!r}'.format(in_shapes))
+        #     print('   * out_shapes = {!r}'.format(out_shapes))
+        #     prev = node
+        # print('output_shapes = {}'.format(ub.repr2(output_shapes, nl=1)))
+
+    def n_activation_shapes(self, input_shape):
+        """
+        >>> from clab.live.unet3 import *
+        >>> from torch.autograd import Variable
+        >>> input_shape = (10, 3, 480, 360)
+        >>> self = DenseUNet(in_channels=3, is_deconv=False)
+        """
+        conn = self.connectivity()
+        conn.io_shapes(input_shape)
+
+        activations = []
+        for node in conn.topsort:
+            in_shapes = conn.input_shapes[node]
+            module = self._modules[node]
+            if hasattr(module, 'activation_shapes'):
+                activations += module.activation_shapes(*in_shapes)
             else:
-                in_shapes = []
+                activations += [conn.output_shapes[node]]
+
+        # print(ut.byte_str2(sum(map(np.prod, activations)) * 4))
+
+    def connectivity(self):
+        class ConnectivityInfo(object):
+            def __init__(conn, graph):
+                conn.graph = graph
+                # only valid if each internal module produces a single output
+                conn.input_nodes = None
+                conn.topsort = None
+
+            def io_shapes(conn, input_shape):
+                output_shapes = ub.odict()
+                input_shapes = ub.odict()
+                # prev = None
+                for node in conn.topsort:
+                    pass
+                    in_names = conn.input_nodes[node]
+                    if in_names is None:
+                        in_shapes = [input_shape]
+                    else:
+                        in_shapes = list(ub.take(output_shapes, in_names))
+                    input_shapes[node] = in_shapes
+                    out_shapes = OutputShapeFor(getattr(self, node))(*in_shapes)
+                    output_shapes[node] = out_shapes
+                conn.output_shapes = output_shapes
+                conn.input_shapes = input_shapes
+
+        import networkx as nx
+        graph = nx.DiGraph()
+        conn = ConnectivityInfo(graph)
+        # Main FCN path
+        nx.add_path(graph, self.main_path, )
+        graph.add_edges_from(self.other_edges)
+
+        conn.input_nodes = input_nodes = ub.odict()
+        conn.topsort = list(nx.topological_sort(graph))
+
+        import networkx as nx
+        for node in conn.topsort:
+            preds = list(graph.pred[node])
+            if preds:
                 argxs = []
                 for k in preds:
                     argxs.append(graph.edges[(k, node)].get('argx', None))
-                    in_shapes.append(output_shapes[k])
                 def rectify_argxs(argxs):
                     """
                     Ensure the arguments are given in the correct order
@@ -355,27 +484,11 @@ class DenseUNet(nn.Module, mixin.NetMixin):
                         argxs[missingx] = values[0]
                     return argxs
                 argxs = rectify_argxs(argxs)
-                in_shapes = list(ub.take(in_shapes, argxs))
-
-            out_shapes = OutputShapeFor(getattr(self, node))(*in_shapes)
-            output_shapes[node] = out_shapes
-        return output_shapes
-
-        #     print('* {}'.format(node))
-        #     implicit_input_shape = len(preds) == 1 and prev in preds
-        #     if not implicit_input_shape:
-        #         print('   * in_shapes  = {!r}'.format(in_shapes))
-        #     print('   * out_shapes = {!r}'.format(out_shapes))
-        #     prev = node
-        # print('output_shapes = {}'.format(ub.repr2(output_shapes, nl=1)))
-
-    def connectivity(self):
-        import networkx as nx
-        graph = nx.DiGraph()
-        # Main FCN path
-        nx.add_path(graph, self.main_path, )
-        graph.add_edges_from(self.other_edges)
-        return graph
+                arg_names = list(ub.take(preds, argxs))
+                input_nodes[node] = arg_names
+            else:
+                input_nodes[node] = None
+        return conn
 
     def output_shape_for(self, input_shape):
         output_shapes = self.output_shapes(input_shape)
@@ -389,25 +502,25 @@ class DenseUNet(nn.Module, mixin.NetMixin):
 
         features = self.features(inputs)
 
-        conv1 = self.denseblock1(features)
-        maxpool1 = self.transition1(conv1)
+        conv1 = self.denseblock1.forward(features)
+        maxpool1 = self.transition1.forward(conv1)
 
-        conv2 = self.denseblock2(maxpool1)
-        maxpool2 = self.transition2(conv2)
+        conv2 = self.denseblock2.forward(maxpool1)
+        maxpool2 = self.transition2.forward(conv2)
 
-        conv3 = self.denseblock3(maxpool2)
-        maxpool3 = self.transition3(conv3)
+        conv3 = self.denseblock3.forward(maxpool2)
+        maxpool3 = self.transition3.forward(conv3)
 
-        conv4 = self.denseblock4(maxpool3)
-        maxpool4 = self.transition4(conv4)
+        conv4 = self.denseblock4.forward(maxpool3)
+        maxpool4 = self.transition4.forward(conv4)
 
-        center = self.center5(maxpool4)
+        center = self.center5.forward(maxpool4)
 
-        up4 = self.up_concat4(conv4, center)
-        up3 = self.up_concat3(conv3, up4)
-        up2 = self.up_concat2(conv2, up3)
-        up1 = self.up_concat1(conv1, up2)
+        up4 = self.up_concat4.forward(conv4, center)
+        up3 = self.up_concat3.forward(conv3, up4)
+        up2 = self.up_concat2.forward(conv2, up3)
+        up1 = self.up_concat1.forward(conv1, up2)
 
-        final1 = self.final1(up1)
-        final2 = self.final2(up1)
+        final1 = self.final1.forward(up1)
+        final2 = self.final2.forward(up1)
         return final1, final2

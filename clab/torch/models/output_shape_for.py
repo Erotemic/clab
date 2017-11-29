@@ -44,6 +44,9 @@ class OutputShapeFor(object):
         else:
             # a simple pytorch func
             output_shape = self._func(*args, **kwargs)
+        # debug = True
+        # if debug:
+        #     print('{}.output_shape = {}'.format(str(self._func.__name__), output_shape))
         return output_shape
 
     @staticmethod
@@ -68,6 +71,42 @@ class OutputShapeFor(object):
         H_out = math.floor(H_in * module.scale_factor)
         W_out = math.floor(W_in  * module.scale_factor)
         output_shape = (N, C, H_out, W_out)
+        return output_shape
+
+    @staticmethod
+    @compute_type(nn.Upsample)
+    def Upsample(module, input_shape):
+        """
+        - Input: :math:`(N, C, H_{in}, W_{in})`
+        - Output: :math:`(N, C, H_{out}, W_{out})` where
+            :math:`H_{out} = floor(H_{in} * scale\_factor)`
+            :math:`W_{out} = floor(W_{in}  * scale\_factor)`
+
+        Example:
+            >>> from clab.torch.models.output_shape_for import *
+            >>> input_shape = (1, 3, 256, 256, 256)
+            >>> module = nn.Upsample(scale_factor=(2, 3, 4))
+            >>> output_shape = OutputShapeFor(module)(input_shape)
+            >>> print('output_shape = {!r}'.format(output_shape))
+            output_shape = (1, 3, 512, 768, 1024)
+            >>> module = nn.Upsample(size=100)
+            >>> output_shape = OutputShapeFor(module)(input_shape)
+            >>> print('output_shape = {!r}'.format(output_shape))
+            (1, 3, 100, 100, 100)
+        """
+        math = OutputShapeFor.math
+        N, C, *DIMS_in = input_shape
+
+        if module.size is None:
+            scale_factor = ensure_iterablen(module.scale_factor, len(DIMS_in))
+            DIMS_out = [
+                math.floor(D_in * scale_factor[i])
+                for i, D_in in enumerate(DIMS_in)
+            ]
+        else:
+            DIMS_out = ensure_iterablen(module.size, len(DIMS_in))
+
+        output_shape = tuple([N, C] + DIMS_out)
         return output_shape
 
     @staticmethod
