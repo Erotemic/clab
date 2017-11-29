@@ -73,9 +73,10 @@ def shortest_unique_prefixes(items, sep=None):
         naive_solution = [t[0] for t in tokens]
         if len(naive_solution) == len(set(naive_solution)):
             return naive_solution
-        naive_solution = ['-'.join(t[0:2]) for t in tokens]
-        if len(naive_solution) == len(set(naive_solution)):
-            return naive_solution
+        for i in range(2, 5):
+            naive_solution = ['-'.join(t[:i]) for t in tokens]
+            if len(naive_solution) == len(set(naive_solution)):
+                return naive_solution
 
         trie = pygtrie.StringTrie.fromkeys(items, value=0, separator=sep)
 
