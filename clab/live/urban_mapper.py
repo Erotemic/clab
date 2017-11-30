@@ -600,27 +600,27 @@ class PredictHarness(object):
                 log_probs = log_prob_tensor.data.cpu().numpy()
 
                 # Just reload rgb data without inverting the transform
-                img = imutil.imread(pharn.dataset.inputs.im_paths[ix])
+                bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
 
                 # output = prob_tensor.data.cpu().numpy()[0]
 
-                pred = log_probs.argmax(axis=0)
+                # pred = log_probs.argmax(axis=0)
 
                 # pred = argmax.data.cpu().numpy()[0]
-                blend_pred = pharn.dataset.task.colorize(pred, img)
+                # blend_pred = pharn.dataset.task.colorize(pred, bgr)
 
                 output_dict = {
-                    'blend_pred' + suffix: blend_pred,
+                    # 'blend_pred' + suffix: blend_pred,
                     # 'color_pred': color_pred,
-                    'pred' + suffix: pred,
+                    # 'pred' + suffix: pred,
                     'log_probs' + suffix: log_probs,
                 }
 
                 if False:
                     from clab.torch import filters
-                    posterior = filters.crf_posterior(img, log_probs)
+                    posterior = filters.crf_posterior(bgr, log_probs)
                     pred_crf = posterior.argmax(axis=0)
-                    blend_pred_crf = pharn.dataset.task.colorize(pred_crf, img)
+                    blend_pred_crf = pharn.dataset.task.colorize(pred_crf, bgr)
                     # color_pred = task.colorize(pred)
                     output_dict.update({
                         'blend_pred_crf' + suffix: blend_pred_crf,
@@ -629,20 +629,20 @@ class PredictHarness(object):
 
                 if pharn.dataset.with_gt:
                     true = imutil.imread(pharn.dataset.inputs.gt_paths[ix])
-                    blend_true = pharn.dataset.task.colorize(true, img, alpha=.5)
+                    blend_true = pharn.dataset.task.colorize(true, bgr, alpha=.5)
                     # color_true = task.colorize(true, alpha=.5)
                     output_dict['true' + suffix] = true
                     output_dict['blend_true' + suffix] = blend_true
                     # output_dict['color_true'] = color_true
 
-                for key, img in output_dict.items():
+                for key, data in output_dict.items():
                     dpath = join(pharn.test_dump_dpath, key)
                     ub.ensuredir(dpath)
                     fpath = join(dpath, fname)
                     if key == 'log_probs' + suffix:
-                        np.savez(fpath.replace('.png', ''), img)
+                        np.savez(fpath.replace('.png', ''), data)
                     else:
-                        imutil.imwrite(fpath, img)
+                        imutil.imwrite(fpath, data)
 
 
 # def erode_ccs(ccs):
