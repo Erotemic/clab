@@ -114,20 +114,20 @@ def adjust_gamma(img, gamma=1.0):
         # apply gamma correction using the lookup table
         return cv2.LUT(img, table)
     else:
-        np_img = ensure_float01(img)
+        np_img = ensure_float01(img, copy=False)
         gain = 1
         np_img = gain * (np_img ** (1 / gamma))
         np_img = np.clip(np_img, 0, 1)
         return np_img
 
 
-def ensure_float01(img, dtype=np.float32):
+def ensure_float01(img, dtype=np.float32, copy=True):
     """ Ensure that an image is encoded using a float properly """
     if img.dtype.kind in ('i', 'u'):
         assert img.max() <= 255
-        img_ = img.astype(dtype) / 255.0
+        img_ = img.astype(dtype, copy=copy) / 255.0
     else:
-        img_ = img.astype(dtype)
+        img_ = img.astype(dtype, copy=copy)
     return img_
 
 
@@ -231,47 +231,123 @@ def overlay_alpha_images(img1, img2, keepalpha=True):
     Args:
         img1 (ndarray): top image to overlay over img2
         img2 (ndarray): base image to superimpose on
+        keepalpha (bool): if False, the alpha channel is removed after blending
 
     References:
         http://stackoverflow.com/questions/25182421/overlay-numpy-alpha
         https://en.wikipedia.org/wiki/Alpha_compositing#Alpha_blending
     """
-    img1 = ensure_float01(img1)
-    img2 = ensure_float01(img2)
+    # img1, img2 = make_channels_comparable(img1, img2)
+    rgb1, alpha1 = _prep_rgb_alpha(img1)
+    rgb2, alpha2 = _prep_rgb_alpha(img2)
 
-    img1, img2 = make_channels_comparable(img1, img2)
-
-    c1 = get_num_channels(img1)
-    c2 = get_num_channels(img2)
-    if c1 == 4:
-        alpha1 = img1[:, :, 3]
-    else:
-        alpha1 = np.ones(img1.shape[0:2], dtype=img1.dtype)
-
-    if c2 == 4:
-        alpha2 = img2[:, :, 3]
-    else:
-        alpha2 = np.ones(img2.shape[0:2], dtype=img2.dtype)
-
-    rgb1 = img1[:, :, 0:3]
-    rgb2 = img2[:, :, 0:3]
-
-    alpha3 = alpha1 + alpha2 * (1 - alpha1)
-
-    numer1 = (rgb1 * alpha1[..., None])
-    numer2 = (rgb2 * alpha2[..., None] * (1.0 - alpha1[..., None]))
-    rgb3 = (numer1 + numer2) / alpha3[..., None]
-    rgb3 = np.nan_to_num(rgb3)
+    # Perform the core alpha blending algorithm
+    # rgb3, alpha3 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
+    rgb3, alpha3 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
 
     if keepalpha:
         img3 = np.dstack([rgb3, alpha3[..., None]])
+        # Note: if we want to output a 255 img we could do something like this
+        # out = np.zeros_like(img1)
+        # out[..., :3] = rgb3
+        # out[..., 3] = alpha3
     else:
         img3 = rgb3
     return img3
 
 
+def _prep_rgb_alpha(img):
+    img = ensure_float01(img, copy=False)
+    img = atleast_3channels(img, copy=False)
+
+    c = get_num_channels(img)
+
+    if c == 4:
+        # rgb = np.ascontiguousarray(img[..., 0:3])
+        # alpha = np.ascontiguousarray(img[..., 3])
+        rgb = img[..., 0:3]
+        alpha = img[..., 3]
+    else:
+        rgb = img
+        alpha = np.ones_like(img[..., 0])
+    return rgb, alpha
+
+
+def _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2):
+    """
+    Uglier but faster version of the core alpha blending algorithm
+
+    f1, f2 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
+    s1, s2 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
+
+    assert np.all(f1 == s1)
+    assert np.all(f2 == s2)
+
+    _ = profiler.profile_onthefly(overlay_alpha_images)(img1, img2)
+    _ = profiler.profile_onthefly(_prep_rgb_alpha)(img1)
+    _ = profiler.profile_onthefly(_prep_rgb_alpha)(img2)
+
+    _ = profiler.profile_onthefly(_alpha_blend_core)(rgb1, alpha1, rgb2, alpha2)
+    _ = profiler.profile_onthefly(_alpha_blend_core_prealloc)(rgb1, alpha1, rgb2, alpha2)
+
+    rgb1 = np.ascontiguousarray(rgb1)
+
+    # alpha1_ = np.tile(alpha1[..., None], (3))
+    # %timeit np.tile(alpha1[..., None], (3))
+    # %timeit rgb1 * alpha1_
+    # %timeit rgb1 * alpha1[..., None]
+    """
+    rgb3 = np.empty_like(rgb1)
+    temp_rgb = np.empty_like(rgb1)
+    alpha3 = np.empty_like(alpha1)
+    temp_alpha = np.empty_like(alpha1)
+
+    # hold (1 - alpha1)
+    np.subtract(1, alpha1, out=temp_alpha)
+
+    # alpha3
+    np.copyto(temp_alpha, alpha3)
+    np.multiply(alpha2, alpha3, out=alpha3)
+    np.add(alpha1, alpha3, out=alpha3)
+
+    # numer1
+    np.multiply(rgb1, alpha1[..., None], out=rgb3)
+
+    # numer2
+    np.multiply(alpha2, temp_alpha, out=temp_alpha)
+    np.multiply(rgb2, temp_alpha[..., None], out=temp_rgb)
+
+    # (numer1 + numer2)
+    np.add(rgb3, temp_rgb, out=rgb3)
+
+    np.divide(rgb3, alpha3[..., None], out=rgb3)
+    rgb3[alpha3 == 0] = 0
+    # numer1 = (rgb1 * alpha1[..., None])
+    # numer2 = (rgb2 * alpha2[..., None] * (1.0 - alpha1[..., None]))
+    # rgb3 = (numer1 + numer2) / alpha3[..., None]
+    # rgb3[alpha3 == 0] = 0
+    return rgb3, alpha3
+
+
+def _alpha_blend_core(rgb1, alpha1, rgb2, alpha2):
+    """
+    Core alpha blending algorithm
+
+    SeeAlso:
+        _alpha_blend_core_prealloc
+    """
+    c_alpha1 = (1.0 - alpha1)
+    alpha3 = alpha1 + alpha2 * c_alpha1
+
+    numer1 = (rgb1 * alpha1[..., None])
+    numer2 = (rgb2 * (alpha2 * c_alpha1)[..., None])
+    rgb3 = (numer1 + numer2) / alpha3[..., None]
+    rgb3[alpha3 == 0] = 0
+    return rgb3, alpha3
+
+
 def ensure_alpha_channel(img, alpha=1.0):
-    img = ensure_float01(img)
+    img = ensure_float01(img, copy=False)
     c = get_num_channels(img)
     if c == 4:
         return img
@@ -285,8 +361,43 @@ def ensure_alpha_channel(img, alpha=1.0):
             raise ValueError('unknown dim')
 
 
+def atleast_3channels(arr, copy=True):
+    r"""
+    Ensures that there are 3 channels in the image
+
+    Args:
+        arr (ndarray[N, M, ...]): the image
+        copy (bool): Always copies if True, if False, then copies only when the
+            size of the array must change.
+
+    Returns:
+        ndarray: with shape (N, M, C), where C in {3, 4}
+
+    Doctest:
+        >>> assert atleast_3channels(np.zeros((10, 10))).shape[-1] == 3
+        >>> assert atleast_3channels(np.zeros((10, 10, 1))).shape[-1] == 3
+        >>> assert atleast_3channels(np.zeros((10, 10, 3))).shape[-1] == 3
+        >>> assert atleast_3channels(np.zeros((10, 10, 4))).shape[-1] == 4
+    """
+    ndims = len(arr.shape)
+    if ndims == 2:
+        res = np.tile(arr[:, :, None], 3)
+        return res
+    elif ndims == 3:
+        h, w, c = arr.shape
+        if c == 1:
+            res = np.tile(arr, 3)
+        elif c in [3, 4]:
+            res = arr.copy() if copy else arr
+        else:
+            raise ValueError('Cannot handle ndims={}'.format(ndims))
+    else:
+        raise ValueError('Cannot handle arr.shape={}'.format(arr.shape))
+    return res
+
+
 def ensure_grayscale(img, colorspace_hint='BGR'):
-    img = ensure_float01(img)
+    img = ensure_float01(img, copy=False)
     c = get_num_channels(img)
     if c == 1:
         return img
