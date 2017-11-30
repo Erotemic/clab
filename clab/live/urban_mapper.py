@@ -271,8 +271,8 @@ def eval_internal_testset():
     paths = {}
     paths['probs'] = pharn._restitch_type('log_probs', blend='avew', force=False)
     paths['probs1'] = pharn._restitch_type('log_probs1', blend='avew', force=False)
-    pharn._blend_full_probs(task, 'probs')
-    pharn._blend_full_probs(task, 'probs1')
+    pharn._blend_full_probs(task, 'probs', npz_fpaths=paths['probs'])
+    pharn._blend_full_probs(task, 'probs1', npz_fpaths=paths['probs1'])
 
     # Recombined predictions on chips into predictions on the original inputs
     paths = {}
@@ -542,16 +542,18 @@ class PredictHarness(object):
                                                        log_hack=log_hack)
         return restitched_paths
 
-    def _blend_full_probs(pharn, task, mode='probs1'):
+    def _blend_full_probs(pharn, task, mode='probs1', npz_fpaths=None):
         """
         Ignore:
             mode = 'probs1'
             pharn._restitch_type('log_probs1', blend='avew')
         """
-        dpath = join(pharn.test_dump_dpath, 'restiched', mode)
-        out_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', 'blend_' + mode))
 
-        npz_fpaths = glob.glob(join(dpath, '*.npz'))
+        if npz_fpaths is None:
+            dpath = join(pharn.test_dump_dpath, 'restiched', mode)
+            npz_fpaths = glob.glob(join(dpath, '*.npz'))
+
+        out_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', 'blend_' + mode))
 
         for fpath in ub.ProgIter(npz_fpaths, label='viz full probs'):
 

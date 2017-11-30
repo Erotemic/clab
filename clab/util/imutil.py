@@ -242,8 +242,8 @@ def overlay_alpha_images(img1, img2, keepalpha=True):
     rgb2, alpha2 = _prep_rgb_alpha(img2)
 
     # Perform the core alpha blending algorithm
-    # rgb3, alpha3 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
-    rgb3, alpha3 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
+    rgb3, alpha3 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
+    # rgb3, alpha3 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
 
     if keepalpha:
         img3 = np.dstack([rgb3, alpha3[..., None]])
