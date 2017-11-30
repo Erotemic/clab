@@ -211,27 +211,46 @@ def eval_internal_testset():
     Script:
         >>> eval_internal_testset()
     """
-    from clab.live.urban_train import load_task_dataset
-    datasets = load_task_dataset('urban_mapper_3d', combine=False)
-    test_dataset = datasets['test']
-    test_dataset.with_gt = False
-    test_dataset.inputs.make_dumpsafe_names()
-    # if False:
-    #     test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
-    # else:
-    #     datasets['test'].center_inputs = datasets['train']._make_normalizer()
-    test_dataset.tag = 'test'
 
     # if False:
     #     train_dpath = ub.truepath(
     #         '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
     # load_path = get_snapshot(train_dpath, epoch=202)
 
-    train_dpath = ub.argval('--train-dpath', default=None)
+    # train_dpath = ub.argval('--train-dpath', default=None)
     # train_dpath = ub.truepath(
     #     '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
     #     'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
-    epoch = ub.argval('--epoch', default=None)
+    # epoch = ub.argval('--epoch', default=None)
+
+    # if False:
+    #     test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
+    # else:
+    #     datasets['test'].center_inputs = datasets['train']._make_normalizer()
+
+    MODE = 'DENSE'
+
+    if MODE == 'DENSE':
+        arch = 'dense_unet'
+        train_dpath = ub.truepath(
+            '~/remote/aretha/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/'
+            'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
+        epoch = 8
+    elif MODE == 'UNET6CH':
+        arch = 'unet2'
+        train_dpath = ub.truepath(
+            '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/'
+            'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
+        epoch = 15
+    else:
+        raise KeyError(MODE)
+
+    from clab.live.urban_train import load_task_dataset
+    datasets = load_task_dataset('urban_mapper_3d', combine=False, arch=arch)
+    test_dataset = datasets['test']
+    test_dataset.with_gt = False
+    test_dataset.inputs.make_dumpsafe_names()
+    test_dataset.tag = 'test'
     epoch = int(epoch) if epoch is not None else epoch
 
     load_path = get_snapshot(train_dpath, epoch=epoch)

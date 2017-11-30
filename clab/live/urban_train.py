@@ -350,12 +350,13 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         return class_weights
 
 
-def get_task(taskname, boundary=True):
+def get_task(taskname, boundary=True, arch=None):
+    # the arch param is a hack
     if taskname == 'urban_mapper_3d':
         from clab.tasks.urban_mapper_3d import UrbanMapper3D
         if boundary:
             workdir = '~/data/work/urban_mapper2'
-            if ub.argval('--arch') == 'dense_unet':
+            if arch == 'dense_unet':
                 workdir = '~/data/work/urban_mapper4'
         else:
             workdir = '~/data/work/urban_mapper'
@@ -370,8 +371,8 @@ def get_task(taskname, boundary=True):
     return task
 
 
-def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, boundary=True):
-    task = get_task(taskname, boundary=boundary)
+def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, boundary=True, arch=None):
+    task = get_task(taskname, boundary=boundary, arch=arch)
     learn, test = next(task.xval_splits())
     learn.tag = 'learn'
 
@@ -495,8 +496,10 @@ def urban_fit():
         >>> from clab.torch.fit_harness import *
         >>> harn = urban_fit()
     """
+    arch = ub.argval('--arch', default='unet')
     colorspace = ub.argval('--colorspace', default='RGB').upper()
-    datasets = load_task_dataset('urban_mapper_3d', colorspace=colorspace)
+
+    datasets = load_task_dataset('urban_mapper_3d', colorspace=colorspace, arch=arch)
     datasets['train'].augment = True
 
     # Make sure we use consistent normalization
@@ -523,15 +526,18 @@ def urban_fit():
         for v in datasets.values():
             v.aux_keys = []
 
-    arch = ub.argval('--arch', default='unet')
     batch_size = 14
     if arch == 'segnet':
         batch_size = 6
     elif arch == 'dense_unet':
         batch_size = 6
-
-        # 3 ~= 5000MiB
-        # 5 = 8280MiB
+        # dense_unet batch memsizes
+        # idle =   11 MiB
+        # 0    =  438 MiB
+        # 3   ~= 5000 MiB
+        # 5    = 8280 MiB
+        # 6    = 9758 MiB
+        # each image adds (1478 - 1568.4) MiB
 
     n_classes = datasets['train'].n_classes
     n_channels = datasets['train'].n_channels

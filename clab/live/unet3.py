@@ -387,39 +387,41 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         self.final2 = nn.Conv2d(up_concat1.n_feat_out, n_alt_classes, 1)
         self._cache = {}
 
-        self.main_path = [
-            'features',
-            'denseblock1',
-            'transition1',
-            'denseblock2',
-            'transition2',
-            'denseblock3',
-            'transition3',
-            'denseblock4',
-            'transition4',
-            'center5',
-            'up_concat4',
-            'up_concat3',
-            'up_concat2',
-            'up_concat1',
-        ]
-        # When a node accepts multiple inputs, we need to specify which order
-        # they appear in the signature
-        self.other_edges = [
-            ('denseblock4', 'up_concat4', {'argx': 0}),
-            ('denseblock3', 'up_concat3', {'argx': 0}),
-            ('denseblock2', 'up_concat2', {'argx': 0}),
-            ('denseblock1', 'up_concat1', {'argx': 0}),
-            ('up_concat1', 'final1', {'argx': 0}),
-            ('up_concat1', 'final2', {'argx': 0}),
-        ]
-
+        self.connections = {
+            'path': [
+                # Main network forward path
+                'features',
+                'denseblock1',
+                'transition1',
+                'denseblock2',
+                'transition2',
+                'denseblock3',
+                'transition3',
+                'denseblock4',
+                'transition4',
+                'center5',
+                'up_concat4',
+                'up_concat3',
+                'up_concat2',
+                'up_concat1',
+            ],
+            'edges': [
+                # When a node accepts multiple inputs, we need to specify which
+                # order they appear in the signature
+                ('denseblock4', 'up_concat4', {'argx': 0}),
+                ('denseblock3', 'up_concat3', {'argx': 0}),
+                ('denseblock2', 'up_concat2', {'argx': 0}),
+                ('denseblock1', 'up_concat1', {'argx': 0}),
+                ('up_concat1', 'final1', {'argx': 0}),
+                ('up_concat1', 'final2', {'argx': 0}),
+            ]
+        }
         # down_net = nn.Sequential(ub.odict(down))
         # self.down_net = down_net
 
     def output_shapes(self, input_shape):
         conn = self.connectivity()
-        conn.io_shapes(input_shape)
+        conn.io_shapes(self, input_shape)
         return conn.output_shapes
 
         #     print('* {}'.format(node))
@@ -440,7 +442,7 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         >>> print(ut.byte_str2(sum(map(np.prod, activations)) * 4))
         """
         conn = self.connectivity()
-        conn.io_shapes(input_shape)
+        conn.io_shapes(self, input_shape)
         conn.output_shapes
 
         activations = []
@@ -453,67 +455,6 @@ class DenseUNet(nn.Module, mixin.NetMixin):
                 print('module = {!r}'.format(module))
                 activations += [conn.output_shapes[node]]
         return activations
-
-    def connectivity(self):
-        class ConnectivityInfo(object):
-            def __init__(conn, graph):
-                conn.graph = graph
-                # only valid if each internal module produces a single output
-                conn.input_nodes = None
-                conn.topsort = None
-
-            def io_shapes(conn, input_shape):
-                output_shapes = ub.odict()
-                input_shapes = ub.odict()
-                # prev = None
-                for node in conn.topsort:
-                    pass
-                    in_names = conn.input_nodes[node]
-                    if in_names is None:
-                        in_shapes = [input_shape]
-                    else:
-                        in_shapes = list(ub.take(output_shapes, in_names))
-                    input_shapes[node] = in_shapes
-                    out_shapes = OutputShapeFor(getattr(self, node))(*in_shapes)
-                    output_shapes[node] = out_shapes
-                conn.output_shapes = output_shapes
-                conn.input_shapes = input_shapes
-
-        import networkx as nx
-        graph = nx.DiGraph()
-        conn = ConnectivityInfo(graph)
-        # Main FCN path
-        nx.add_path(graph, self.main_path, )
-        graph.add_edges_from(self.other_edges)
-
-        conn.input_nodes = input_nodes = ub.odict()
-        conn.topsort = list(nx.topological_sort(graph))
-
-        import networkx as nx
-        for node in conn.topsort:
-            preds = list(graph.pred[node])
-            if preds:
-                argxs = []
-                for k in preds:
-                    argxs.append(graph.edges[(k, node)].get('argx', None))
-                def rectify_argxs(argxs):
-                    """
-                    Ensure the arguments are given in the correct order
-                    """
-                    given = [a for a in argxs if a is not None]
-                    mask = np.array(ub.boolmask(given, len(argxs)))
-                    values = np.where(~mask)[0]
-                    if len(values) > 0:
-                        assert len(values) <= 1
-                        missingx = argxs.index(None)
-                        argxs[missingx] = values[0]
-                    return argxs
-                argxs = rectify_argxs(argxs)
-                arg_names = list(ub.take(preds, argxs))
-                input_nodes[node] = arg_names
-            else:
-                input_nodes[node] = None
-        return conn
 
     def output_shape_for(self, input_shape):
         output_shapes = self.output_shapes(input_shape)

@@ -2,6 +2,62 @@
 import torch.nn as nn
 from clab.torch import nninit
 import numpy as np
+from clab.torch.models.output_shape_for import OutputShapeFor
+import ubelt as ub
+
+
+class ConnectivityInfo(object):
+    def __init__(conn, graph):
+        conn.graph = graph
+        # only valid if each internal module produces a single output
+        conn.input_nodes = None
+        conn.topsort = None
+
+    def io_shapes(conn, self, input_shape):
+        output_shapes = ub.odict()
+        input_shapes = ub.odict()
+        # prev = None
+        for node in conn.topsort:
+            pass
+            in_names = conn.input_nodes[node]
+            if in_names is None:
+                in_shapes = [input_shape]
+            else:
+                in_shapes = list(ub.take(output_shapes, in_names))
+            input_shapes[node] = in_shapes
+            out_shapes = OutputShapeFor(getattr(self, node))(*in_shapes)
+            output_shapes[node] = out_shapes
+        conn.output_shapes = output_shapes
+        conn.input_shapes = input_shapes
+
+    def build_graph(conn):
+        import networkx as nx
+        conn.input_nodes = input_nodes = ub.odict()
+        conn.topsort = list(nx.topological_sort(conn.graph))
+
+        for node in conn.topsort:
+            preds = list(conn.graph.pred[node])
+            if preds:
+                argxs = []
+                for k in preds:
+                    argxs.append(conn.graph.edges[(k, node)].get('argx', None))
+                def rectify_argxs(argxs):
+                    """
+                    Ensure the arguments are given in the correct order
+                    """
+                    given = [a for a in argxs if a is not None]
+                    mask = np.array(ub.boolmask(given, len(argxs)))
+                    values = np.where(~mask)[0]
+                    if len(values) > 0:
+                        assert len(values) <= 1
+                        missingx = argxs.index(None)
+                        argxs[missingx] = values[0]
+                    return argxs
+                argxs = rectify_argxs(argxs)
+                arg_names = list(ub.take(preds, argxs))
+                input_nodes[node] = arg_names
+            else:
+                input_nodes[node] = None
 
 
 class NetMixin(object):
@@ -14,6 +70,15 @@ class NetMixin(object):
                 yield item
             for child in item.children():
                 queue.append(child)
+
+    def connectivity(self):
+        import networkx as nx
+        graph = nx.DiGraph()
+        conn = ConnectivityInfo(graph)
+        # Main FCN path
+        nx.add_path(graph, self.connectivity['path'])
+        graph.add_edges_from(self.connectivity['edges'])
+        return conn
 
     def number_of_parameters(self):
         return sum([np.prod(p.size()) for p in self.parameters()])
