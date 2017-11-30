@@ -260,9 +260,16 @@ def eval_internal_testset():
     pharn = PredictHarness(test_dataset)
     test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
-    # gpu part
-    pharn.load_snapshot(load_path)
-    pharn.run()
+    needs_predict = True
+    if needs_predict:
+        # gpu part
+        pharn.load_snapshot(load_path)
+        pharn.run()
+
+    paths = {}
+    paths['probs'] = pharn._restitch_type('log_probs', blend='avew')
+    paths['probs1'] = pharn._restitch_type('log_probs1', blend='avew')
+    # blend_full_probs
 
     # Recombined predictions on chips into predictions on the original inputs
     paths = {}
@@ -509,7 +516,7 @@ class PredictHarness(object):
         pharn.test_dump_dpath = ub.ensuredir((eval_dpath, '/'.join(subdir)))
         print('pharn.test_dump_dpath = {!r}'.format(pharn.test_dump_dpath))
 
-    def _restitch_type(pharn, mode, blend='vote'):
+    def _restitch_type(pharn, mode, blend='vote', force=True):
         """
         hacky code to restitch parts into a whole segmentation based on chip filenames
 
@@ -523,23 +530,21 @@ class PredictHarness(object):
         else:
             part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.png'.format(mode)))
             output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
+        if not force:
+            restitched_paths = sorted(glob.glob(output_dpath + '/*.npz'.format(mode)))
+            if len(restitched_paths) > 0:
+                return restitched_paths
         restitched_paths = pharn.dataset.task.restitch(output_dpath, part_paths,
                                                        blend=blend,
                                                        log_hack=log_hack)
         return restitched_paths
 
-    def blend_full_probs(pharn, task):
+    def blend_full_probs(pharn, task, mode='probs1'):
         """
         Ignore:
-            pharn._restitch_type('blend_log_probs/c0_non-building', blend=None)
-            pharn._restitch_type('blend_log_probs/c1_inner-building', blend=None)
-            pharn._restitch_type('blend_log_probs/c2_outer-building', blend=None)
-
-            pharn._restitch_type('blend_log_probs1/c0_non-building', blend=None)
-            pharn._restitch_type('blend_log_probs1/c1_building', blend=None)
+            mode = 'probs1'
+            pharn._restitch_type('log_probs1', blend='avew')
         """
-
-        mode = 'probs1'
         dpath = join(pharn.test_dump_dpath, 'restiched', mode)
         out_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', 'blend_' + mode))
 
@@ -561,7 +566,9 @@ class PredictHarness(object):
             probs = np.load(fpath)['arr_0']
 
             # Dump each channel
-            from clab.tasks.urban_mapper_3d import draw_instance_contours
+            from clab.tasks import urban_mapper_3d
+            # from clab import profiler
+            # _ = profiler.profile_onthefly(urban_mapper_3d.draw_instance_contours)(blend_probs, gti, gtl)
 
             for c in reversed(range(probs.shape[2])):
                 if mode.endswith('1'):
@@ -579,8 +586,8 @@ class PredictHarness(object):
                 color_probs = util.make_heatmask(probs[:, :, c])[:, :, 0:3]
                 blend_probs = util.overlay_colorized(color_probs, bgr, alpha=.3)
 
-                draw_img = draw_instance_contours(blend_probs, gti, gtl,
-                                                  thickness=2, alpha=.4)
+                draw_img = urban_mapper_3d.draw_instance_contours(
+                    blend_probs, gti, gtl, thickness=2, alpha=.4)
 
                 util.imwrite(c_fpath, draw_img)
 
