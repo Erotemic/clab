@@ -324,19 +324,35 @@ def eval_internal_testset():
             # visualize failure cases
             if True:
                 from clab.tasks import urban_mapper_3d
+                from clab.tasks.urban_mapper_3d import instance_contours, draw_contours
+
+                assign = np.array(assign)
+                tp_pred_labels = assign.T[0]
+                tp_true_labels = assign.T[1]
+
+                gtl = (uncertain * 65)
+
+                fp_labels = set(np.unique(pred)) - set(tp_pred_labels) - {0}
+                fn_labels = set(np.unique(gti)) - set(tp_true_labels) - {0}
+
+                fn_contours = np.vstack(list(ub.flatten(ub.take(instance_contours(gti), fn_labels))))
+                fp_contours = np.vstack(list(ub.flatten(ub.take(instance_contours(pred), fp_labels))))
 
                 color_probs = util.make_heatmask(mask_probs)
                 color_probs[:, :, 3] *= .3
-                blend_probs = util.overlay_colorized(color_probs, bgr)
+                blend_probs = util.overlay_colorized(color_probs, bgr, keepcolors=False)
 
                 # Overlay GT and Pred contours
                 draw_img = blend_probs
                 draw_img = urban_mapper_3d.draw_instance_contours(
-                    draw_img, gti, color=(0, 165, 255), thickness=2, alpha=.3)
+                    draw_img, gti, gtl=gtl, thickness=2, alpha=.5)
                 draw_img = urban_mapper_3d.draw_instance_contours(
-                    draw_img, pred, color=(0, 165, 255), thickness=2, alpha=.3)
+                    draw_img, pred, color=(0, 165, 255), thickness=2, alpha=.5)
 
-                imutil.imwrite('foo.png', blend_probs)
+                draw_img = draw_contours(draw_img, fp_contours, thickness=4, alpha=.5, color=(255, 0, 255))
+                draw_img = draw_contours(draw_img, fn_contours, thickness=4, alpha=.5, color=(0, 0, 255))
+
+                imutil.imwrite('foo.png', draw_img)
 
             fscore = scores[0]
             fscores.append(fscore)
@@ -399,6 +415,7 @@ def eval_internal_testset():
             {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
             {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},  # 0.6501
             {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},  #: 0.6021
+            {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},  # 'max_val': 0.6033}
         ]).to_dict(orient='list'))
         seeded_bo.plog.print_header(initialization=True)
         seeded_bo.init(20)
@@ -489,17 +506,21 @@ def eval_internal_testset():
         print('outer ' + ub.repr2(best(outer_bo), nl=0, precision=4))
 
         # {'max_params': {'thresh': 0.8000, 'min_size': 0.0000}, 'max_val': 0.6445}
-        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=5)
-        inner_bo.maximize(n_iter=5, acq='ucb', kappa=5)
-        outer_bo.maximize(n_iter=5, acq='ucb', kappa=5)
+        gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
+
+        n_iter = 20
+        for kappa in [10, 5, 1]:
+            seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+            inner_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+            outer_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
 
         print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
         print('inner ' + ub.repr2(best(inner_bo), nl=0, precision=4))
         print('outer ' + ub.repr2(best(outer_bo), nl=0, precision=4))
 
-        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=1)
-        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=10)
-        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=5)
+        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=1, **gp_params)
+        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=10, **gp_params)
+        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=5, **gp_params)
 
         # bo.maximize(n_iter=3, acq='poi', xi=1e-4)
         # bo.maximize(n_iter=3, acq='poi', xi=1e-1)
@@ -525,7 +546,7 @@ def eval_internal_testset():
             {'mask_thresh': 0.89, 'seed_thresh': 0.52},
         ]).to_dict(orient='list'))
         bo2.init(5)
-        bo2.maximize(n_iter=3, acq='ucb')
+        bo2.maximize(n_iter=3, acq='ucb', **gp_params)
         bo2.res['max']['max_params']
 
         # # Seeded version

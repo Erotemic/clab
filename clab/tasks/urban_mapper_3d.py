@@ -730,16 +730,9 @@ def instance_submasks(gti):
         yield label, submask, rc_off, rc_sl
 
 
-def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1, color=None):
-    """
-
-    img = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_RGB.tif')
-    gti = util.imread(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTI.tif'))
-    gtl = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTL.tif')
-    thickness = 2
-    alpha = 1
-
-    """
+def instance_contours(gti):
+    """ Extracts a contour for each (non-overlapping) instance label in a mask """
+    # TODO: move to somewhere better
     import cv2
 
     rc_locs = np.where(gti > 0)
@@ -778,7 +771,45 @@ def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1, color=None)
         """
         # note when len(contours > 1, there is a hole in the building)
         # assert len(contors) == 1
-        grouped_contours[label] = contors[0]
+        grouped_contours[label] = contors
+    return grouped_contours
+
+
+def draw_contours(bgr, contours, thickness=2, alpha=1, color=None):
+    # TODO: move to somewhere better
+    BGR_GREEN = (0, 255, 0)
+    if color is None:
+        color = BGR_GREEN
+
+    bgr = util.ensure_float01(bgr)
+    base = np.ascontiguousarray((255 * bgr[:, :, 0:3]).astype(np.uint8))
+
+    draw_img = np.zeros_like(base)
+    draw_img = cv2.drawContours(
+        image=draw_img, contours=contours,
+        contourIdx=-1, color=color, thickness=thickness)
+
+    contour_overlay = util.ensure_alpha_channel(draw_img, alpha=0)
+    contour_overlay.T[3].T[draw_img.sum(axis=2) > 0] = alpha
+
+    draw_img = util.overlay_alpha_images(contour_overlay, base, keepalpha=False)
+    draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))
+    return draw_img
+
+
+def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1, color=None):
+    """
+
+    img = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_RGB.tif')
+    gti = util.imread(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTI.tif'))
+    gtl = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_GTL.tif')
+    thickness = 2
+    alpha = 1
+
+    """
+    import cv2
+
+    grouped_contours = instance_contours(gti)
 
     if gtl is not None:
         unknown_labels = set(np.unique(gti[gtl == 65]))
@@ -798,13 +829,13 @@ def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1, color=None)
     if color is None:
         color = BGR_GREEN
 
-    known_contours = list(ub.take(grouped_contours, known_labels))
+    known_contours = np.array(list(ub.flatten(list(ub.take(grouped_contours, known_labels)))))
     draw_img = cv2.drawContours(
         image=draw_img, contours=known_contours,
         contourIdx=-1, color=color, thickness=thickness)
 
     if unknown_labels:
-        unknown_contours = list(ub.take(grouped_contours, unknown_labels))
+        unknown_contours = np.array(list(ub.flatten(ub.take(grouped_contours, unknown_labels))))
         draw_img = cv2.drawContours(
             image=draw_img, contours=unknown_contours,
             contourIdx=-1, color=BGR_BLUE, thickness=thickness)
