@@ -275,7 +275,8 @@ def _prep_rgb_alpha(img):
 
 def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
     """
-    Uglier but faster version of the core alpha blending algorithm
+    Uglier but faster version of the core alpha blending algorithm using
+    preallocation and in-place computation where possible.
 
     Example:
         >>> rng = np.random.RandomState(0)
@@ -284,7 +285,7 @@ def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
         >>> f1, f2 = _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2)
         >>> s1, s2 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
         >>> assert np.all(f1 == s1) and np.all(f2 == s2)
-        >>> alpha1, alpha2 = np.zeros(10, 10), np.zeros(10, 10)
+        >>> alpha1, alpha2 = np.zeros((10, 10)), np.zeros((10, 10))
         >>> f1, f2 = _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2)
         >>> s1, s2 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
         >>> assert np.all(f1 == s1) and np.all(f2 == s2)
@@ -295,13 +296,6 @@ def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
 
     _ = profiler.profile_onthefly(_alpha_blend_core)(rgb1, alpha1, rgb2, alpha2)
     _ = profiler.profile_onthefly(_alpha_blend_fast1)(rgb1, alpha1, rgb2, alpha2)
-
-    rgb1 = np.ascontiguousarray(rgb1)
-
-    # alpha1_ = np.tile(alpha1[..., None], (3))
-    # %timeit np.tile(alpha1[..., None], (3))
-    # %timeit rgb1 * alpha1_
-    # %timeit rgb1 * alpha1[..., None]
     """
     rgb3 = np.empty_like(rgb1)
     temp_rgb = np.empty_like(rgb1)
@@ -326,12 +320,9 @@ def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
     # (numer1 + numer2)
     np.add(rgb3, temp_rgb, out=rgb3)
 
-    np.divide(rgb3, alpha3[..., None], out=rgb3)
+    with np.errstate(invalid='ignore'):
+        np.divide(rgb3, alpha3[..., None], out=rgb3)
     rgb3[alpha3 == 0] = 0
-    # numer1 = (rgb1 * alpha1[..., None])
-    # numer2 = (rgb2 * alpha2[..., None] * (1.0 - alpha1[..., None]))
-    # rgb3 = (numer1 + numer2) / alpha3[..., None]
-    # rgb3[alpha3 == 0] = 0
     return rgb3, alpha3
 
 
@@ -347,7 +338,8 @@ def _alpha_blend_core(rgb1, alpha1, rgb2, alpha2):
 
     numer1 = (rgb1 * alpha1[..., None])
     numer2 = (rgb2 * (alpha2 * c_alpha1)[..., None])
-    rgb3 = (numer1 + numer2) / alpha3[..., None]
+    with np.errstate(invalid='ignore'):
+        rgb3 = (numer1 + numer2) / alpha3[..., None]
     rgb3[alpha3 == 0] = 0
     return rgb3, alpha3
 
