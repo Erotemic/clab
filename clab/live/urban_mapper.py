@@ -266,10 +266,13 @@ def eval_internal_testset():
         pharn.load_snapshot(load_path)
         pharn.run()
 
+    task = test_dataset.task
+
     paths = {}
-    paths['probs'] = pharn._restitch_type('log_probs', blend='avew')
-    paths['probs1'] = pharn._restitch_type('log_probs1', blend='avew')
-    # blend_full_probs
+    paths['probs'] = pharn._restitch_type('log_probs', blend='avew', force=False)
+    paths['probs1'] = pharn._restitch_type('log_probs1', blend='avew', force=False)
+    pharn._blend_full_probs(task, 'probs')
+    pharn._blend_full_probs(task, 'probs1')
 
     # Recombined predictions on chips into predictions on the original inputs
     paths = {}
@@ -539,7 +542,7 @@ class PredictHarness(object):
                                                        log_hack=log_hack)
         return restitched_paths
 
-    def blend_full_probs(pharn, task, mode='probs1'):
+    def _blend_full_probs(pharn, task, mode='probs1'):
         """
         Ignore:
             mode = 'probs1'
