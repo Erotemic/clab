@@ -185,18 +185,26 @@ def make_channels_comparable(img1, img2):
             elif c1 == 3 and c2 == 1:
                 img2 = np.tile(img2, 3)
             elif c1 == 1 and c2  == 4:
-                img1 = np.dstack((np.tile(img1, 3), np.ones(img1.shape[0:2])))
+                img1 = np.dstack((np.tile(img1, 3), _alpha_fill_for(img1)))
             elif c1 == 4 and c2  == 1:
-                img2 = np.dstack((np.tile(img2, 3), np.ones(img2.shape[0:2])))
+                img2 = np.dstack((np.tile(img2, 3), _alpha_fill_for(img2)))
             elif c1 == 3 and c2  == 4:
-                img1 = np.dstack((img1, np.ones(img1.shape[0:2])))
+                img1 = np.dstack((img1, _alpha_fill_for(img1)))
             elif c1 == 4 and c2  == 3:
-                img2 = np.dstack((img2, np.ones(img2.shape[0:2])))
+                img2 = np.dstack((img2, _alpha_fill_for(img2)))
             else:
                 raise AssertionError('Unknown shape case: %r, %r' % (img1.shape, img2.shape))
         else:
             raise AssertionError('Unknown shape case: %r, %r' % (img1.shape, img2.shape))
     return img1, img2
+
+
+def _alpha_fill_for(img):
+    """ helper for make_channels_comparable """
+    fill_value = (255 if img.dtype.kind in ('i', 'u') else 1)
+    alpha_chan = np.full(img.shape[0:2], dtype=img.dtype,
+                         fill_value=fill_value)
+    return alpha_chan
 
 
 def get_num_channels(img):

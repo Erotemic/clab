@@ -385,11 +385,11 @@ class UrbanMapper3D(SemanticSegmentationTask):
             stiched_shape = tuple(bboxes.T[2:4].max(axis=1))
             if n_channels > 1:
                 stiched_shape = stiched_shape + (n_channels,)
-            stiched_pred = np.zeros(stiched_shape)
+            stiched = np.zeros(stiched_shape)
             for bbox, tile in zip(bboxes, tiles):
                 r1, c1, r2, c2 = bbox
-                stiched_pred[r1:r2, c1:c2] = tile
-            return stiched_pred
+                stiched[r1:r2, c1:c2] = tile
+            return stiched
 
         def stitch_tiles_ave(rc_locs, tiles, weighted=False):
             """
@@ -462,8 +462,8 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 r1, c1, r2, c2 = bbox
                 for i in range(n_classes):
                     votes[i, r1:r2, c1:c2][tile == i] += 1
-            stiched_pred = votes.argmax(axis=0)
-            return stiched_pred
+            stiched = votes.argmax(axis=0)
+            return stiched
 
         def _extract_part_grid(paths):
             # hack to use filenames to extract upper left locations of tiles in
@@ -475,7 +475,8 @@ class UrbanMapper3D(SemanticSegmentationTask):
         # Group parts by base id
         groupid = [basename(p).split('_part')[0] for p in part_paths]
         new_paths = []
-        for tileid, paths in ub.ProgIter(list(ub.group_items(part_paths, groupid).items())):
+        groups = list(ub.group_items(part_paths, groupid).items())
+        for tileid, paths in ub.ProgIter(groups, label='restitching'):
             # Read all parts belonging to an original group
             if log_hack:
                 # read log probabilities in as real probabilities
@@ -488,18 +489,22 @@ class UrbanMapper3D(SemanticSegmentationTask):
             # Find their relative positions and restitch them
             rc_locs = _extract_part_grid(paths)
             if blend == 'vote':
-                stiched_pred = stitch_tiles_vote(rc_locs, tiles)
+                stiched = stitch_tiles_vote(rc_locs, tiles)
             elif blend == 'ave':
-                stiched_pred = stitch_tiles_ave(rc_locs, tiles, weighted=False)
+                stiched = stitch_tiles_ave(rc_locs, tiles, weighted=False)
             elif blend == 'avew':
-                stiched_pred = stitch_tiles_ave(rc_locs, tiles, weighted=True)
+                stiched = stitch_tiles_ave(rc_locs, tiles, weighted=True)
             elif blend is None:
-                stiched_pred = stitch_tiles(rc_locs, tiles)
+                stiched = stitch_tiles(rc_locs, tiles)
             else:
                 raise KeyError(blend)
             # Write them to disk.
-            fpath = join(output_dpath, tileid + '.png')
-            imutil.imwrite(fpath, stiched_pred)
+            if log_hack:
+                fpath = join(output_dpath, tileid + '.npz')
+                np.savez(fpath, stiched)
+            else:
+                fpath = join(output_dpath, tileid + '.png')
+                imutil.imwrite(fpath, stiched)
             new_paths.append(fpath)
         return new_paths
 
@@ -759,6 +764,10 @@ def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1):
     contour_overlay[-thickness:, :, :] = 0
     contour_overlay[:, 0:thickness, :] = 0
     contour_overlay[:, -thickness:, :] = 0
+
+    from clab import profiler
+    _ = profiler.profile_onthefly(util.overlay_alpha_images)(contour_overlay, base)
+
 
     draw_img = util.overlay_alpha_images(contour_overlay, base)
     draw_img = np.ascontiguousarray((255 * draw_img[:, :, 0:3]).astype(np.uint8))

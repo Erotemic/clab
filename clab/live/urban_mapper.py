@@ -514,17 +514,75 @@ class PredictHarness(object):
         hacky code to restitch parts into a whole segmentation based on chip filenames
 
         mode = 'log_probs1'
-        blend = 'ave'
+        blend = 'avew'
         """
         log_hack = mode.startswith('log_probs')
         if log_hack:
             part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.npz'.format(mode)))
-            output_path = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode.replace('log_', '')))
+            output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode.replace('log_', '')))
         else:
             part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.png'.format(mode)))
-            output_path = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
-        restitched_paths = pharn.dataset.task.restitch(output_path, part_paths, blend=blend)
+            output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
+        restitched_paths = pharn.dataset.task.restitch(output_dpath, part_paths,
+                                                       blend=blend,
+                                                       log_hack=log_hack)
         return restitched_paths
+
+    def blend_full_probs(pharn, task):
+        """
+        Ignore:
+            pharn._restitch_type('blend_log_probs/c0_non-building', blend=None)
+            pharn._restitch_type('blend_log_probs/c1_inner-building', blend=None)
+            pharn._restitch_type('blend_log_probs/c2_outer-building', blend=None)
+
+            pharn._restitch_type('blend_log_probs1/c0_non-building', blend=None)
+            pharn._restitch_type('blend_log_probs1/c1_building', blend=None)
+        """
+
+        mode = 'probs1'
+        dpath = join(pharn.test_dump_dpath, 'restiched', mode)
+        out_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', 'blend_' + mode))
+
+        npz_fpaths = glob.glob(join(dpath, '*.npz'))
+
+        for fpath in ub.ProgIter(npz_fpaths, label='viz full probs'):
+
+            out_fpath = join(out_dpath, basename(fpath))
+            gtl_fname = basename(out_fpath).replace('.npz', '_GTL.tif')
+            gti_fname = basename(out_fpath).replace('.npz', '_GTI.tif')
+            bgr_fname = basename(out_fpath).replace('.npz', '_RGB.tif')
+            gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+            gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+            bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+
+            gtl = util.imread(gtl_fpath)
+            gti = util.imread(gti_fpath)
+            bgr = util.imread(bgr_fpath)
+            probs = np.load(fpath)['arr_0']
+
+            # Dump each channel
+            from clab.tasks.urban_mapper_3d import draw_instance_contours
+
+            for c in reversed(range(probs.shape[2])):
+                if mode.endswith('1'):
+                    # hack
+                    name = ['non-building', 'building', 'uncertain'][c]
+                else:
+                    name = task.classnames[c]
+
+                if name in task.ignore_classnames:
+                    continue
+                c_dpath = ub.ensuredir(join(out_dpath, 'c{}_{}'.format(c, name)))
+                c_fname = ub.augpath(basename(fpath), ext='.png')
+                c_fpath = join(c_dpath, c_fname)
+
+                color_probs = util.make_heatmask(probs[:, :, c])[:, :, 0:3]
+                blend_probs = util.overlay_colorized(color_probs, bgr, alpha=.3)
+
+                draw_img = draw_instance_contours(blend_probs, gti, gtl,
+                                                  thickness=2, alpha=.4)
+
+                util.imwrite(c_fpath, draw_img)
 
     def color_log_probs(pharn, task):
         """
