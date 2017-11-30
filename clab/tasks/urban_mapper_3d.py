@@ -369,7 +369,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
 
         yield xval_split
 
-    def restitch(task, output_dpath, part_paths, blend=None):
+    def restitch(task, output_dpath, part_paths, blend=None, log_hack=False):
 
         def stitch_tiles(rc_locs, tiles):
             """
@@ -391,10 +391,9 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 stiched_pred[r1:r2, c1:c2] = tile
             return stiched_pred
 
-        def stitch_tiles_ave(rc_locs, tiles):
+        def stitch_tiles_ave(rc_locs, tiles, weighted=False):
             """
             Recombine parts back into an entire image
-            (TODO: blending / averaging to remove boundry effects)
 
             Example:
                 >>> rc_locs = [(0, 0), (0, 5), (0, 10)]
@@ -413,16 +412,36 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 stiched_shape = stiched_wh + (n_channels,)
             sums = np.zeros(stiched_shape)
             nums = np.zeros(stiched_wh)
+
+            if weighted:
+                # assume all shapes are the same
+                h, w = shapes[0]
+                weight = np.ones((h, w) )
+                # Weight borders less than center
+                # should really use receptive fields for this calculation
+                # but this should be fine.
+                weight[:h // 4] = .25
+                weight[-h // 4:] = .25
+                weight[:w // 4] = .25
+                weight[-w // 4:] = .25
+                weight3c = weight
+                if n_channels > 1:
+                    weight3c = weight[:, :, None]
+            else:
+                weight3c = weight = 1
+
+            # Assume we are not in log-space here, so the weighted average
+            # formula does not need any exponentiation.
             for bbox, tile in zip(bboxes, tiles):
                 r1, c1, r2, c2 = bbox
-                sums[r1:r2, c1:c2] += tile
-                nums[r1:r2, c1:c2] += 1
+                sums[r1:r2, c1:c2] += (tile * weight3c)
+                nums[r1:r2, c1:c2] += weight
 
             if len(sums.shape) == 2:
-                stiched_pred = sums / nums
+                stiched = sums / nums
             else:
-                stiched_pred = sums / nums[:, :, None]
-            return stiched_pred
+                stiched = sums / nums[:, :, None]
+            return stiched
 
         def stitch_tiles_vote(rc_locs, tiles):
             """
@@ -458,13 +477,22 @@ class UrbanMapper3D(SemanticSegmentationTask):
         new_paths = []
         for tileid, paths in ub.ProgIter(list(ub.group_items(part_paths, groupid).items())):
             # Read all parts belonging to an original group
-            tiles = [imutil.imread(p) for p in paths]
+            if log_hack:
+                # read log probabilities in as real probabilities
+                tiles = [np.exp(np.load(p)['arr_0'].transpose(1, 2, 0))
+                         for p in paths]
+            else:
+                tiles = [imutil.imread(p) for p in paths]
+            # try:
+            # except OSError:
             # Find their relative positions and restitch them
             rc_locs = _extract_part_grid(paths)
             if blend == 'vote':
                 stiched_pred = stitch_tiles_vote(rc_locs, tiles)
             elif blend == 'ave':
-                stiched_pred = stitch_tiles_ave(rc_locs, tiles)
+                stiched_pred = stitch_tiles_ave(rc_locs, tiles, weighted=False)
+            elif blend == 'avew':
+                stiched_pred = stitch_tiles_ave(rc_locs, tiles, weighted=True)
             elif blend is None:
                 stiched_pred = stitch_tiles(rc_locs, tiles)
             else:

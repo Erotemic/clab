@@ -260,6 +260,7 @@ def eval_internal_testset():
     pharn = PredictHarness(test_dataset)
     test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
+    # gpu part
     pharn.load_snapshot(load_path)
     pharn.run()
 
@@ -510,12 +511,20 @@ class PredictHarness(object):
 
     def _restitch_type(pharn, mode, blend='vote'):
         """
-        hacky camvid-only code to restitch parts into a whole segmentation
+        hacky code to restitch parts into a whole segmentation based on chip filenames
+
+        mode = 'log_probs1'
+        blend = 'ave'
         """
-        mode_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.png'.format(mode)))
-        restitched_mode_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
-        restitched_mode = pharn.dataset.task.restitch(restitched_mode_dpath, mode_paths, blend=blend)
-        return restitched_mode
+        log_hack = mode.startswith('log_probs')
+        if log_hack:
+            part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.npz'.format(mode)))
+            output_path = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode.replace('log_', '')))
+        else:
+            part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.png'.format(mode)))
+            output_path = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
+        restitched_paths = pharn.dataset.task.restitch(output_path, part_paths, blend=blend)
+        return restitched_paths
 
     def color_log_probs(pharn, task):
         """
@@ -567,8 +576,8 @@ class PredictHarness(object):
 
                 draw_img = draw_gt_contours2(blend_probs, gt, thickness=2, alpha=.5)
                 util.imwrite(c_fpath, draw_img)
-        pharn._restitch_type('blend_log_probs1/c0_non-building', blend='ave')
-        pharn._restitch_type('blend_log_probs1/c1_building', blend='ave')
+        pharn._restitch_type('blend_log_probs1/c0_non-building', blend='avew')
+        pharn._restitch_type('blend_log_probs1/c1_building', blend='avew')
 
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
