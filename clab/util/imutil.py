@@ -277,11 +277,15 @@ def _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2):
     """
     Uglier but faster version of the core alpha blending algorithm
 
-    f1, f2 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
-    s1, s2 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
-
-    assert np.all(f1 == s1)
-    assert np.all(f2 == s2)
+    Example:
+        >>> rgb1 = np.random.rand(10, 10, 3)
+        >>> rgb2 = np.random.rand(10, 10, 3)
+        >>> alpha1 = np.random.rand(10, 10)
+        >>> alpha2 = np.random.rand(10, 10)
+        >>> f1, f2 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
+        >>> s1, s2 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
+        >>> assert np.all(f1 == s1)
+        >>> assert np.all(f2 == s2)
 
     _ = profiler.profile_onthefly(overlay_alpha_images)(img1, img2)
     _ = profiler.profile_onthefly(_prep_rgb_alpha)(img1)
@@ -306,7 +310,7 @@ def _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2):
     np.subtract(1, alpha1, out=temp_alpha)
 
     # alpha3
-    np.copyto(temp_alpha, alpha3)
+    np.copyto(dst=alpha3, src=temp_alpha)
     np.multiply(alpha2, alpha3, out=alpha3)
     np.add(alpha1, alpha3, out=alpha3)
 
