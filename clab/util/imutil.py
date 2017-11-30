@@ -242,8 +242,8 @@ def overlay_alpha_images(img1, img2, keepalpha=True):
     rgb2, alpha2 = _prep_rgb_alpha(img2)
 
     # Perform the core alpha blending algorithm
-    rgb3, alpha3 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
-    # rgb3, alpha3 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
+    # rgb3, alpha3 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
+    rgb3, alpha3 = _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2)
 
     if keepalpha:
         img3 = np.dstack([rgb3, alpha3[..., None]])
@@ -273,26 +273,28 @@ def _prep_rgb_alpha(img):
     return rgb, alpha
 
 
-def _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2):
+def _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2):
     """
     Uglier but faster version of the core alpha blending algorithm
 
     Example:
-        >>> rgb1 = np.random.rand(10, 10, 3)
-        >>> rgb2 = np.random.rand(10, 10, 3)
-        >>> alpha1 = np.random.rand(10, 10)
-        >>> alpha2 = np.random.rand(10, 10)
-        >>> f1, f2 = _alpha_blend_core_prealloc(rgb1, alpha1, rgb2, alpha2)
+        >>> rng = np.random.RandomState(0)
+        >>> rgb1, rgb2 = rng.rand(10, 10, 3), rng.rand(10, 10, 3)
+        >>> alpha1, alpha2 = rng.rand(10, 10), rng.rand(10, 10)
+        >>> f1, f2 = _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2)
         >>> s1, s2 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
-        >>> assert np.all(f1 == s1)
-        >>> assert np.all(f2 == s2)
+        >>> assert np.all(f1 == s1) and np.all(f2 == s2)
+        >>> alpha1, alpha2 = np.zeros(10, 10), np.zeros(10, 10)
+        >>> f1, f2 = _alpha_blend_fast1(rgb1, alpha1, rgb2, alpha2)
+        >>> s1, s2 = _alpha_blend_core(rgb1, alpha1, rgb2, alpha2)
+        >>> assert np.all(f1 == s1) and np.all(f2 == s2)
 
     _ = profiler.profile_onthefly(overlay_alpha_images)(img1, img2)
     _ = profiler.profile_onthefly(_prep_rgb_alpha)(img1)
     _ = profiler.profile_onthefly(_prep_rgb_alpha)(img2)
 
     _ = profiler.profile_onthefly(_alpha_blend_core)(rgb1, alpha1, rgb2, alpha2)
-    _ = profiler.profile_onthefly(_alpha_blend_core_prealloc)(rgb1, alpha1, rgb2, alpha2)
+    _ = profiler.profile_onthefly(_alpha_blend_fast1)(rgb1, alpha1, rgb2, alpha2)
 
     rgb1 = np.ascontiguousarray(rgb1)
 
@@ -338,7 +340,7 @@ def _alpha_blend_core(rgb1, alpha1, rgb2, alpha2):
     Core alpha blending algorithm
 
     SeeAlso:
-        _alpha_blend_core_prealloc
+        _alpha_blend_fast1
     """
     c_alpha1 = (1.0 - alpha1)
     alpha3 = alpha1 + alpha2 * c_alpha1
