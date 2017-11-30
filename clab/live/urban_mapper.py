@@ -236,22 +236,24 @@ def eval_internal_testset():
             '~/remote/aretha/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/'
             'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = 8
+        use_aux_diff = True
     elif MODE == 'UNET6CH':
         arch = 'unet2'
         train_dpath = ub.truepath(
             '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/'
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = 15
+        use_aux_diff = True
     else:
         raise KeyError(MODE)
 
     from clab.live.urban_train import load_task_dataset
     datasets = load_task_dataset('urban_mapper_3d', combine=False, arch=arch)
     test_dataset = datasets['test']
+    test_dataset.use_aux_diff = use_aux_diff
     test_dataset.with_gt = False
     test_dataset.inputs.make_dumpsafe_names()
     test_dataset.tag = 'test'
-    epoch = int(epoch) if epoch is not None else epoch
 
     load_path = get_snapshot(train_dpath, epoch=epoch)
 
@@ -486,6 +488,11 @@ class PredictHarness(object):
             pharn.model = unet2.UNet2(
                 in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
                 nonlinearity='leaky_relu'
+            )
+        elif snapshot['model_class_name'] == 'DenseUNet':
+            from clab.live import unet3
+            pharn.model = unet3.DenseUNet(
+                in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
             )
         else:
             raise NotImplementedError(snapshot['model_class_name'])
