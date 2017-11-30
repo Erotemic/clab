@@ -565,7 +565,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         mask = pred
 
         # noise removal
-        if k > 0 and n_iters > 0:
+        if k > 1 and n_iters > 0:
             kernel = np.ones((k, k), np.uint8)
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel,
                                     iterations=n_iters)
@@ -730,7 +730,7 @@ def instance_submasks(gti):
         yield label, submask, rc_off, rc_sl
 
 
-def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1):
+def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1, color=None):
     """
 
     img = util.imread('/home/joncrall/remote/aretha/data/UrbanMapper3D/training/TAM_Tile_003_RGB.tif')
@@ -795,10 +795,13 @@ def draw_instance_contours(img, gti, gtl=None, thickness=2, alpha=1):
     # Draw an image to overlay first
     draw_img = np.zeros(base.shape, dtype=np.uint8)
 
+    if color is None:
+        color = BGR_GREEN
+
     known_contours = list(ub.take(grouped_contours, known_labels))
     draw_img = cv2.drawContours(
         image=draw_img, contours=known_contours,
-        contourIdx=-1, color=BGR_GREEN, thickness=thickness)
+        contourIdx=-1, color=color, thickness=thickness)
 
     if unknown_labels:
         unknown_contours = list(ub.take(grouped_contours, unknown_labels))

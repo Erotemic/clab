@@ -47,7 +47,6 @@ def eval_contest_testset():
         >>> eval_contest_testset()
 
     """
-
     # train_dpath = ub.truepath(
     #     '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
     # load_path = get_snapshot(train_dpath, epoch=202)
@@ -272,8 +271,9 @@ def eval_internal_testset():
     paths = {}
     paths['probs'] = pharn._restitch_type('log_probs', blend='avew', force=False)
     paths['probs1'] = pharn._restitch_type('log_probs1', blend='avew', force=False)
-    pharn._blend_full_probs(task, 'probs', npz_fpaths=paths['probs'])
-    pharn._blend_full_probs(task, 'probs1', npz_fpaths=paths['probs1'])
+    if False:
+        pharn._blend_full_probs(task, 'probs', npz_fpaths=paths['probs'])
+        pharn._blend_full_probs(task, 'probs1', npz_fpaths=paths['probs1'])
 
     @ub.memoize
     def gt_info_from_path(pred_fpath):
@@ -293,7 +293,59 @@ def eval_internal_testset():
         uncertain = (gtl == 65)
         return gti, uncertain, dsm, bgr
 
-    def test_probs():
+    def check_failures():
+        prob_paths  = paths['probs']
+        prob1_paths = paths['probs1']
+
+        params = {
+            'mask_thresh': 0.8338, 'min_seed_size': 25.7651,
+            'min_size': 38.6179, 'seed_thresh': 0.6573
+        }
+
+        seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
+            params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
+        fscores = []
+        for ix, (path, path1) in enumerate(ub.ProgIter(list(zip(prob_paths, prob1_paths)))):
+            gti, uncertain, dsm, bgr = gt_info_from_path(path)
+
+            probs = np.load(path)['arr_0']
+            seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+            seed = (seed_probs > seed_thresh).astype(np.uint8)
+
+            probs1 = np.load(path1)['arr_0']
+            mask_probs = probs1[:, :, 1]
+            mask = (mask_probs > mask_thresh).astype(np.uint8)
+
+            pred = seeded_instance_label(seed, mask,
+                                         min_seed_size=min_seed_size,
+                                         min_size=min_size)
+
+            scores, assign = instance_fscore(gti, uncertain, dsm, pred, info=True)
+            # visualize failure cases
+            if True:
+                pass
+
+                from clab.tasks import urban_mapper_3d
+
+                color_probs = util.make_heatmask(mask_probs)
+                blend_probs = util.overlay_colorized(color_probs, bgr, alpha=.3)
+
+                # Overlay GT and Pred contours
+                draw_img = blend_probs
+                draw_img = urban_mapper_3d.draw_instance_contours(
+                    draw_img, gti, color=(0, 165, 255), thickness=2, alpha=.3)
+                draw_img = urban_mapper_3d.draw_instance_contours(
+                    draw_img, pred, color=(0, 165, 255), thickness=2, alpha=.3)
+
+            fscore = scores[0]
+            fscores.append(fscore)
+            if ix >= 0:
+                break
+
+        mean_fscore = np.mean(fscores)
+        print('mean_fscore = {!r}'.format(mean_fscore))
+
+    def hypersearch_probs():
         prob_paths  = paths['probs']
         prob1_paths = paths['probs1']
 
@@ -341,13 +393,14 @@ def eval_internal_testset():
         }
         seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
         seeded_bo.explore(pd.DataFrame([
+            {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},  # 'max_val': 0.6024}
             {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
             {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
             {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},  # 0.6501
             {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},  #: 0.6021
         ]).to_dict(orient='list'))
         seeded_bo.plog.print_header(initialization=True)
-        seeded_bo.init(3)
+        seeded_bo.init(20)
         print(ub.repr2(best(seeded_bo), nl=0, precision=4))
 
         def inner_objective(**params):
@@ -416,15 +469,15 @@ def eval_internal_testset():
         }
         outer_bo = BayesianOptimization(outer_objective, outer_bounds)
         outer_bo.explore(pd.DataFrame([
+            {'k': 11, 'min_size': 55, 'thresh': 0.8618, 'watershed': False},  # .59
+            {'k': 11, 'min_size': 55, 'thresh': 0.8618, 'watershed': True},  # .59
             {'thresh': 0.6984, 'min_size': 68.0200, 'k': 15, 'watershed': False},
             {'thresh': 0.6984, 'min_size': 68.0200, 'k': 15, 'watershed': True},
             {'thresh': 0.6984, 'min_size': 0, 'k': 15, 'watershed': True},
             {'thresh': 0.5,  'min_size': 0, 'k': 15, 'watershed': True},
             {'thresh': 0.5,  'min_size': 50, 'k': 15, 'watershed': True},
             {'thresh': 0.6,  'min_size': 0, 'k': 15, 'watershed': True},
-            {'thresh': 0.4,  'min_size': 20, 'k': 15, 'watershed': True},
             {'thresh': 0.6,  'min_size': 50, 'k': 15, 'watershed': True},
-            {'thresh': 0.4,  'min_size': 50, 'k': 15, 'watershed': True},
         ]).to_dict(orient='list'))
         outer_bo.plog.print_header(initialization=True)
         outer_bo.init(10)
@@ -442,6 +495,10 @@ def eval_internal_testset():
         print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
         print('inner ' + ub.repr2(best(inner_bo), nl=0, precision=4))
         print('outer ' + ub.repr2(best(outer_bo), nl=0, precision=4))
+
+        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=1)
+        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=10)
+        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=5)
 
         # bo.maximize(n_iter=3, acq='poi', xi=1e-4)
         # bo.maximize(n_iter=3, acq='poi', xi=1e-1)
