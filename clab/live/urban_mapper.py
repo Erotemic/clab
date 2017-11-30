@@ -260,7 +260,8 @@ def eval_internal_testset():
     pharn = PredictHarness(test_dataset)
     test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
-    needs_predict = True
+
+    needs_predict = False
     if needs_predict:
         # gpu part
         pharn.load_snapshot(load_path)
@@ -274,19 +275,12 @@ def eval_internal_testset():
     pharn._blend_full_probs(task, 'probs', npz_fpaths=paths['probs'])
     pharn._blend_full_probs(task, 'probs1', npz_fpaths=paths['probs1'])
 
-    # Recombined predictions on chips into predictions on the original inputs
-    paths = {}
-    for mode in ['pred', 'pred1']:
-        restitched_paths = pharn._restitch_type(mode, blend='vote')
-        if 1:
-            pharn._restitch_type('blend_' + mode, blend=None)
-        paths[mode] = restitched_paths
-
-    def read_gt_info(pred_fpath):
-        gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
-        gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
-        dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
-        bgr_fname = basename(pred_fpath).replace('.png', '_RGB.tif')
+    @ub.memoize
+    def gt_info_from_path(pred_fpath):
+        gtl_fname = ub.augpath(basename(pred_fpath), suffix='_GTL', ext='.tif')
+        gti_fname = ub.augpath(basename(pred_fpath), suffix='_GTI', ext='.tif')
+        dsm_fname = ub.augpath(basename(pred_fpath), suffix='_DSM', ext='.tif')
+        bgr_fname = ub.augpath(basename(pred_fpath), suffix='_RGB', ext='.tif')
         gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
         gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
         dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
@@ -298,6 +292,220 @@ def eval_internal_testset():
         bgr = util.imread(bgr_fpath)
         uncertain = (gtl == 65)
         return gti, uncertain, dsm, bgr
+
+    def test_probs():
+        prob_paths  = paths['probs']
+        prob1_paths = paths['probs1']
+
+        # https://github.com/fmfn/BayesianOptimization
+        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/usage.py
+        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/exploitation%20vs%20exploration.ipynb
+        # subx = [0, 1, 2, 3, 4, 5]
+        subx = [5, 7, 25, 30, 31, 54, 66, 79, 80, 83]
+        from bayes_opt import BayesianOptimization
+
+        def best(self):
+            return {'max_val': self.Y.max(),
+                    'max_params': dict(zip(self.keys,
+                                           self.X[self.Y.argmax()]))}
+
+        def seeded_objective(**params):
+            seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
+                params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
+            fscores = []
+            for path, path1 in zip(ub.take(prob_paths, subx), ub.take(prob1_paths, subx)):
+                gti, uncertain, dsm, bgr = gt_info_from_path(path)
+
+                probs = np.load(path)['arr_0']
+                seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+                seed = (seed_probs > seed_thresh).astype(np.uint8)
+
+                probs1 = np.load(path1)['arr_0']
+                mask_probs = probs1[:, :, 1]
+                mask = (mask_probs > mask_thresh).astype(np.uint8)
+
+                pred = seeded_instance_label(seed, mask,
+                                             min_seed_size=min_seed_size,
+                                             min_size=min_size)
+                scores = instance_fscore(gti, uncertain, dsm, pred)
+                fscore = scores[0]
+                fscores.append(fscore)
+            mean_fscore = np.mean(fscores)
+            return mean_fscore
+
+        seeded_bounds = {
+            'mask_thresh': (.4, .9),
+            'seed_thresh': (.4, .9),
+            'min_seed_size': (0, 100),
+            'min_size': (0, 100),
+        }
+        seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
+        seeded_bo.explore(pd.DataFrame([
+            {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
+            {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
+            {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},  # 0.6501
+            {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},  #: 0.6021
+        ]).to_dict(orient='list'))
+        seeded_bo.plog.print_header(initialization=True)
+        seeded_bo.init(3)
+        print(ub.repr2(best(seeded_bo), nl=0, precision=4))
+
+        def inner_objective(**params):
+            thresh, min_size, k, watershed = ub.take(
+                params, 'thresh, min_size, k, watershed'.split(', '))
+            if not isinstance(watershed, (bool, int)):
+                watershed = watershed > .5
+            fscores = []
+            for path in ub.take(prob_paths, subx):
+                gti, uncertain, dsm, bgr = gt_info_from_path(path)
+
+                probs = np.load(path)['arr_0']
+                seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+                seed = (seed_probs > thresh).astype(np.uint8)
+
+                pred = mask_instance_label(seed, k=int(k), watershed=watershed,
+                                           min_size=min_size)
+
+                scores = instance_fscore(gti, uncertain, dsm, pred)
+                fscore = scores[0]
+                fscores.append(fscore)
+            mean_fscore = np.mean(fscores)
+            return mean_fscore
+        inner_bounds = {
+            'thresh': (.4, .99),
+            'min_size': (0, 100),
+            'k': (1, 5),
+            'watershed': (0, 1),
+        }
+        inner_bo = BayesianOptimization(inner_objective, inner_bounds)
+        inner_bo.explore(pd.DataFrame([
+            {'thresh': 0.4,  'min_size': 0, 'k': 1, 'watershed': False},
+            {'thresh': 0.4,  'min_size': 10, 'k': 1, 'watershed': False},
+            {'thresh': 0.5,  'min_size': 20, 'k': 1, 'watershed': False},
+            {'min_size': 100.0000, 'thresh': 0.4000, 'k': 1, 'watershed': False},  # 0.5879
+        ]).to_dict(orient='list'))
+        inner_bo.plog.print_header(initialization=True)
+        inner_bo.init(5)
+        print(ub.repr2(best(inner_bo), nl=0, precision=4))
+
+        def outer_objective(**params):
+            thresh, min_size, k, watershed = ub.take(
+                params, 'thresh, min_size, k, watershed'.split(', '))
+            if not isinstance(watershed, (bool, int)):
+                watershed = watershed > .5
+            fscores = []
+            for path1 in ub.take(prob1_paths, subx):
+                gti, uncertain, dsm, bgr = gt_info_from_path(path1)
+
+                probs1 = np.load(path1)['arr_0']
+                mask_probs = probs1[:, :, 1]
+
+                mask = (mask_probs > thresh).astype(np.uint8)
+                pred = mask_instance_label(mask, k=int(k), watershed=watershed,
+                                           min_size=min_size)
+                scores = instance_fscore(gti, uncertain, dsm, pred)
+                fscore = scores[0]
+                fscores.append(fscore)
+            mean_fscore = np.mean(fscores)
+            return mean_fscore
+        outer_bounds = {
+            'thresh': (.4, .99),
+            'min_size': (0, 100),
+            'k': (1, 20),
+            'watershed': (0, 1),
+        }
+        outer_bo = BayesianOptimization(outer_objective, outer_bounds)
+        outer_bo.explore(pd.DataFrame([
+            {'thresh': 0.6984, 'min_size': 68.0200, 'k': 15, 'watershed': False},
+            {'thresh': 0.6984, 'min_size': 68.0200, 'k': 15, 'watershed': True},
+            {'thresh': 0.6984, 'min_size': 0, 'k': 15, 'watershed': True},
+            {'thresh': 0.5,  'min_size': 0, 'k': 15, 'watershed': True},
+            {'thresh': 0.5,  'min_size': 50, 'k': 15, 'watershed': True},
+            {'thresh': 0.6,  'min_size': 0, 'k': 15, 'watershed': True},
+            {'thresh': 0.4,  'min_size': 20, 'k': 15, 'watershed': True},
+            {'thresh': 0.6,  'min_size': 50, 'k': 15, 'watershed': True},
+            {'thresh': 0.4,  'min_size': 50, 'k': 15, 'watershed': True},
+        ]).to_dict(orient='list'))
+        outer_bo.plog.print_header(initialization=True)
+        outer_bo.init(10)
+        print(ub.repr2(best(outer_bo), nl=0, precision=4))
+
+        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
+        print('inner ' + ub.repr2(best(inner_bo), nl=0, precision=4))
+        print('outer ' + ub.repr2(best(outer_bo), nl=0, precision=4))
+
+        # {'max_params': {'thresh': 0.8000, 'min_size': 0.0000}, 'max_val': 0.6445}
+        seeded_bo.maximize(n_iter=5, acq='ucb', kappa=5)
+        inner_bo.maximize(n_iter=5, acq='ucb', kappa=5)
+        outer_bo.maximize(n_iter=5, acq='ucb', kappa=5)
+
+        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
+        print('inner ' + ub.repr2(best(inner_bo), nl=0, precision=4))
+        print('outer ' + ub.repr2(best(outer_bo), nl=0, precision=4))
+
+        # bo.maximize(n_iter=3, acq='poi', xi=1e-4)
+        # bo.maximize(n_iter=3, acq='poi', xi=1e-1)
+
+        # bo.maximize(n_iter=3, acq='ucb', kappa=1)
+        # bo.maximize(n_iter=3, acq='ucb', kappa=5)
+
+        # bo.maximize(n_iter=3, acq='ei', xi=1e-4)
+        # bo.maximize(n_iter=3, acq='ei', xi=1e-1)
+
+        import functools
+        bounds2 = {
+            'mask_thresh': (.3, .95),
+            'thresh': (.3, .95),
+        }
+        func2 = functools.partial(seeded_objective, min_seed_size=20)
+        bo2 = BayesianOptimization(func2, bounds2)
+        bo2.explore(pd.DataFrame([
+            {'mask_thresh': 0.88201857575666986, 'seed_thresh': 0.51167580304776372},
+            {'mask_thresh': 0.7,  'seed_thresh': 0.2},
+            {'mask_thresh': 0.69,  'seed_thresh': 0.45},
+            {'mask_thresh': 0.5,  'seed_thresh': 0.5},
+            {'mask_thresh': 0.89, 'seed_thresh': 0.52},
+        ]).to_dict(orient='list'))
+        bo2.init(5)
+        bo2.maximize(n_iter=3, acq='ucb')
+        bo2.res['max']['max_params']
+
+        # # Seeded version
+        # for path, path1 in zip(prob_paths, prob1_paths):
+        #     pass
+
+        #     probs = np.load(path)['arr_0']
+        #     probs1 = np.load(path1)['arr_0']
+        #     seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+        #     mask_probs = probs1[:, :, 1]
+
+        #     gti, uncertain, dsm, bgr = gt_info_from_path(path1)
+
+        #     # convert probs into a prediction and score it
+        #     x = {}
+        #     mask_thresh = .9
+        #     seed_thresh = .2
+        #     min_seed_size = 50
+
+        #     seed = (seed_probs > mask_thresh).astype(np.uint8)
+        #     mask = (mask_probs > seed_thresh).astype(np.uint8)
+        #     pred = seeded_instance_label(seed, mask, min_seed_size=min_seed_size)
+
+        #     scores = instance_fscore(gti, uncertain, dsm, pred)
+
+        #     print('thresh, scores = {}, {}'.format(ub.repr2(thresh, precision=3), ub.repr2(scores, nl=0, precision=3)))
+        #     x[thresh] = scores
+
+        #     print(pd.DataFrame.from_dict(x, orient='index')[0].argmax())
+        #     print(pd.DataFrame.from_dict(x, orient='index')[0].max())
+
+    # Recombined predictions on chips into predictions on the original inputs
+    paths = {}
+    for mode in ['pred', 'pred1']:
+        restitched_paths = pharn._restitch_type(mode, blend='vote')
+        if 1:
+            pharn._restitch_type('blend_' + mode, blend=None)
+        paths[mode] = restitched_paths
 
     import pandas as pd
     task = test_dataset.task
@@ -313,7 +521,7 @@ def eval_internal_testset():
     restitched_paths = paths[mode]
     scores1 = []
     for pred_fpath in ub.ProgIter(restitched_paths, label='scoring 1'):
-        gti, uncertain, dsm, bgr = read_gt_info(pred_fpath)
+        gti, uncertain, dsm, bgr = gt_info_from_path(pred_fpath)
         pred_seg = util.imread(pred_fpath)
         pred = task.instance_label(pred_seg, dist_thresh=5, k=12, watershed=True)
         scores1.append(instance_fscore(gti, uncertain, dsm, pred))
@@ -328,7 +536,7 @@ def eval_internal_testset():
     restitched_paths = paths[mode]
     scores0 = []
     for pred_fpath in ub.ProgIter(restitched_paths, label='scoring seeds'):
-        gti, uncertain, dsm, bgr = read_gt_info(pred_fpath)
+        gti, uncertain, dsm, bgr = gt_info_from_path(pred_fpath)
 
         pred_seg0 = util.imread(pred_fpath)
         pred_seg1 = util.imread(pred_fpath.replace('/pred/', '/pred1/'))
@@ -435,7 +643,7 @@ def eval_internal_testset():
                                 watershed=watershed) > 0).astype(np.int8)
 
                             # # cfsn1 += confusion_matrix(big_gt.ravel(), big_pred.ravel(), labels=[0, 1, 2])
-                            # if k > 0:
+                            # if k > 1:
                             #     kernel = np.ones((k, k), np.uint8)
                             #     opening = cv2.morphologyEx(big_pred, cv2.MORPH_OPEN, kernel, iterations=n_iters)
                             #     # opening = filters.watershed_filter(opening)
@@ -547,8 +755,11 @@ class PredictHarness(object):
         Ignore:
             mode = 'probs1'
             pharn._restitch_type('log_probs1', blend='avew')
-        """
 
+            from clab.profiler import profile_onthefly
+            profile_onthefly(pharn._blend_full_probs)(task, mode='probs', npz_fpaths=npz_fpaths)
+            profile_onthefly(foo)(npz_fpaths)
+        """
         if npz_fpaths is None:
             dpath = join(pharn.test_dump_dpath, 'restiched', mode)
             npz_fpaths = glob.glob(join(dpath, '*.npz'))
@@ -841,8 +1052,44 @@ def test_instance_restitch(out_fpaths, task):
     return out_fpaths
 
 
-def seeded_instance_label(seed, mask, only_inner=False, inner_k=0,
-                          outer_k=0, post_k=0, min_seed_size=0):
+def cc_locs(mask):
+    import cv2
+    ccs = cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)[1]
+    rc_locs = np.where(mask > 0)
+    rc_ids = ccs[rc_locs]
+    rc_arrs = np.ascontiguousarray(np.vstack(rc_locs).T)
+    cc_to_loc = util.group_items(rc_arrs, rc_ids, axis=0)
+    return cc_to_loc
+
+
+def mask_instance_label(pred, k=15, n_iters=1, dist_thresh=5,
+                        min_size=0, watershed=False):
+    import cv2
+    mask = pred
+    # noise removal
+    if k > 1:
+        kernel = np.ones((k, k), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel,
+                                iterations=n_iters)
+
+    if watershed:
+        from clab.torch import filters
+        mask = filters.watershed_filter(mask, dist_thresh=dist_thresh)
+
+    mask = mask.astype(np.uint8)
+    n_ccs, pred_ccs = cv2.connectedComponents(mask, connectivity=4)
+
+    if min_size > 0:
+        # Remove small predictions
+        for inner_id, inner_rcs in cc_locs(pred_ccs).items():
+            if len(inner_rcs) < min_size:
+                pred_ccs[tuple(inner_rcs.T)] = 0
+
+    return pred_ccs
+
+
+def seeded_instance_label(seed, mask, inner_k=0, outer_k=0, post_k=0,
+                          min_seed_size=0, min_size=0):
     import cv2
 
     mask = mask.astype(np.uint8)
@@ -853,14 +1100,6 @@ def seeded_instance_label(seed, mask, only_inner=False, inner_k=0,
         seed = cv2.morphologyEx(seed, cv2.MORPH_OPEN, kernel,
                                  iterations=1)
 
-    def cc_locs(mask):
-        ccs = cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)[1]
-        rc_locs = np.where(mask > 0)
-        rc_ids = ccs[rc_locs]
-        rc_arrs = np.ascontiguousarray(np.vstack(rc_locs).T)
-        cc_to_loc = util.group_items(rc_arrs, rc_ids, axis=0)
-        return cc_to_loc
-
     if min_seed_size > 0:
         # Remove very small seeds
         for inner_id, inner_rcs in cc_locs(seed).items():
@@ -868,9 +1107,6 @@ def seeded_instance_label(seed, mask, only_inner=False, inner_k=0,
                 seed[tuple(inner_rcs.T)] = 0
 
     seed_ccs = cv2.connectedComponents(seed, connectivity=4)[1]
-
-    if only_inner:
-        return seed_ccs
 
     # Remove seeds not surrounded by a mask
     seed[(seed & ~mask)] = 0
@@ -914,6 +1150,12 @@ def seeded_instance_label(seed, mask, only_inner=False, inner_k=0,
                                 iterations=1)
 
     pred_ccs = cv2.connectedComponents(instance_mask, connectivity=4)[1]
+
+    if min_size > 0:
+        # Remove small predictions
+        for inner_id, inner_rcs in cc_locs(pred_ccs).items():
+            if len(inner_rcs) < min_size:
+                pred_ccs[tuple(inner_rcs.T)] = 0
     return pred_ccs
 
 
@@ -931,7 +1173,7 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
         mask = pred
 
         # noise removal
-        if k > 0 and n_iters > 0:
+        if k > 1 and n_iters > 0:
             kernel = np.ones((k, k), np.uint8)
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel,
                                     iterations=n_iters)
@@ -1086,9 +1328,12 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
 
     FN += len(unused_true_rcs)
 
-    precision = TP / (TP + FP)
-    recall = TP / (TP + FN)
-    f_score = 2 * precision * recall / (precision + recall)
+    precision = TP / (TP + FP) if TP > 0 else 0
+    recall = TP / (TP + FN) if TP > 0 else 0
+    if precision > 0 and recall > 0:
+        f_score = 2 * precision * recall / (precision + recall)
+    else:
+        f_score = 0
 
     # They multiply by 1e6, but lets not do that.
     if info:

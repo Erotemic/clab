@@ -381,3 +381,269 @@ def opt_postprocess_boundary():
                        index=results.keys(),
                        columns=['f1', 'precision', 'recall'])
     rdf.sort_values('f1').index[-1]
+
+def junk():
+    pass
+    import optml
+    from clab import util
+    from os.path import join, splitext, basename  # NOQA
+    import glob
+    import ubelt as ub
+    import itertools as it
+    import numpy as np
+    from clab.live.urban_mapper import instance_fscore
+
+    path = ub.truepath(
+        '~/remote/aretha/data/work/urban_mapper2/test/input_4224-exkudlzu/'
+        'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/'
+        '_epoch_00000154/restiched/pred')
+    mode_paths = sorted(glob.glob(path + '/*.png'))
+
+    results = ub.odict()
+
+    """
+    #  40/40... rate=0.86 Hz, eta=0:00:00, total=0:00:46, wall=16:29 EST
+    # ------------------------------------
+    # best_score = '[0.60784, 0.84042, 0.47841]'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # res        = '[0.60784, 0.84042, 0.47841]'
+    #  40/40... rate=0.90 Hz, eta=0:00:00, total=0:00:44, wall=16:29 EST
+    # ------------------------------------
+    # best_score = '[0.60784, 0.84042, 0.47841]'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 93))'
+    # res        = '[0.60543, 0.86952, 0.46611]'
+    #  40/40... rate=0.89 Hz, eta=0:00:00, total=0:00:44, wall=16:30 EST
+    # ------------------------------------
+    # best_score = '[0.60784, 0.84042, 0.47841]'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 100))'
+    # res        = '[0.60316, 0.87241, 0.46250]'
+    #  40/40... rate=0.93 Hz, eta=0:00:00, total=0:00:42, wall=16:31 EST
+    # ------------------------------------
+    # best_score = '[0.60784, 0.84042, 0.47841]'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # key        = '((only_inner, True), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # res        = '[0.57623, 0.77876, 0.45955]'
+    #  40/40... rate=0.98 Hz, eta=0:00:00, total=0:00:40, wall=16:32 EST
+    # ------------------------------------
+    # best_score = '[0.60784, 0.84042, 0.47841]'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # key        = '((only_inner, True), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 93))'
+    # res        = '[0.58619, 0.83016, 0.45472]'
+    #  40/40... rate=1.01 Hz, eta=0:00:00, total=0:00:39, wall=16:32 EST
+    # ------------------------------------
+    # best_score = '[0.60784, 0.84042, 0.47841]'
+    # key        = '((only_inner, False), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 50))'
+    # key        = '((only_inner, True), (inner_k, 0), (post_k, 0), (outer_k, 0), (min_seed_size, 100))'
+    # res        = '[0.58660, 0.83831, 0.45268]'
+    """
+
+    param_space = [
+        # optml.Parameter(name='s', param_type='boolean'),
+        # optml.Parameter(name='w', param_type='boolean'),
+        optml.Parameter(name='only_inner', param_type='categorical', possible_values=[False, True]),
+        optml.Parameter(name='inner_k', param_type='categorical', possible_values=[0]),
+        optml.Parameter(name='post_k', param_type='categorical', possible_values=[0, 3, 5, 7, 9, 12, 15][0:1]),
+        optml.Parameter(name='outer_k', param_type='categorical', possible_values=[0, 3, 5, 7, 9, 12, 15][0:1]),
+        optml.Parameter(name='min_seed_size', param_type='categorical',
+                        possible_values=[50, 93, 100]),
+        # optml.Parameter(name='d', param_type='integer', lower=1, upper=5),
+        # optml.Parameter(name='n', param_type='integer', lower=1, upper=1),
+    ]
+
+    from clab.tasks.urban_mapper_3d import UrbanMapper3D
+    task = UrbanMapper3D('', '', boundary=True)
+
+    def itergrid():
+        names = [p.name for p in param_space]
+        for values in it.product(*map(iter, param_space)):
+            yield ub.odict(zip(names, values))
+
+    def instance_label2(pred_seg, only_inner=False, inner_k=0, outer_k=0,
+                        post_k=0, min_seed_size=0):
+        import cv2
+
+        inner = (pred_seg == task.classname_to_id['inner_building']).astype(np.uint8)
+        # outer = (pred_seg == task.classname_to_id['outer_building']).astype(np.uint8)
+
+        # outer_k = 15
+        # outer = cv2.morphologyEx(outer, cv2.MORPH_ERODE,
+        #                          np.ones((outer_k, outer_k), np.uint8),
+        #                          iterations=1)
+
+        if inner_k > 0:
+            kernel = np.ones((inner_k, inner_k), np.uint8)
+            inner = cv2.morphologyEx(inner, cv2.MORPH_OPEN, kernel,
+                                     iterations=1)
+
+        def cc_locs(mask):
+            ccs = cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)[1]
+            rc_locs = np.where(mask > 0)
+            rc_ids = ccs[rc_locs]
+            rc_arrs = np.ascontiguousarray(np.vstack(rc_locs).T)
+            cc_to_loc = util.group_items(rc_arrs, rc_ids, axis=0)
+            return cc_to_loc
+
+        if min_seed_size > 0:
+            # Remove very small seeds
+            for inner_id, inner_rcs in cc_locs(inner).items():
+                if len(inner_rcs) < min_seed_size:
+                    inner[tuple(inner_rcs.T)] = 0
+
+        seeds = cv2.connectedComponents(inner, connectivity=4)[1]
+
+        if only_inner:
+            return seeds
+
+        mask = (pred_seg > 0).astype(np.uint8)
+        if outer_k > 1:
+            mask = cv2.morphologyEx(mask, cv2.MORPH_ERODE,
+                                    np.ones((outer_k, outer_k), np.uint8),
+                                    iterations=1)
+            # Ensure we dont clobber a seed
+            mask[inner] = 1
+
+        dmask1 = cv2.dilate(mask, np.ones((3, 3)))
+        dmask2 = cv2.dilate(dmask1, np.ones((3, 3)))
+
+        # Build a topological wall between mask components
+        twall = dmask1 - mask
+
+        # Pixels beyond the wall region are sure background
+        sure_bg = 1 - dmask2
+
+        # prepare watershed seeds
+        # Label sure background as 1
+        wseed = sure_bg.astype(np.int)
+        # Add the seeds starting at 2
+        seed_mask = seeds > 0
+        seed_labels = seeds[seed_mask]
+        wseed[seed_mask] = seed_labels + 1
+        # The unsure region is now labeled as zero
+
+        """
+        from clab.torch.urban_mapper import draw_gt_contours
+        wseed_color = task.instance_colorize(wseed)
+
+        twall_alpha = util.ensure_alpha_channel(twall * 255, alpha=1)
+        twall_alpha[twall == 0, 3] = 0
+        twall_alpha[twall == 1, 3]
+
+        color_seed_wall = util.imutil.overlay_alpha_images(twall_alpha, wseed_color)
+        pt.imshow(color_seed_wall)
+
+        draw_img = draw_gt_contours(color_seed_wall, gti)
+        pt.imshow(draw_img)
+        """
+
+        topology = np.dstack([twall * 255] * 3)
+        markers = np.ascontiguousarray(wseed.astype(np.int32).copy())
+        markers = cv2.watershed(topology, markers)
+        # Remove background and border labels
+        markers[markers <= 1] = 0
+        """
+        color_markers = task.instance_colorize(markers)
+
+        pt.imshow(draw_gt_contours(color_markers, gti))
+
+        color_seed_wall_ = util.ensure_alpha_channel(color_seed_wall[:, :, 0:3], alpha=.6)
+        overlay_markers = util.imutil.overlay_alpha_images(color_seed_wall_, color_markers)
+        pt.imshow(overlay_markers)
+        pt.imshow(color_markers)
+
+        draw_img = draw_gt_contours(overlay_markers, gti)
+        pt.imshow(draw_img)
+        """
+        instance_mask = (markers > 0).astype(np.uint8)
+
+        if post_k > 0:
+            mask = cv2.morphologyEx(mask, cv2.MORPH_ERODE,
+                                    np.ones((post_k, post_k), np.uint8),
+                                    iterations=1)
+
+        pred_ccs = cv2.connectedComponents(instance_mask, connectivity=4)[1]
+        return pred_ccs
+
+    best_key = None
+    best_score = [-np.inf]
+
+    for params in itergrid():
+        key = tuple(params.items())
+        if key not in results:
+            scores = []
+            for pred_fpath in ub.ProgIter(mode_paths[10:50]):
+                gtl_fname = basename(pred_fpath).replace('.png', '_GTL.tif')
+                gti_fname = basename(pred_fpath).replace('.png', '_GTI.tif')
+                dsm_fname = basename(pred_fpath).replace('.png', '_DSM.tif')
+                # bgr_fname = basename(pred_fpath).replace('.png', '_RGB.tif')
+                gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+                gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+                dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+                # bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+
+                pred_seg = util.imread(pred_fpath)
+                gti = util.imread(gti_fpath)
+                gtl = util.imread(gtl_fpath)
+                dsm = util.imread(dsm_fpath)
+                # bgr = util.imread(bgr_fpath)
+
+                pred = instance_label2(pred_seg, **params)
+
+                uncertain = (gtl == 65)
+
+                score = instance_fscore(gti, uncertain, dsm, pred)
+                scores.append(score)
+
+            res = np.array(scores).mean(axis=0)
+            if res[0] > best_score[0]:
+                best_score = res
+                best_key = key
+
+            print('------------------------------------')
+            print('best_score = {!r}'.format(ub.repr2(list(best_score), precision=5, nl=0)))
+            print('key        = {!r}'.format(ub.repr2(best_key, si=True, nl=0)))
+            print('key        = {!r}'.format(ub.repr2(key, si=True, nl=0)))
+            print('res        = {!r}'.format(ub.repr2(list(res), precision=5, nl=0)))
+            results[key] = res
+
+    import pandas as pd
+    rdf = pd.DataFrame(list(results.values()),
+                       index=results.keys(),
+                       columns=['f1', 'precision', 'recall'])
+    rdf.sort_values('f1').index[-1]
+
+        import optml
+        from optml.bayesian_optimizer import BayesianOptimizer
+        hyperparams = [
+            optml.Parameter(name='mask_thresh', param_type='continuous', lower=.15, upper=.85),
+            optml.Parameter(name='seed_thresh', param_type='continuous', lower=.15, upper=.85),
+            optml.Parameter(name='min_seed_size', param_type='integer', lower=0, upper=100),
+        ]
+        self = BayesianOptimizer(model=None, hyperparams=hyperparams, eval_func=None)
+
+        for path, path1 in zip(prob_paths, prob1_paths):
+            pass
+
+        def func(**new_hyperparams):
+            probs = np.load(path)['arr_0']
+            probs1 = np.load(path1)['arr_0']
+            seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+            mask_probs = probs1[:, :, 1]
+
+            seed_thresh, mask_thresh, min_seed_size = ub.take(
+                new_hyperparams, ['seed_thresh', 'mask_thresh', 'min_seed_size'])
+            seed = (seed_probs > mask_thresh).astype(np.uint8)
+            mask = (mask_probs > seed_thresh).astype(np.uint8)
+            pred = seeded_instance_label(seed, mask, min_seed_size=min_seed_size)
+            scores = instance_fscore(gti, uncertain, dsm, pred)
+            fscore = scores[0]
+            return fscore
+
+        history = self.simple(func, n_iters=10, verbose=True)
+        best = max(history)
+        print('best = {!r}'.format(best))
+
+        # {'mask_thresh': 0.45318221555100013, 'seed_thresh': 0.69172340500683327, 'min_seed_size': 41}
+        func(**{'mask_thresh': 0.5, 'seed_thresh': 0.7, 'min_seed_size': 20})
