@@ -323,12 +323,11 @@ def eval_internal_testset():
             scores, assign = instance_fscore(gti, uncertain, dsm, pred, info=True)
             # visualize failure cases
             if True:
-                pass
-
                 from clab.tasks import urban_mapper_3d
 
                 color_probs = util.make_heatmask(mask_probs)
-                blend_probs = util.overlay_colorized(color_probs, bgr, alpha=.3)
+                color_probs[:, :, 3] *= .3
+                blend_probs = util.overlay_colorized(color_probs, bgr)
 
                 # Overlay GT and Pred contours
                 draw_img = blend_probs
@@ -336,6 +335,8 @@ def eval_internal_testset():
                     draw_img, gti, color=(0, 165, 255), thickness=2, alpha=.3)
                 draw_img = urban_mapper_3d.draw_instance_contours(
                     draw_img, pred, color=(0, 165, 255), thickness=2, alpha=.3)
+
+                imutil.imwrite('foo.png', blend_probs)
 
             fscore = scores[0]
             fscores.append(fscore)

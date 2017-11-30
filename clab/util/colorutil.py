@@ -36,7 +36,7 @@ def lookup_bgr255(key):
     return convert_hex_to_255(mcolors.CSS4_COLORS[key])[::-1]
 
 
-def make_heatmask(probs, cmap='plasma'):
+def make_heatmask(probs, cmap='plasma', with_alpha=True):
     """
     Colorizes a single-channel intensity mask (with an alpha channel)
     """
@@ -54,8 +54,9 @@ def make_heatmask(probs, cmap='plasma'):
     cmap_ = mpl.cm.get_cmap(cmap)
     probs = imutil.ensure_float01(probs)
     heatmask = cmap_(probs)
-    heatmask[:, :, 0:3] = heatmask[:, :, 0:3][:, :, ::-1]
-    heatmask[:, :, 3] = probs
+    if with_alpha:
+        heatmask[:, :, 0:3] = heatmask[:, :, 0:3][:, :, ::-1]
+        heatmask[:, :, 3] = probs
     return heatmask
 
 

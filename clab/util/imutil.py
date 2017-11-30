@@ -460,7 +460,7 @@ def _lookup_colorspace_code(dst_space, src_space='BGR'):
     return code
 
 
-def overlay_colorized(colorized, orig, alpha=.6):
+def overlay_colorized(colorized, orig, alpha=.6, keepcolors=False):
     """
     Overlays a color segmentation mask on an original image
 
@@ -471,8 +471,9 @@ def overlay_colorized(colorized, orig, alpha=.6):
 
     """
     color_mask = ensure_alpha_channel(colorized, alpha=alpha)
-    gray_orig = ensure_grayscale(orig)
-    color_blend = overlay_alpha_images(color_mask, gray_orig)
+    if not keepcolors:
+        orig = ensure_grayscale(orig)
+    color_blend = overlay_alpha_images(color_mask, orig)
     color_blend = (color_blend * 255).astype(np.uint8)
     return color_blend
 
