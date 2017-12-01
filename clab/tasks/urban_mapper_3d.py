@@ -476,7 +476,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         if len(part_paths) == 0:
             return []
 
-        ext = splitext(part_paths[0])
+        ext = splitext(part_paths[0])[1]
 
         groupid = [basename(p).split('_part')[0] for p in part_paths]
         new_paths = []
