@@ -13,10 +13,10 @@ from clab.util import imutil
 from clab.torch.fit_harness import get_snapshot
 
 
-def urban_mapper_eval_dataset():
+def urban_mapper_eval_dataset(boundary=True, arch=None):
     from clab.live.urban_train import get_task, SSegInputsWrapper
     from clab import preprocess
-    task = get_task('urban_mapper_3d')
+    task = get_task('urban_mapper_3d', boundary=boundary, arch=arch)
     eval_fullres = task.load_fullres_inputs('testing')
     datadir = ub.ensuredir((task.workdir, 'eval_data'))
     prep = preprocess.Preprocessor(datadir)
@@ -85,10 +85,40 @@ def eval_contest_testset():
         # hacking it together from the train dataset
         load_path = get_snapshot(train_dpath, epoch=75)
 
+    MODE = 'UNET6CH'
+    if MODE == 'DENSE':
+        arch = 'dense_unet'
+        train_dpath = ub.truepath(
+            '~/remote/aretha/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/'
+            'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
+        epoch = 8
+        use_aux_diff = True
+    elif MODE == 'UNET6CH':
+        arch = 'unet2'
+        train_dpath = ub.truepath(
+            '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/'
+            'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
+        epoch = 19
+        use_aux_diff = True
+    else:
+        raise KeyError(MODE)
+
+    load_path = get_snapshot(train_dpath, epoch=epoch)
+
+    eval_dataset = urban_mapper_eval_dataset(boundary=True, arch=arch)
+    eval_dataset.use_aux_diff = use_aux_diff
+    eval_dataset.with_gt = False
+    eval_dataset.inputs.make_dumpsafe_names()
+    eval_dataset.tag = 'eval'
+
     pharn = PredictHarness(eval_dataset)
+    eval_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
-    pharn.load_snapshot(load_path)
-    pharn.run()
+
+    needs_predict = True
+    if needs_predict:
+        pharn.load_snapshot(load_path)
+        pharn.run()
 
     # mode = 'pred_crf'
     def two_channel_version():
@@ -293,7 +323,7 @@ def eval_internal_testset():
         uncertain = (gtl == 65)
         return gti, uncertain, dsm, bgr
 
-    def check_failures():
+    def draw_failures():
         prob_paths  = paths['probs']
         prob1_paths = paths['probs1']
 
@@ -335,22 +365,40 @@ def eval_internal_testset():
                 fp_labels = set(np.unique(pred)) - set(tp_pred_labels) - {0}
                 fn_labels = set(np.unique(gti)) - set(tp_true_labels) - {0}
 
-                fn_contours = np.vstack(list(ub.flatten(ub.take(instance_contours(gti), fn_labels))))
-                fp_contours = np.vstack(list(ub.flatten(ub.take(instance_contours(pred), fp_labels))))
+                TP = len(assign)
+                FN = len(fn_labels)
+                FP = len(fp_labels)
+
+                precision = TP / (TP + FP) if TP > 0 else 0
+                recall = TP / (TP + FN) if TP > 0 else 0
+                if precision > 0 and recall > 0:
+                    f_score = 2 * precision * recall / (precision + recall)
+                else:
+                    f_score = 0
+
+                fn_contours = list(ub.flatten(ub.take(instance_contours(gti), fn_labels)))
+                fp_contours = list(ub.flatten(ub.take(instance_contours(pred), fp_labels)))
 
                 color_probs = util.make_heatmask(mask_probs)
                 color_probs[:, :, 3] *= .3
                 blend_probs = util.overlay_colorized(color_probs, bgr, keepcolors=False)
 
-                # Overlay GT and Pred contours
-                draw_img = blend_probs
-                draw_img = urban_mapper_3d.draw_instance_contours(
-                    draw_img, gti, gtl=gtl, thickness=2, alpha=.5)
-                draw_img = urban_mapper_3d.draw_instance_contours(
-                    draw_img, pred, color=(0, 165, 255), thickness=2, alpha=.5)
+                # Draw False Positives and False Negatives with a big thickness
+                DEEP_SKY_BLUE_BGR = (255, 191, 0)
+                MAGENTA_BGR = (255, 0, 255)
+                RED_BGR = (0, 0, 255)
+                GREEN_BGR = (0, 255, 0)
 
-                draw_img = draw_contours(draw_img, fp_contours, thickness=4, alpha=.5, color=(255, 0, 255))
-                draw_img = draw_contours(draw_img, fn_contours, thickness=4, alpha=.5, color=(0, 0, 255))
+                draw_img = blend_probs
+                draw_img = draw_contours(draw_img, fp_contours, thickness=6, alpha=.5, color=MAGENTA_BGR)
+                draw_img = draw_contours(draw_img, fn_contours, thickness=6, alpha=.5, color=RED_BGR)
+
+                # Overlay GT and Pred contours
+                draw_img = urban_mapper_3d.draw_instance_contours(
+                    draw_img, gti, gtl=gtl, color=GREEN_BGR, thickness=2, alpha=.5)
+
+                draw_img = urban_mapper_3d.draw_instance_contours(
+                    draw_img, pred, color=DEEP_SKY_BLUE_BGR, thickness=2, alpha=.5)
 
                 imutil.imwrite('foo.png', draw_img)
 
@@ -1379,6 +1427,8 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
     unused_true_keys = set(unused_true_rcs.keys())
 
     assignment = []
+    fp_labels = []
+    fn_labels = []
 
     for pred_label, pred_rc_set in pred_rcs_.items():
 
@@ -1400,12 +1450,20 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
         if best_label is not None:
             assignment.append((pred_label, true_label, best_score[0]))
             unused_true_keys.remove(best_label)
-            if pred_label not in uncertain_labels:
+            if true_label not in uncertain_labels:
                 TP += 1
         else:
             FP += 1
+            fp_labels.append(pred_label)
 
-    FN += len(unused_true_rcs)
+    # Had two bugs:
+    # * used wrong variable to count false negs (all true were labeled as FN)
+    #   (massivly increasing FN)
+    # * Certain true building as marked as uncertain, but I was checking
+    #   against the pred labels instead (possibly decreasing/increasing TP)
+
+    fn_labels = unused_true_keys  # NOQA
+    FN += len(unused_true_keys)
 
     precision = TP / (TP + FP) if TP > 0 else 0
     recall = TP / (TP + FN) if TP > 0 else 0
