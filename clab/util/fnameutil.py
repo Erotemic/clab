@@ -242,6 +242,14 @@ def _fast_name_we(fname):
     return fname if pos == -1 else fname[:pos]
 
 
+def _fast_basename_we(fname):
+    slashpos = fname.rfind('/')
+    base = fname if slashpos == -1 else fname[slashpos + 1:]
+    pos = base.rfind('.', -slashpos)
+    base_we = base if pos == -1 else base[:pos]
+    return base_we
+
+
 def _safepaths(paths):
     """
     x = '/home/local/KHQ/jon.crall/code/clab/clab/live/urban_train.py'
@@ -332,39 +340,62 @@ def align_paths(paths1, paths2):
         >>> paths1, paths2 = zip(*aligned)
 
     """
+
+    def comparable_unique_path_ids(paths1, paths2):
+        """
+        Given two unordered sets of paths (that are assumed to have some unknown
+        correspondence) we find a unique id for each path in each set such that
+        they can be aligned.
+        """
+        assert len(paths1) == len(paths2), (
+            'cannot align unequal no of items {} != {}.'.format(len(paths1), len(paths2)))
+
+        do_quick_check = True
+        if do_quick_check:
+            # First check the simple thing: do they have unique corresponding
+            # basenames.
+            simple_unique1 = list(map(_fast_basename_we, paths1))
+            simple_unique_set1 = set(simple_unique1)
+            if len(simple_unique_set1) == len(paths1):
+                simple_unique2 = list(map(_fast_basename_we, paths2))
+                simple_unique_set2 = set(simple_unique2)
+                if simple_unique_set2 == simple_unique_set1:
+                    return simple_unique1, simple_unique2
+
+        safe_paths1 = _safepaths(paths1)
+        safe_paths2 = _safepaths(paths2)
+
+        # unique identifiers that should be comparable
+        unique1 = shortest_unique_suffixes(safe_paths1, sep='-')
+        unique2 = shortest_unique_suffixes(safe_paths2, sep='-')
+
+        def not_comparable_msg():
+            return '\n'.join([
+                'paths are not comparable'
+                'safe_paths1 = {}'.format(safe_paths1[0:3]),
+                'safe_paths2 = {}'.format(safe_paths1[0:3]),
+                'paths1 = {}'.format(safe_paths1[0:3]),
+                'paths2 = {}'.format(safe_paths1[0:3]),
+                'unique1 = {}'.format(unique1[0:3]),
+                'unique2 = {}'.format(unique2[0:3]),
+            ])
+
+        try:
+            # Assert these are unique identifiers common between paths
+            assert sorted(set(unique1)) == sorted(unique1), not_comparable_msg()
+            assert sorted(set(unique2)) == sorted(unique2), not_comparable_msg()
+            assert sorted(unique1) == sorted(unique2), not_comparable_msg()
+        except AssertionError:
+            unique1 = shortest_unique_prefixes(safe_paths1, sep='-')
+            unique2 = shortest_unique_prefixes(safe_paths2, sep='-')
+            # Assert these are unique identifiers common between paths
+            assert sorted(set(unique1)) == sorted(unique1), not_comparable_msg()
+            assert sorted(set(unique2)) == sorted(unique2), not_comparable_msg()
+            assert sorted(unique1) == sorted(unique2), not_comparable_msg()
+        return unique1, unique2
+
     import numpy as np
-    assert len(paths1) == len(paths2), (
-        'cannot align unequal no of items {} != {}.'.format(len(paths1), len(paths2)))
-    safe_paths1 = _safepaths(paths1)
-    safe_paths2 = _safepaths(paths2)
-
-    # unique identifiers that should be comparable
-    unique1 = shortest_unique_suffixes(safe_paths1, sep='-')
-    unique2 = shortest_unique_suffixes(safe_paths2, sep='-')
-
-    def not_comparable_msg():
-        return '\n'.join([
-            'paths are not comparable'
-            'safe_paths1 = {}'.format(safe_paths1[0:3]),
-            'safe_paths2 = {}'.format(safe_paths1[0:3]),
-            'paths1 = {}'.format(safe_paths1[0:3]),
-            'paths2 = {}'.format(safe_paths1[0:3]),
-            'unique1 = {}'.format(unique1[0:3]),
-            'unique2 = {}'.format(unique2[0:3]),
-        ])
-
-    try:
-        # Assert these are unique identifiers common between paths
-        assert sorted(set(unique1)) == sorted(unique1), not_comparable_msg()
-        assert sorted(set(unique2)) == sorted(unique2), not_comparable_msg()
-        assert sorted(unique1) == sorted(unique2), not_comparable_msg()
-    except AssertionError:
-        unique1 = shortest_unique_prefixes(safe_paths1, sep='-')
-        unique2 = shortest_unique_prefixes(safe_paths2, sep='-')
-        # Assert these are unique identifiers common between paths
-        assert sorted(set(unique1)) == sorted(unique1), not_comparable_msg()
-        assert sorted(set(unique2)) == sorted(unique2), not_comparable_msg()
-        assert sorted(unique1) == sorted(unique2), not_comparable_msg()
+    unique1, unique2 = comparable_unique_path_ids(paths1, paths2)
 
     lookup = {k: v for v, k in enumerate(unique1)}
     sortx = np.argsort([lookup[u] for u in unique2])

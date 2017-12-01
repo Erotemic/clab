@@ -647,3 +647,142 @@ def junk():
 
         # {'mask_thresh': 0.45318221555100013, 'seed_thresh': 0.69172340500683327, 'min_seed_size': 41}
         func(**{'mask_thresh': 0.5, 'seed_thresh': 0.7, 'min_seed_size': 20})
+
+
+def hypersearch_probs():
+    prob_paths  = paths['probs']
+    prob1_paths = paths['probs1']
+
+    # https://github.com/fmfn/BayesianOptimization
+    # https://github.com/fmfn/BayesianOptimization/blob/master/examples/usage.py
+    # https://github.com/fmfn/BayesianOptimization/blob/master/examples/exploitation%20vs%20exploration.ipynb
+    # subx = [0, 1, 2, 3, 4, 5]
+    subx = [2, 4, 5, 9, 10, 14, 17, 18, 20, 30, 33, 39, 61, 71, 72, 73, 75, 81, 84]
+    from bayes_opt import BayesianOptimization
+
+    def best(self):
+        return {'max_val': self.Y.max(),
+                'max_params': dict(zip(self.keys,
+                                       self.X[self.Y.argmax()]))}
+
+    def seeded_objective(**params):
+        seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
+            params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
+        fscores = []
+        for path, path1 in zip(ub.take(prob_paths, subx), ub.take(prob1_paths, subx)):
+            gti, uncertain, dsm, bgr = gt_info_from_path(path)
+
+            probs = np.load(path)['arr_0']
+            seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+            seed = (seed_probs > seed_thresh).astype(np.uint8)
+
+            probs1 = np.load(path1)['arr_0']
+            mask_probs = probs1[:, :, 1]
+            mask = (mask_probs > mask_thresh).astype(np.uint8)
+
+            pred = seeded_instance_label(seed, mask,
+                                         min_seed_size=min_seed_size,
+                                         min_size=min_size)
+            scores = instance_fscore(gti, uncertain, dsm, pred)
+            fscore = scores[0]
+            fscores.append(fscore)
+        mean_fscore = np.mean(fscores)
+        return mean_fscore
+
+    seeded_bounds = {
+        'mask_thresh': (.4, .9),
+        'seed_thresh': (.4, .9),
+        'min_seed_size': (0, 100),
+        'min_size': (0, 100),
+    }
+    n_init = 50
+    seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
+    seeded_bo.explore(pd.DataFrame([
+        {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
+        {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
+        {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
+        {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
+        {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
+        {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
+        {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
+        {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
+        {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
+    ]).to_dict(orient='list'))
+    seeded_bo.plog.print_header(initialization=True)
+    seeded_bo.init(n_init)
+    print(ub.repr2(best(seeded_bo), nl=0, precision=4))
+
+    print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
+    print('inner ' + ub.repr2(best(inner_bo), nl=0, precision=4))
+    print('outer ' + ub.repr2(best(outer_bo), nl=0, precision=4))
+
+    # {'max_params': {'thresh': 0.8000, 'min_size': 0.0000}, 'max_val': 0.6445}
+    gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
+
+    n_iter = n_init // 2
+    for kappa in [10, 5, 1]:
+        seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+        inner_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+        outer_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+
+    print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
+    print('inner ' + ub.repr2(best(inner_bo), nl=0, precision=4))
+    print('outer ' + ub.repr2(best(outer_bo), nl=0, precision=4))
+    print(arch)
+
+    # bo.maximize(n_iter=3, acq='poi', xi=1e-4)
+    # bo.maximize(n_iter=3, acq='poi', xi=1e-1)
+
+    # bo.maximize(n_iter=3, acq='ucb', kappa=1)
+    # bo.maximize(n_iter=3, acq='ucb', kappa=5)
+
+    # bo.maximize(n_iter=3, acq='ei', xi=1e-4)
+    # bo.maximize(n_iter=3, acq='ei', xi=1e-1)
+
+    # import functools
+    # bounds2 = {
+    #     'mask_thresh': (.3, .95),
+    #     'thresh': (.3, .95),
+    # }
+    # func2 = functools.partial(seeded_objective, min_seed_size=20)
+    # bo2 = BayesianOptimization(func2, bounds2)
+    # bo2.explore(pd.DataFrame([
+    #     {'mask_thresh': 0.88201857575666986, 'seed_thresh': 0.51167580304776372},
+    #     {'mask_thresh': 0.7,  'seed_thresh': 0.2},
+    #     {'mask_thresh': 0.69,  'seed_thresh': 0.45},
+    #     {'mask_thresh': 0.5,  'seed_thresh': 0.5},
+    #     {'mask_thresh': 0.89, 'seed_thresh': 0.52},
+    # ]).to_dict(orient='list'))
+    # bo2.init(5)
+    # bo2.maximize(n_iter=3, acq='ucb', **gp_params)
+    # bo2.res['max']['max_params']
+
+    # # Seeded version
+    # for path, path1 in zip(prob_paths, prob1_paths):
+    #     pass
+
+    #     probs = np.load(path)['arr_0']
+    #     probs1 = np.load(path1)['arr_0']
+    #     seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+    #     mask_probs = probs1[:, :, 1]
+
+    #     gti, uncertain, dsm, bgr = gt_info_from_path(path1)
+
+    #     # convert probs into a prediction and score it
+    #     x = {}
+    #     mask_thresh = .9
+    #     seed_thresh = .2
+    #     min_seed_size = 50
+
+    #     seed = (seed_probs > mask_thresh).astype(np.uint8)
+    #     mask = (mask_probs > seed_thresh).astype(np.uint8)
+    #     pred = seeded_instance_label(seed, mask, min_seed_size=min_seed_size)
+
+    #     scores = instance_fscore(gti, uncertain, dsm, pred)
+
+    #     print('thresh, scores = {}, {}'.format(ub.repr2(thresh, precision=3), ub.repr2(scores, nl=0, precision=3)))
+    #     x[thresh] = scores
+
+    #     print(pd.DataFrame.from_dict(x, orient='index')[0].argmax())
+    #     print(pd.DataFrame.from_dict(x, orient='index')[0].max())
+
