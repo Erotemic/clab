@@ -473,17 +473,15 @@ class UrbanMapper3D(SemanticSegmentationTask):
             return rc_locs
 
         # Group parts by base id
+        ext = splitext(part_paths[0])
+
         groupid = [basename(p).split('_part')[0] for p in part_paths]
         new_paths = []
         groups = list(ub.group_items(part_paths, groupid).items())
         for tileid, paths in ub.ProgIter(groups, label='restitching'):
-            pass
             # Read all parts belonging to an original group
-            if log_hack:
-                # read log probabilities in as real probabilities
+            if ext == '.npy':
                 tiles = [np.load(p) for p in paths]
-                tiles = [np.exp(t) for t in tiles]
-                tiles = [t.transpose(1, 2, 0) for t in tiles]
             else:
                 tiles = [imutil.imread(p) for p in paths]
             # try:
@@ -502,7 +500,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 raise KeyError(blend)
 
             # Write them to disk.
-            if log_hack:
+            if ext == '.npy':
                 fpath = join(output_dpath, tileid + '.npy')
                 np.savez(fpath, stiched)
             else:

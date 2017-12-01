@@ -142,8 +142,8 @@ def eval_contest_testset():
 
     def two_channel_prob_version():
         task = eval_dataset.task
-        prob_paths = pharn._restitch_type('log_probs', blend='avew', force=False)
-        prob1_paths = pharn._restitch_type('log_probs1', blend='avew', force=False)
+        prob_paths = pharn._restitch_type('probs', blend='avew', force=False)
+        prob1_paths = pharn._restitch_type('probs1', blend='avew', force=False)
 
         def seeded_predictions(**params):
             # Convert to submission output format
@@ -358,7 +358,7 @@ def eval_internal_testset():
     pharn.hack_dump_path(load_path)
 
     needs_predict = False
-    needs_predict = len(pharn._restitch_type('log_probs', blend='avew', force=False)) == 0
+    needs_predict = len(pharn._restitch_type('probs', blend='avew', force=False)) == 0
     if needs_predict:
         # gpu part
         pharn.load_snapshot(load_path)
@@ -367,8 +367,8 @@ def eval_internal_testset():
     task = test_dataset.task
 
     paths = {}
-    paths['probs'] = pharn._restitch_type('log_probs', blend='avew', force=False)
-    paths['probs1'] = pharn._restitch_type('log_probs1', blend='avew', force=False)
+    paths['probs'] = pharn._restitch_type('probs', blend='avew', force=False)
+    paths['probs1'] = pharn._restitch_type('probs1', blend='avew', force=False)
     if False:
         pharn._blend_full_probs(task, 'probs', npy_fpaths=paths['probs'])
         pharn._blend_full_probs(task, 'probs1', npy_fpaths=paths['probs1'])
@@ -792,30 +792,28 @@ class PredictHarness(object):
         """
         hacky code to restitch parts into a whole segmentation based on chip filenames
 
-        mode = 'log_probs1'
+        mode = 'probs1'
         blend = 'avew'
         """
-        log_hack = mode.startswith('log_probs')
-        if log_hack:
+        if mode.startswith('probs'):
             part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.npy'.format(mode)))
-            output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode.replace('log_', '')))
         else:
             part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.png'.format(mode)))
-            output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
+
+        output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
         if not force:
             restitched_paths = sorted(glob.glob(output_dpath + '/*.npy'.format(mode)))
             if len(restitched_paths) > 0:
                 return restitched_paths
         restitched_paths = pharn.dataset.task.restitch(output_dpath, part_paths,
-                                                       blend=blend,
-                                                       log_hack=log_hack)
+                                                       blend=blend)
         return restitched_paths
 
     def _blend_full_probs(pharn, task, mode='probs1', npy_fpaths=None):
         """
         Ignore:
             mode = 'probs1'
-            pharn._restitch_type('log_probs1', blend='avew')
+            pharn._restitch_type('probs1', blend='avew')
 
             from clab.profiler import profile_onthefly
             profile_onthefly(pharn._blend_full_probs)(task, mode='probs', npy_fpaths=npy_fpaths)
@@ -868,19 +866,19 @@ class PredictHarness(object):
 
                 util.imwrite(c_fpath, draw_img)
 
-    def color_log_probs(pharn, task):
+    def color_probs(pharn, task):
         """
         Ignore:
-            pharn._restitch_type('blend_log_probs/c0_non-building', blend=None)
-            pharn._restitch_type('blend_log_probs/c1_inner-building', blend=None)
-            pharn._restitch_type('blend_log_probs/c2_outer-building', blend=None)
+            pharn._restitch_type('blend_probs/c0_non-building', blend=None)
+            pharn._restitch_type('blend_probs/c1_inner-building', blend=None)
+            pharn._restitch_type('blend_probs/c2_outer-building', blend=None)
 
-            pharn._restitch_type('blend_log_probs1/c0_non-building', blend=None)
-            pharn._restitch_type('blend_log_probs1/c1_building', blend=None)
+            pharn._restitch_type('blend_probs1/c0_non-building', blend=None)
+            pharn._restitch_type('blend_probs1/c1_building', blend=None)
         """
 
-        mode = 'log_probs1'
-        mode = 'log_probs'
+        mode = 'probs1'
+        mode = 'probs'
 
         dpath = join(pharn.test_dump_dpath, mode)
 
@@ -896,9 +894,8 @@ class PredictHarness(object):
             gt = util.imread(gtl_paths[ix])
             bgr = util.imread(bgr_paths[ix])
 
-            log_probs = np.load(fpath)
+            probs = np.load(fpath)
 
-            probs = np.exp(log_probs)
             # Dump each channel
             for c in reversed(range(probs.shape[0])):
                 if mode.endswith('1'):
@@ -912,13 +909,13 @@ class PredictHarness(object):
                 c_fname = ub.augpath(basename(fpath), ext='.png')
                 c_fpath = join(c_dpath, c_fname)
 
-                color_probs = util.make_heatmask(probs[c])[:, :, 0:3]
+                color_probs = util.make_heatmask(probs[:, :, c])[:, :, 0:3]
                 blend_probs = util.overlay_colorized(color_probs, bgr, alpha=.3)
 
                 draw_img = draw_gt_contours2(blend_probs, gt, thickness=2, alpha=.5)
                 util.imwrite(c_fpath, draw_img)
-        pharn._restitch_type('blend_log_probs1/c0_non-building', blend='avew')
-        pharn._restitch_type('blend_log_probs1/c1_building', blend='avew')
+        pharn._restitch_type('blend_probs1/c0_non-building', blend='avew')
+        pharn._restitch_type('blend_probs1/c1_building', blend='avew')
 
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
