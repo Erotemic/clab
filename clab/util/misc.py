@@ -1,4 +1,6 @@
 import six
+import numpy as np
+import h5py
 
 
 def isiterable(obj):
@@ -151,3 +153,31 @@ def roundrobin(iterables):
             else:
                 next_alive.append(gen)
         curr_alive = next_alive
+
+
+def read_h5arr(fpath):
+    with h5py.File(fpath, 'r') as hf:
+        return hf['arr_0'][...]
+
+
+def write_h5arr(fpath, arr):
+    with h5py.File(fpath, 'w') as hf:
+        hf.create_dataset('arr_0', data=arr)
+
+
+def read_arr(fpath):
+    if fpath.endswith('.npy'):
+        return np.read(fpath)
+    elif fpath.endswith('.h5'):
+        return read_h5arr(fpath)
+    else:
+        raise KeyError(fpath)
+
+
+def write_arr(fpath, arr):
+    if fpath.endswith('.npy'):
+        return np.save(fpath, arr)
+    elif fpath.endswith('.h5'):
+        return write_h5arr(fpath, arr)
+    else:
+        raise KeyError(fpath)

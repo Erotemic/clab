@@ -370,6 +370,9 @@ class UrbanMapper3D(SemanticSegmentationTask):
         yield xval_split
 
     def restitch(task, output_dpath, part_paths, blend=None):
+        # Group parts by base id
+        if len(part_paths) == 0:
+            return []
 
         def stitch_tiles(rc_locs, tiles):
             """
@@ -472,11 +475,8 @@ class UrbanMapper3D(SemanticSegmentationTask):
                        for p in paths]
             return rc_locs
 
-        # Group parts by base id
-        if len(part_paths) == 0:
-            return []
-
         ext = splitext(part_paths[0])[1]
+        is_image = ext not in ['.npy', '.h5']
 
         groupid = [basename(p).split('_part')[0] for p in part_paths]
         new_paths = []
@@ -484,13 +484,13 @@ class UrbanMapper3D(SemanticSegmentationTask):
 
         for tileid, paths in ub.ProgIter(groups, label='restitching'):
             # Read all parts belonging to an original group
-            if ext == '.npy':
-                tiles = [np.load(p) for p in paths]
+            if is_image:
+                tiles = [imutil.imread(p) for p in paths]
+            else:
+                tiles = [util.read_arr(p) for p in paths]
                 if tiles[0].shape[0] < 10:
                     # hack
                     tiles = [t.transpose(1, 2, 0) for t in tiles]
-            else:
-                tiles = [imutil.imread(p) for p in paths]
             # try:
             # except OSError:
             # Find their relative positions and restitch them
@@ -507,12 +507,13 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 raise KeyError(blend)
 
             # Write them to disk.
-            if ext == '.npy':
-                fpath = join(output_dpath, tileid + '.npy')
-                np.save(fpath, stiched)
-            else:
+            if is_image:
                 fpath = join(output_dpath, tileid + '.png')
                 imutil.imwrite(fpath, stiched)
+            else:
+                fpath = join(output_dpath, tileid + '.npy')
+                util.write_arr(fpath, stiched)
+
             new_paths.append(fpath)
         return new_paths
 

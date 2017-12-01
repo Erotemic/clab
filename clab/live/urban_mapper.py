@@ -108,11 +108,11 @@ def eval_contest_testset():
             mask_thresh = params.pop('mask_thresh')
 
             for path, path1 in ub.ProgIter(list(zip(prob_paths, prob1_paths))):
-                probs = np.load(path)
+                probs = util.read_arr(path)
                 seed_probs = probs[:, :, task.classname_to_id['inner_building']]
                 seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-                probs1 = np.load(path1)
+                probs1 = util.read_arr(path1)
                 mask_probs = probs1[:, :, 1]
                 mask = (mask_probs > mask_thresh).astype(np.uint8)
 
@@ -244,8 +244,8 @@ def eval_internal_testset():
     Script:
         >>> eval_internal_testset()
     """
-    MODE = 'UNET6CH'
     MODE = 'DENSE'
+    MODE = 'UNET6CH'
 
     if MODE == 'DENSE':
         arch = 'dense_unet'
@@ -330,11 +330,11 @@ def eval_internal_testset():
         for ix, (path, path1) in enumerate(ub.ProgIter(list(zip(prob_paths, prob1_paths)))):
             gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
-            probs = np.load(path)
+            probs = util.read_arr(path)
             seed_probs = probs[:, :, task.classname_to_id['inner_building']]
             seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-            probs1 = np.load(path1)
+            probs1 = util.read_arr(path1)
             mask_probs = probs1[:, :, 1]
             mask = (mask_probs > mask_thresh).astype(np.uint8)
 
@@ -431,11 +431,11 @@ def eval_internal_testset():
             for path, path1 in zip(ub.take(prob_paths, subx), ub.take(prob1_paths, subx)):
                 gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
-                probs = np.load(path)
+                probs = util.read_arr(path)
                 seed_probs = probs[:, :, task.classname_to_id['inner_building']]
                 seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-                probs1 = np.load(path1)
+                probs1 = util.read_arr(path1)
                 mask_probs = probs1[:, :, 1]
                 mask = (mask_probs > mask_thresh).astype(np.uint8)
 
@@ -717,8 +717,9 @@ class PredictHarness(object):
         """
         hacky code to restitch parts into a whole segmentation based on chip filenames
 
-        mode = 'probs1'
+        mode = 'probs'
         blend = 'avew'
+        force = 1
         """
         if mode.startswith('probs'):
             part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.npy'.format(mode)))
@@ -763,7 +764,7 @@ class PredictHarness(object):
             gtl = util.imread(gtl_fpath)
             gti = util.imread(gti_fpath)
             bgr = util.imread(bgr_fpath)
-            probs = np.load(fpath)
+            probs = util.read_arr(fpath)
 
             # Dump each channel
             from clab.tasks import urban_mapper_3d
@@ -819,7 +820,7 @@ class PredictHarness(object):
             gt = util.imread(gtl_paths[ix])
             bgr = util.imread(bgr_paths[ix])
 
-            probs = np.load(fpath)
+            probs = util.read_arr(fpath)
 
             # Dump each channel
             for c in reversed(range(probs.shape[0])):
@@ -855,6 +856,19 @@ class PredictHarness(object):
             batch_size=1,
         )
 
+        # Hack in the restitching here to not have to deal with expensive IO
+        def _extract_part_grid(paths):
+            # hack to use filenames to extract upper left locations of tiles in
+            # the larger image.
+            rc_locs = [[int(x) for x in basename(p).split('.')[0].split('_')[-2:]]
+                       for p in paths]
+            return rc_locs
+
+        groupid = [basename(p).split('_part')[0] for p in part_paths]
+        new_paths = []
+        groups = list(ub.group_items(part_paths, groupid).items())
+
+
         prog = ub.ProgIter(length=len(loader), label='predict proba')
         for ix, loaded in enumerate(prog(loader)):
             fname = pharn.dataset.inputs.dump_im_names[ix]
@@ -882,51 +896,19 @@ class PredictHarness(object):
                 prob_tensor = torch.exp(log_prob_tensor)
                 probs = prob_tensor.data.cpu().numpy().transpose(1, 2, 0)
 
-                # .astype(np.float32)
-                # Just reload rgb data without inverting the transform
-                # bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
-
-                # output = prob_tensor.data.cpu().numpy()[0]
-
-                # pred = log_probs.argmax(axis=0)
-
-                # pred = argmax.data.cpu().numpy()[0]
-                # blend_pred = pharn.dataset.task.colorize(pred, bgr)
-
                 output_dict = {
-                    # 'blend_pred' + suffix: blend_pred,
-                    # 'color_pred': color_pred,
-                    # 'pred' + suffix: pred,
                     'probs' + suffix: probs,
                 }
-
-                # if False:
-                #     from clab.torch import filters
-                #     posterior = filters.crf_posterior(bgr, log_probs)
-                #     pred_crf = posterior.argmax(axis=0)
-                #     blend_pred_crf = pharn.dataset.task.colorize(pred_crf, bgr)
-                #     # color_pred = task.colorize(pred)
-                #     output_dict.update({
-                #         'blend_pred_crf' + suffix: blend_pred_crf,
-                #         'pred_crf' + suffix: pred_crf,
-                #     })
-
-                # if pharn.dataset.with_gt:
-                #     bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
-                #     true = imutil.imread(pharn.dataset.inputs.gt_paths[ix])
-                #     blend_true = pharn.dataset.task.colorize(true, bgr, alpha=.5)
-                #     # color_true = task.colorize(true, alpha=.5)
-                #     output_dict['true' + suffix] = true
-                #     output_dict['blend_true' + suffix] = blend_true
-                #     # output_dict['color_true'] = color_true
 
                 for key, data in output_dict.items():
                     dpath = join(pharn.test_dump_dpath, key)
                     ub.ensuredir(dpath)
                     fpath = join(dpath, fname)
                     if key == 'probs' + suffix:
-                        fpath = ub.augpath(fpath, ext='.npy')
-                        np.save(fpath, data)
+                        fpath = ub.augpath(fpath, ext='.h5')
+                        # fpath = ub.augpath(fpath, ext='.npy')
+                        util.write_arr(fpath, data)
+                        # util.write_arr(fpath, data)
                     else:
                         imutil.imwrite(fpath, data)
 
