@@ -917,11 +917,21 @@ class PredictHarness(object):
         pharn._restitch_type('blend_probs1/c0_non-building', blend='avew')
         pharn._restitch_type('blend_probs1/c1_building', blend='avew')
 
+    from clab.profiler import profile_onthefly
+    @profile_onthefly
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
         pharn.model.train(False)
 
-        for ix in ub.ProgIter(range(len(pharn.dataset)), label='dumping'):
+        loader = torch.utils.data.DataLoader(
+            pharn.dataset, shuffle=False, pin_memory=True, num_workers=3,
+            batch_size=1,
+        )
+
+        prog = ub.ProgIter(length=len(loader), label='predict proba')
+        for ix in enumerate(prog(loader)):
+            if ix > 200:
+                break
             fname = pharn.dataset.inputs.dump_im_names[ix]
             fname = os.path.splitext(fname)[0] + '.png'
 
@@ -945,10 +955,10 @@ class PredictHarness(object):
                 output_tensor = outputs[ox]
                 log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
                 log_probs = log_prob_tensor.data.cpu().numpy()
-                probs = np.exp(log_probs)
+                probs = np.exp(log_probs).astype(np.float32)
 
                 # Just reload rgb data without inverting the transform
-                bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
+                # bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
 
                 # output = prob_tensor.data.cpu().numpy()[0]
 
@@ -961,27 +971,28 @@ class PredictHarness(object):
                     # 'blend_pred' + suffix: blend_pred,
                     # 'color_pred': color_pred,
                     # 'pred' + suffix: pred,
-                    'probs' + suffix: probs.astype(np.float32),
+                    'probs' + suffix: probs,
                 }
 
-                if False:
-                    from clab.torch import filters
-                    posterior = filters.crf_posterior(bgr, log_probs)
-                    pred_crf = posterior.argmax(axis=0)
-                    blend_pred_crf = pharn.dataset.task.colorize(pred_crf, bgr)
-                    # color_pred = task.colorize(pred)
-                    output_dict.update({
-                        'blend_pred_crf' + suffix: blend_pred_crf,
-                        'pred_crf' + suffix: pred_crf,
-                    })
+                # if False:
+                #     from clab.torch import filters
+                #     posterior = filters.crf_posterior(bgr, log_probs)
+                #     pred_crf = posterior.argmax(axis=0)
+                #     blend_pred_crf = pharn.dataset.task.colorize(pred_crf, bgr)
+                #     # color_pred = task.colorize(pred)
+                #     output_dict.update({
+                #         'blend_pred_crf' + suffix: blend_pred_crf,
+                #         'pred_crf' + suffix: pred_crf,
+                #     })
 
-                if pharn.dataset.with_gt:
-                    true = imutil.imread(pharn.dataset.inputs.gt_paths[ix])
-                    blend_true = pharn.dataset.task.colorize(true, bgr, alpha=.5)
-                    # color_true = task.colorize(true, alpha=.5)
-                    output_dict['true' + suffix] = true
-                    output_dict['blend_true' + suffix] = blend_true
-                    # output_dict['color_true'] = color_true
+                # if pharn.dataset.with_gt:
+                #     bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
+                #     true = imutil.imread(pharn.dataset.inputs.gt_paths[ix])
+                #     blend_true = pharn.dataset.task.colorize(true, bgr, alpha=.5)
+                #     # color_true = task.colorize(true, alpha=.5)
+                #     output_dict['true' + suffix] = true
+                #     output_dict['blend_true' + suffix] = blend_true
+                #     # output_dict['color_true'] = color_true
 
                 for key, data in output_dict.items():
                     dpath = join(pharn.test_dump_dpath, key)
