@@ -420,9 +420,9 @@ class UrbanMapper3D(SemanticSegmentationTask):
                 # Weight borders less than center
                 # should really use receptive fields for this calculation
                 # but this should be fine.
-                weight[:h // 4] = .25
+                weight[:h // 4]  = .25
                 weight[-h // 4:] = .25
-                weight[:w // 4] = .25
+                weight[:w // 4]  = .25
                 weight[-w // 4:] = .25
                 weight3c = weight
                 if n_channels > 1:

@@ -319,8 +319,8 @@ def eval_internal_testset():
     # else:
     #     datasets['test'].center_inputs = datasets['train']._make_normalizer()
 
-    MODE = 'DENSE'
     MODE = 'UNET6CH'
+    MODE = 'DENSE'
 
     if MODE == 'DENSE':
         arch = 'dense_unet'
@@ -329,7 +329,7 @@ def eval_internal_testset():
             'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = None
         use_aux_diff = True
-        epoch = 23
+        epoch = 24
 
     elif MODE == 'UNET6CH':
         arch = 'unet2'
@@ -358,7 +358,7 @@ def eval_internal_testset():
     pharn.hack_dump_path(load_path)
 
     needs_predict = False
-    needs_predict = len(pharn._restitch_type('probs', blend='avew', force=False)) == 0
+    needs_predict = len(pharn._restitch_type('probs', blend='avew', force=0)) == 0
     if needs_predict:
         # gpu part
         pharn.load_snapshot(load_path)
@@ -367,8 +367,8 @@ def eval_internal_testset():
     task = test_dataset.task
 
     paths = {}
-    paths['probs'] = pharn._restitch_type('probs', blend='avew', force=False)
-    paths['probs1'] = pharn._restitch_type('probs1', blend='avew', force=False)
+    paths['probs'] = pharn._restitch_type('probs', blend='avew', force=0)
+    paths['probs1'] = pharn._restitch_type('probs1', blend='avew', force=0)
     if False:
         pharn._blend_full_probs(task, 'probs', npy_fpaths=paths['probs'])
         pharn._blend_full_probs(task, 'probs1', npy_fpaths=paths['probs1'])
