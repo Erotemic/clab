@@ -481,10 +481,14 @@ class UrbanMapper3D(SemanticSegmentationTask):
         groupid = [basename(p).split('_part')[0] for p in part_paths]
         new_paths = []
         groups = list(ub.group_items(part_paths, groupid).items())
+
         for tileid, paths in ub.ProgIter(groups, label='restitching'):
             # Read all parts belonging to an original group
             if ext == '.npy':
                 tiles = [np.load(p) for p in paths]
+                if tiles[0].shape[0] < 10:
+                    # hack
+                    tiles = [t.transpose(1, 2, 0) for t in tiles]
             else:
                 tiles = [imutil.imread(p) for p in paths]
             # try:

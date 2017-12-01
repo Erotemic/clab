@@ -50,44 +50,6 @@ def eval_contest_testset():
         >>> eval_contest_testset()
 
     """
-    # train_dpath = ub.truepath(
-    #     '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
-    # load_path = get_snapshot(train_dpath, epoch=202)
-    # if False:
-    #     train_dpath = ub.truepath(
-    #         '~/remote/aretha/data/work/urban_mapper/arch/unet/train/'
-    #         'input_8438-haplmmpq/solver_8438-haplmmpq_unet_None_kvterjeu_a=1,c=RGB,n_ch=5,n_cl=3')
-    #     load_path = get_snapshot(train_dpath, epoch=258)
-
-    #     eval_dataset = urban_mapper_eval_dataset()
-    #     eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
-    # if False:
-    #     train_dpath = ub.truepath(
-    #         '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
-    #         'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
-    #     load_path = get_snapshot(train_dpath)
-
-    #     eval_dataset = urban_mapper_eval_dataset()
-    #     eval_dataset.center_inputs = eval_dataset._original_urban_mapper_normalizer()
-
-    # if False:
-    #     eval_dataset = urban_mapper_eval_dataset()
-    #     from clab.live.urban_train import load_task_dataset
-    #     datasets = load_task_dataset('urban_mapper_3d')
-    #     eval_dataset.center_inputs = datasets['train']._make_normalizer()
-    #     train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4')
-    #     load_path = get_snapshot(train_dpath, epoch=100)
-
-    # if True:
-    #     eval_dataset = urban_mapper_eval_dataset()
-    #     from clab.live.urban_train import load_task_dataset
-    #     datasets = load_task_dataset('urban_mapper_3d', combine=True)
-    #     eval_dataset.center_inputs = datasets['train']._make_normalizer()
-    #     train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_8438-xqwzrwfj/solver_8438-xqwzrwfj_unet2_edmtxaov_gksatgso_a=1,c=RGB,n_ch=5,n_cl=4')
-    #     # TODO: just read the normalization from the train_dpath instead of
-    #     # hacking it together from the train dataset
-    #     load_path = get_snapshot(train_dpath, epoch=75)
-
     MODE = 'UNET6CH'
     if MODE == 'DENSE':
         arch = 'dense_unet'
@@ -104,12 +66,7 @@ def eval_contest_testset():
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = 34
         use_aux_diff = True
-        # params = {
-        #     'seed_thresh': 0.6573,
-        #     'mask_thresh': 0.8338,
-        #     'min_seed_size': 25,
-        #     'min_size': 38,
-        # }
+        # params = {'seed_thresh': 0.6573, 'mask_thresh': 0.8338, 'min_seed_size': 25, 'min_size': 38,}
         # params = {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33}
         params = {'mask_thresh': 0.7664, 'seed_thresh': 0.4090, 'min_seed_size': 48, 'min_size': 61}
         boundary = True
@@ -264,21 +221,6 @@ def eval_contest_testset():
     # Submission URL
     # https://community.topcoder.com/longcontest/
     # https://community.topcoder.com/longcontest/?module=Submit&compid=57607&rd=17007&cd=15282
-
-    # from os.path import dirname, split
-    # for ix, fpath in enumerate(ub.ProgIter(restitched_pred[0:10], label='blend instance')):
-    #     base_dpath, mode = split(dirname(fpath))
-    #     output_dpath = ub.ensuredir(join(base_dpath, 'blend_instance_' + mode))
-    #     output_fpath = join(output_dpath, basename(fpath))
-
-    #     pred = imutil.imread(fpath)
-    #     cc_labels = eval_dataset.task.instance_label(pred, k=7, n_iters=1,
-    #                                                  watershed=True)
-    #     big_orig_fpath = eval_dataset.fullres.im_paths[ix]
-    #     big_orig = imutil.imread(big_orig_fpath)
-    #     big_blend_instance_pred = eval_dataset.task.instance_colorize(cc_labels, big_orig)
-    #     imutil.imwrite(output_fpath, big_blend_instance_pred)
-
     """
     Leaderboards:
         https://community.topcoder.com/longcontest/?module=ViewStandings&rd=17007
@@ -302,23 +244,6 @@ def eval_internal_testset():
     Script:
         >>> eval_internal_testset()
     """
-
-    # if False:
-    #     train_dpath = ub.truepath(
-    #         '~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3')
-    # load_path = get_snapshot(train_dpath, epoch=202)
-
-    # train_dpath = ub.argval('--train-dpath', default=None)
-    # train_dpath = ub.truepath(
-    #     '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
-    #     'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/')
-    # epoch = ub.argval('--epoch', default=None)
-
-    # if False:
-    #     test_dataset.center_inputs = test_dataset._original_urban_mapper_normalizer()
-    # else:
-    #     datasets['test'].center_inputs = datasets['train']._make_normalizer()
-
     MODE = 'UNET6CH'
     MODE = 'DENSE'
 
@@ -955,7 +880,7 @@ class PredictHarness(object):
                 output_tensor = outputs[ox]
                 log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
                 prob_tensor = torch.exp(log_prob_tensor)
-                probs = prob_tensor.data.cpu().numpy()
+                probs = prob_tensor.data.cpu().numpy().transpose(1, 2, 0)
 
                 # .astype(np.float32)
                 # Just reload rgb data without inverting the transform
