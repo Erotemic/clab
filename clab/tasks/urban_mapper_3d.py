@@ -505,7 +505,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
             # Write them to disk.
             if ext == '.npy':
                 fpath = join(output_dpath, tileid + '.npy')
-                np.savez(fpath, stiched)
+                np.save(fpath, stiched)
             else:
                 fpath = join(output_dpath, tileid + '.png')
                 imutil.imwrite(fpath, stiched)
