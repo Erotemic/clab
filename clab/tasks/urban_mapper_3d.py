@@ -369,7 +369,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
 
         yield xval_split
 
-    def restitch(task, output_dpath, part_paths, blend=None, log_hack=False):
+    def restitch(task, output_dpath, part_paths, blend=None):
 
         def stitch_tiles(rc_locs, tiles):
             """
@@ -472,53 +472,6 @@ class UrbanMapper3D(SemanticSegmentationTask):
                        for p in paths]
             return rc_locs
 
-        """
-        if False:
-            def npsave_h5(fpath, data):
-                import h5py
-                shape = data.shape
-                dtype = data.dtype
-                with h5py.File(fpath, mode='w') as file_:
-                    dset = file_.create_dataset(
-                        'arr_0', shape,  dtype, chunks=True, compression='lzf')
-                    dset[...] = data
-
-            def npload_h5(fpath):
-                import h5py
-                with h5py.File(fpath, 'r') as file_:
-                    value = file_['arr_0']
-                    dset = value
-                    shape = dset.shape
-                    dtype = dset.dtype
-                    data = np.empty(shape, dtype=dtype)
-                    dset.read_direct(data)
-                return data
-
-            test_dpath = ub.ensuredir(ub.truepath('~/data/dummy/testh5'))
-            tiles = [np.load(p)['arr_0'] for p in paths]
-            # tiles = [np.exp(t) for t in tiles]
-            # tiles = [t.transpose(1, 2, 0) for t in tiles]
-            new_paths = []
-            for tile, path in zip(tiles, paths):
-                fpath = join(test_dpath, ub.augpath(basename(path), ext='.h5'))
-                npsave_h5(fpath, tile)
-                new_paths.append(fpath)
-
-            np.load(paths[0])['arr_0'] == npload_h5(new_paths[0])
-            # %timeit np.load(paths[0])['arr_0']
-            # %timeit npload_h5(new_paths[0])
-
-            import ubelt
-            for timer in ubelt.Timerit(1):
-                with timer:
-                    tiles = [np.load(p)['arr_0'] for p in paths]
-
-            import ubelt
-            for timer in ubelt.Timerit(1):
-                with timer:
-                    tiles2 = [npload_h5(p) for p in new_paths]
-        """
-
         # Group parts by base id
         groupid = [basename(p).split('_part')[0] for p in part_paths]
         new_paths = []
@@ -528,7 +481,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
             # Read all parts belonging to an original group
             if log_hack:
                 # read log probabilities in as real probabilities
-                tiles = [np.load(p)['arr_0'] for p in paths]
+                tiles = [np.load(p) for p in paths]
                 tiles = [np.exp(t) for t in tiles]
                 tiles = [t.transpose(1, 2, 0) for t in tiles]
             else:
@@ -550,7 +503,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
 
             # Write them to disk.
             if log_hack:
-                fpath = join(output_dpath, tileid + '.npz')
+                fpath = join(output_dpath, tileid + '.npy')
                 np.savez(fpath, stiched)
             else:
                 fpath = join(output_dpath, tileid + '.png')

@@ -20,7 +20,10 @@ def urban_mapper_eval_dataset(boundary=True, arch=None):
     eval_fullres = task.load_fullres_inputs('testing')
     datadir = ub.ensuredir((task.workdir, 'eval_data'))
     prep = preprocess.Preprocessor(datadir)
+    prep.part_config['overlap'] = .75
     eval_part1_scale = prep.make_parts(eval_fullres, scale=1, clear=0)
+    # from clab.profiler import profile_onthefly
+    # profile_onthefly(prep.make_parts)(eval_fullres, scale=1, clear=0)
 
     eval_dataset = SSegInputsWrapper(eval_part1_scale, task, colorspace='RGB')
     eval_dataset.with_gt = False
@@ -148,11 +151,11 @@ def eval_contest_testset():
             mask_thresh = params.pop('mask_thresh')
 
             for path, path1 in ub.ProgIter(list(zip(prob_paths, prob1_paths))):
-                probs = np.load(path)['arr_0']
+                probs = np.load(path)
                 seed_probs = probs[:, :, task.classname_to_id['inner_building']]
                 seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-                probs1 = np.load(path1)['arr_0']
+                probs1 = np.load(path1)
                 mask_probs = probs1[:, :, 1]
                 mask = (mask_probs > mask_thresh).astype(np.uint8)
 
@@ -367,8 +370,8 @@ def eval_internal_testset():
     paths['probs'] = pharn._restitch_type('log_probs', blend='avew', force=False)
     paths['probs1'] = pharn._restitch_type('log_probs1', blend='avew', force=False)
     if False:
-        pharn._blend_full_probs(task, 'probs', npz_fpaths=paths['probs'])
-        pharn._blend_full_probs(task, 'probs1', npz_fpaths=paths['probs1'])
+        pharn._blend_full_probs(task, 'probs', npy_fpaths=paths['probs'])
+        pharn._blend_full_probs(task, 'probs1', npy_fpaths=paths['probs1'])
 
     @ub.memoize
     def gt_info_from_path(pred_fpath):
@@ -402,11 +405,11 @@ def eval_internal_testset():
         for ix, (path, path1) in enumerate(ub.ProgIter(list(zip(prob_paths, prob1_paths)))):
             gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
-            probs = np.load(path)['arr_0']
+            probs = np.load(path)
             seed_probs = probs[:, :, task.classname_to_id['inner_building']]
             seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-            probs1 = np.load(path1)['arr_0']
+            probs1 = np.load(path1)
             mask_probs = probs1[:, :, 1]
             mask = (mask_probs > mask_thresh).astype(np.uint8)
 
@@ -503,11 +506,11 @@ def eval_internal_testset():
             for path, path1 in zip(ub.take(prob_paths, subx), ub.take(prob1_paths, subx)):
                 gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
-                probs = np.load(path)['arr_0']
+                probs = np.load(path)
                 seed_probs = probs[:, :, task.classname_to_id['inner_building']]
                 seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-                probs1 = np.load(path1)['arr_0']
+                probs1 = np.load(path1)
                 mask_probs = probs1[:, :, 1]
                 mask = (mask_probs > mask_thresh).astype(np.uint8)
 
@@ -794,13 +797,13 @@ class PredictHarness(object):
         """
         log_hack = mode.startswith('log_probs')
         if log_hack:
-            part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.npz'.format(mode)))
+            part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.npy'.format(mode)))
             output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode.replace('log_', '')))
         else:
             part_paths = sorted(glob.glob(pharn.test_dump_dpath + '/{}/*.png'.format(mode)))
             output_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', mode))
         if not force:
-            restitched_paths = sorted(glob.glob(output_dpath + '/*.npz'.format(mode)))
+            restitched_paths = sorted(glob.glob(output_dpath + '/*.npy'.format(mode)))
             if len(restitched_paths) > 0:
                 return restitched_paths
         restitched_paths = pharn.dataset.task.restitch(output_dpath, part_paths,
@@ -808,28 +811,28 @@ class PredictHarness(object):
                                                        log_hack=log_hack)
         return restitched_paths
 
-    def _blend_full_probs(pharn, task, mode='probs1', npz_fpaths=None):
+    def _blend_full_probs(pharn, task, mode='probs1', npy_fpaths=None):
         """
         Ignore:
             mode = 'probs1'
             pharn._restitch_type('log_probs1', blend='avew')
 
             from clab.profiler import profile_onthefly
-            profile_onthefly(pharn._blend_full_probs)(task, mode='probs', npz_fpaths=npz_fpaths)
-            profile_onthefly(foo)(npz_fpaths)
+            profile_onthefly(pharn._blend_full_probs)(task, mode='probs', npy_fpaths=npy_fpaths)
+            profile_onthefly(foo)(npy_fpaths)
         """
-        if npz_fpaths is None:
+        if npy_fpaths is None:
             dpath = join(pharn.test_dump_dpath, 'restiched', mode)
-            npz_fpaths = glob.glob(join(dpath, '*.npz'))
+            npy_fpaths = glob.glob(join(dpath, '*.npy'))
 
         out_dpath = ub.ensuredir((pharn.test_dump_dpath, 'restiched', 'blend_' + mode))
 
-        for fpath in ub.ProgIter(npz_fpaths, label='viz full probs'):
+        for fpath in ub.ProgIter(npy_fpaths, label='viz full probs'):
 
             out_fpath = join(out_dpath, basename(fpath))
-            gtl_fname = basename(out_fpath).replace('.npz', '_GTL.tif')
-            gti_fname = basename(out_fpath).replace('.npz', '_GTI.tif')
-            bgr_fname = basename(out_fpath).replace('.npz', '_RGB.tif')
+            gtl_fname = basename(out_fpath).replace('.npy', '_GTL.tif')
+            gti_fname = basename(out_fpath).replace('.npy', '_GTI.tif')
+            bgr_fname = basename(out_fpath).replace('.npy', '_RGB.tif')
             gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
             gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
             bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
@@ -837,7 +840,7 @@ class PredictHarness(object):
             gtl = util.imread(gtl_fpath)
             gti = util.imread(gti_fpath)
             bgr = util.imread(bgr_fpath)
-            probs = np.load(fpath)['arr_0']
+            probs = np.load(fpath)
 
             # Dump each channel
             from clab.tasks import urban_mapper_3d
@@ -883,18 +886,17 @@ class PredictHarness(object):
 
         out_dpath = join(pharn.test_dump_dpath, 'blend_' + mode)
 
-        npz_fpaths = glob.glob(join(dpath, '*.npz'))
+        npy_fpaths = glob.glob(join(dpath, '*.npy'))
 
         bgr_paths = pharn.dataset.inputs.paths['im']
         gtl_paths = pharn.dataset.inputs.paths['gt']
-        npz_fpaths = pharn.dataset.inputs.align(npz_fpaths)
+        npy_fpaths = pharn.dataset.inputs.align(npy_fpaths)
 
-        for ix, fpath in enumerate(ub.ProgIter(npz_fpaths)):
+        for ix, fpath in enumerate(ub.ProgIter(npy_fpaths)):
             gt = util.imread(gtl_paths[ix])
             bgr = util.imread(bgr_paths[ix])
 
-            npz = np.load(fpath)
-            log_probs = npz['arr_0']
+            log_probs = np.load(fpath)
 
             probs = np.exp(log_probs)
             # Dump each channel
@@ -946,6 +948,7 @@ class PredictHarness(object):
                 output_tensor = outputs[ox]
                 log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
                 log_probs = log_prob_tensor.data.cpu().numpy()
+                probs = np.exp(log_probs)
 
                 # Just reload rgb data without inverting the transform
                 bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
@@ -961,7 +964,7 @@ class PredictHarness(object):
                     # 'blend_pred' + suffix: blend_pred,
                     # 'color_pred': color_pred,
                     # 'pred' + suffix: pred,
-                    'log_probs' + suffix: log_probs,
+                    'probs' + suffix: probs.astype(np.float32),
                 }
 
                 if False:
@@ -987,8 +990,8 @@ class PredictHarness(object):
                     dpath = join(pharn.test_dump_dpath, key)
                     ub.ensuredir(dpath)
                     fpath = join(dpath, fname)
-                    if key == 'log_probs' + suffix:
-                        np.savez(fpath.replace('.png', ''), data)
+                    if key == 'probs' + suffix:
+                        np.save(ub.augpath(fpath, ext='.npy'), data)
                     else:
                         imutil.imwrite(fpath, data)
 

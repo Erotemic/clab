@@ -203,7 +203,7 @@ class Preprocessor(object):
                     in_paths[k] = record[k]
 
             # Read the images for this record and resize if necessary
-            in_images = {k: imutil.imread(v) for k, v in in_paths.items()}
+            in_images = {k: imutil.imread(v) for k, v in in_paths.items()}  # 9% of the time
             if scale != 1.0:
                 for k in in_images.keys():
                     interp = cv2.INTER_LANCZOS4 if k == 'im' else cv2.INTER_NEAREST
@@ -219,7 +219,7 @@ class Preprocessor(object):
                 for k, in_data in in_images.items():
                     out_data = in_data[rc_slice]
                     out_fpath = join(parts.dirs[k], fname)
-                    imutil.imwrite(out_fpath, out_data)
+                    imutil.imwrite(out_fpath, out_data)  # 84% of the time
                     parts.paths[k].append(out_fpath)
 
         return parts

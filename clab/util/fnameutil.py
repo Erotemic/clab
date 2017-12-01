@@ -353,7 +353,7 @@ def align_paths(paths1, paths2):
         do_quick_check = True
         if do_quick_check:
             # First check the simple thing: do they have unique corresponding
-            # basenames.
+            # basenames. If not we do something a bit more complex.
             simple_unique1 = list(map(_fast_basename_we, paths1))
             simple_unique_set1 = set(simple_unique1)
             if len(simple_unique_set1) == len(paths1):
