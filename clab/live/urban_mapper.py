@@ -94,7 +94,7 @@ def eval_contest_testset():
         train_dpath = ub.truepath(
             '~/remote/aretha/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/'
             'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
-        epoch = 8
+        epoch = 23
         use_aux_diff = True
         boundary = True
     elif MODE == 'UNET6CH':
@@ -102,7 +102,7 @@ def eval_contest_testset():
         train_dpath = ub.truepath(
             '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/'
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
-        epoch = 27
+        epoch = 34
         use_aux_diff = True
         # params = {
         #     'seed_thresh': 0.6573,
@@ -329,7 +329,7 @@ def eval_internal_testset():
             'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = None
         use_aux_diff = True
-        epoch = 17
+        epoch = 23
 
     elif MODE == 'UNET6CH':
         arch = 'unet2'
@@ -338,7 +338,7 @@ def eval_internal_testset():
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
         # epoch = 15
         # epoch = None
-        epoch = 27
+        epoch = 34
         use_aux_diff = True
     else:
         raise KeyError(MODE)
