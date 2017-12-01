@@ -51,12 +51,16 @@ def eval_contest_testset():
 
     """
     MODE = 'UNET6CH'
+    MODE = 'DENSE'
     if MODE == 'DENSE':
         arch = 'dense_unet'
         train_dpath = ub.truepath(
             '~/remote/aretha/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/'
             'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
-        epoch = 23
+        epoch = 26
+        if epoch == 26:
+            # params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82} # TODO
+            pass
         use_aux_diff = True
         boundary = True
     elif MODE == 'UNET6CH':
@@ -68,7 +72,9 @@ def eval_contest_testset():
         use_aux_diff = True
         # params = {'seed_thresh': 0.6573, 'mask_thresh': 0.8338, 'min_seed_size': 25, 'min_size': 38,}
         # params = {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33}
-        params = {'mask_thresh': 0.7664, 'seed_thresh': 0.4090, 'min_seed_size': 48, 'min_size': 61}
+        # params = {'mask_thresh': 0.7664, 'seed_thresh': 0.4090, 'min_seed_size': 48, 'min_size': 61}
+        if epoch == 34:
+            params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82}
         boundary = True
     else:
         raise KeyError(MODE)
