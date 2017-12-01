@@ -254,7 +254,7 @@ def eval_internal_testset():
             'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = None
         use_aux_diff = True
-        epoch = 24
+        epoch = 26
 
     elif MODE == 'UNET6CH':
         arch = 'unet2'
@@ -262,7 +262,7 @@ def eval_internal_testset():
             '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/'
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
         # epoch = 15
-        # epoch = None
+        epoch = None
         epoch = 34
         use_aux_diff = True
     else:
@@ -277,14 +277,18 @@ def eval_internal_testset():
     test_dataset.tag = 'test'
 
     load_path = get_snapshot(train_dpath, epoch=epoch)
+    print('load_path = {!r}'.format(load_path))
 
     pharn = PredictHarness(test_dataset)
     test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
 
-    needs_predict = False
-    needs_predict = len(pharn._restitch_type('probs', blend='avew', force=0)) == 0
-    if needs_predict:
+    # needs_predict = len(pharn._restitch_type('probs', blend='avew', force=0)) == 0
+    paths = {}
+    paths['probs'] = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
+    paths['probs1'] = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
+
+    if len(paths['probs']) < 88:
         # gpu part
         pharn.load_snapshot(load_path)
         pharn.run()
@@ -292,8 +296,8 @@ def eval_internal_testset():
     task = test_dataset.task
 
     paths = {}
-    paths['probs'] = pharn._restitch_type('probs', blend='avew', force=0)
-    paths['probs1'] = pharn._restitch_type('probs1', blend='avew', force=0)
+    paths['probs'] = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
+    paths['probs1'] = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
     if False:
         pharn._blend_full_probs(task, 'probs', npy_fpaths=paths['probs'])
         pharn._blend_full_probs(task, 'probs1', npy_fpaths=paths['probs1'])
@@ -849,13 +853,6 @@ class PredictHarness(object):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
         pharn.model.train(False)
 
-        loader = torch.utils.data.DataLoader(
-            pharn.dataset, shuffle=False,
-            pin_memory=True,
-            num_workers=0,
-            batch_size=1,
-        )
-
         # Hack in the restitching here to not have to deal with expensive IO
         def _extract_part_grid(paths):
             # hack to use filenames to extract upper left locations of tiles in
@@ -864,53 +861,152 @@ class PredictHarness(object):
                        for p in paths]
             return rc_locs
 
-        groupid = [basename(p).split('_part')[0] for p in part_paths]
-        new_paths = []
-        groups = list(ub.group_items(part_paths, groupid).items())
+        def stitch_tiles_avew(rc_locs, tiles):
+            """
+            Recombine parts back into an entire image
 
+            Example:
+                >>> rc_locs = [(0, 0), (0, 5), (0, 10)]
+                >>> tiles = [np.ones((1, 7, 3)) + i for i in range(len(rc_locs))]
+                >>> tiles = [np.ones((1, 7)) + i for i in range(len(rc_locs))]
+            """
+            shapes = [t.shape[0:2] for t in tiles]
+            n_channels = 1 if len(tiles[0].shape) == 2 else tiles[0].shape[2]
+            bboxes = np.array([
+                (r, c, r + h, c + w)
+                for ((r, c), (h, w)) in zip(rc_locs, shapes)
+            ])
+            stiched_wh = tuple(bboxes.T[2:4].max(axis=1))
+            stiched_shape = stiched_wh
+            if n_channels > 1:
+                stiched_shape = stiched_wh + (n_channels,)
+            sums = np.zeros(stiched_shape)
+            nums = np.zeros(stiched_wh)
 
-        prog = ub.ProgIter(length=len(loader), label='predict proba')
-        for ix, loaded in enumerate(prog(loader)):
-            fname = pharn.dataset.inputs.dump_im_names[ix]
-            fname = os.path.splitext(fname)[0] + '.png'
+            # assume all shapes are the same
+            h, w = shapes[0]
+            weight = np.ones((h, w) )
+            # Weight borders less than center
+            # should really use receptive fields for this calculation
+            # but this should be fine.
+            weight[:h // 4]  = .25
+            weight[-h // 4:] = .25
+            weight[:w // 4]  = .25
+            weight[-w // 4:] = .25
+            weight3c = weight
+            if n_channels > 1:
+                weight3c = weight[:, :, None]
 
-            if pharn.dataset.with_gt:
-                inputs_ = loaded[0]
+            # Assume we are not in log-space here, so the weighted average
+            # formula does not need any exponentiation.
+            for bbox, tile in zip(bboxes, tiles):
+                r1, c1, r2, c2 = bbox
+                sums[r1:r2, c1:c2] += (tile * weight3c)
+                nums[r1:r2, c1:c2] += weight
+
+            if len(sums.shape) == 2:
+                stiched = sums / nums
             else:
-                inputs_ = loaded
+                stiched = sums / nums[:, :, None]
+            return stiched
 
-            if not isinstance(inputs_, (list, tuple)):
-                inputs_ = [inputs_]
+        groupids = [basename(p).split('_part')[0]
+                    for p in pharn.dataset.inputs.dump_im_names]
+        grouped_indices = ub.group_items(range(len(groupids)), groupids)
 
-            inputs_ = pharn.xpu.to_xpu_var(*inputs_)
-            outputs = pharn.model.forward(inputs_)
+        output_dpath = join(pharn.test_dump_dpath, 'stitched')
+        ub.ensuredir(output_dpath)
 
-            if not isinstance(outputs, (list, tuple)):
-                outputs = [outputs]
+        prog = ub.ProgIter(length=len(grouped_indices), label='predict group proba', verbose=3)
+        for key, groupxs in prog(grouped_indices.items()):
 
-            for ox in range(len(outputs)):
-                suffix = '' if ox == 0 else str(ox)
+            grouped_probs = ub.odict()
+            grouped_probs[''] = []
+            grouped_probs['1'] = []
 
-                output_tensor = outputs[ox]
-                log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
-                prob_tensor = torch.exp(log_prob_tensor)
-                probs = prob_tensor.data.cpu().numpy().transpose(1, 2, 0)
+            for ix in ub.ProgIter(groupxs, label='pred'):
 
-                output_dict = {
-                    'probs' + suffix: probs,
-                }
+                if pharn.dataset.with_gt:
+                    inputs_ = pharn.dataset[ix][0]
+                else:
+                    inputs_ = pharn.dataset[ix]
+                inputs_ = inputs_[None, ...]
 
-                for key, data in output_dict.items():
-                    dpath = join(pharn.test_dump_dpath, key)
-                    ub.ensuredir(dpath)
-                    fpath = join(dpath, fname)
-                    if key == 'probs' + suffix:
-                        fpath = ub.augpath(fpath, ext='.h5')
-                        # fpath = ub.augpath(fpath, ext='.npy')
-                        util.write_arr(fpath, data)
-                        # util.write_arr(fpath, data)
-                    else:
-                        imutil.imwrite(fpath, data)
+                if not isinstance(inputs_, (list, tuple)):
+                    inputs_ = [inputs_]
+
+                inputs_ = pharn.xpu.to_xpu_var(*inputs_)
+                outputs = pharn.model.forward(inputs_)
+
+                for ox in range(len(outputs)):
+                    suffix = '' if ox == 0 else str(ox)
+
+                    output_tensor = outputs[ox]
+                    log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
+                    prob_tensor = torch.exp(log_prob_tensor)
+                    probs = np.ascontiguousarray(prob_tensor.data.cpu().numpy().transpose(1, 2, 0))
+
+                    grouped_probs[suffix].append(probs)
+
+            rc_locs = _extract_part_grid(ub.take(pharn.dataset.inputs.dump_im_names, groupxs))
+            for suffix, tiles in grouped_probs.items():
+                # from clab.profiler import profile_onthefly
+                # profile_onthefly(stitch_tiles_ave)(rc_locs, tiles, weighted=True)
+                stitched = stitch_tiles_avew(rc_locs, tiles)
+
+                dpath = ub.ensuredir(join(output_dpath, 'probs' + suffix))
+                fpath = join(dpath, key + '.h5')
+                util.write_h5arr(fpath, stitched)
+
+        # if False:
+        #     loader = torch.utils.data.DataLoader(
+        #         pharn.dataset, shuffle=False,
+        #         pin_memory=True,
+        #         num_workers=0,
+        #         batch_size=1,
+        #     )
+        #     prog = ub.ProgIter(length=len(loader), label='predict proba')
+        #     for ix, loaded in enumerate(prog(loader)):
+        #         fname = pharn.dataset.inputs.dump_im_names[ix]
+        #         fname = os.path.splitext(fname)[0] + '.png'
+
+        #         if pharn.dataset.with_gt:
+        #             inputs_ = loaded[0]
+        #         else:
+        #             inputs_ = loaded
+
+        #         if not isinstance(inputs_, (list, tuple)):
+        #             inputs_ = [inputs_]
+
+        #         inputs_ = pharn.xpu.to_xpu_var(*inputs_)
+        #         outputs = pharn.model.forward(inputs_)
+
+        #         if not isinstance(outputs, (list, tuple)):
+        #             outputs = [outputs]
+
+        #         for ox in range(len(outputs)):
+        #             suffix = '' if ox == 0 else str(ox)
+
+        #             output_tensor = outputs[ox]
+        #             log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
+        #             prob_tensor = torch.exp(log_prob_tensor)
+        #             probs = prob_tensor.data.cpu().numpy().transpose(1, 2, 0)
+
+        #             output_dict = {
+        #                 'probs' + suffix: probs,
+        #             }
+
+        #             for key, data in output_dict.items():
+        #                 dpath = join(pharn.test_dump_dpath, key)
+        #                 ub.ensuredir(dpath)
+        #                 fpath = join(dpath, fname)
+        #                 if key == 'probs' + suffix:
+        #                     fpath = ub.augpath(fpath, ext='.h5')
+        #                     # fpath = ub.augpath(fpath, ext='.npy')
+        #                     util.write_arr(fpath, data)
+        #                     # util.write_arr(fpath, data)
+        #                 else:
+        #                     imutil.imwrite(fpath, data)
 
 
 # def erode_ccs(ccs):
