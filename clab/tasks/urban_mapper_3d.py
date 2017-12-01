@@ -473,6 +473,9 @@ class UrbanMapper3D(SemanticSegmentationTask):
             return rc_locs
 
         # Group parts by base id
+        if len(part_paths) == 0:
+            return []
+
         ext = splitext(part_paths[0])
 
         groupid = [basename(p).split('_part')[0] for p in part_paths]

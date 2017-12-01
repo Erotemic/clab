@@ -319,8 +319,8 @@ def eval_internal_testset():
     # else:
     #     datasets['test'].center_inputs = datasets['train']._make_normalizer()
 
-    MODE = 'UNET6CH'
     MODE = 'DENSE'
+    MODE = 'UNET6CH'
 
     if MODE == 'DENSE':
         arch = 'dense_unet'
