@@ -50,8 +50,8 @@ def eval_contest_testset():
         >>> eval_contest_testset()
 
     """
-    MODE = 'UNET6CH'
     MODE = 'DENSE'
+    MODE = 'UNET6CH'
     if MODE == 'DENSE':
         arch = 'dense_unet'
         train_dpath = ub.truepath(
@@ -59,7 +59,7 @@ def eval_contest_testset():
             'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = 26
         if epoch == 26:
-            # params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82} # TODO
+            params = {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320}  # .902
             pass
         use_aux_diff = True
         boundary = True
@@ -68,12 +68,17 @@ def eval_contest_testset():
         train_dpath = ub.truepath(
             '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/'
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
-        epoch = 34
+        # epoch = 34
+        # epoch = None
         use_aux_diff = True
         # params = {'seed_thresh': 0.6573, 'mask_thresh': 0.8338, 'min_seed_size': 25, 'min_size': 38,}
         # params = {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33}
         # params = {'mask_thresh': 0.7664, 'seed_thresh': 0.4090, 'min_seed_size': 48, 'min_size': 61}
         if epoch == 34:
+            params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82}  # 0.9091
+
+        if epoch == 36:
+            # TODO: FIND CORRECT PARAMS FOR THIS EPOCH
             params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82}
         boundary = True
     else:
@@ -105,8 +110,10 @@ def eval_contest_testset():
 
     def two_channel_prob_version():
         task = eval_dataset.task
-        prob_paths = pharn._restitch_type('probs', blend='avew', force=False)
-        prob1_paths = pharn._restitch_type('probs1', blend='avew', force=False)
+        # prob_paths = pharn._restitch_type('probs', blend='avew', force=False)
+        # prob1_paths = pharn._restitch_type('probs1', blend='avew', force=False)
+        prob_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
+        prob1_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
 
         def seeded_predictions(**params):
             # Convert to submission output format
@@ -938,14 +945,16 @@ class PredictHarness(object):
         output_dpath = join(pharn.test_dump_dpath, 'stitched')
         ub.ensuredir(output_dpath)
 
-        prog = ub.ProgIter(length=len(grouped_indices), label='predict group proba', verbose=3)
-        for key, groupxs in prog(grouped_indices.items()):
+        # prog = ub.ProgIter(length=len(grouped_indices), label='predict group proba', verbose=3)
+
+        import tqdm
+        for key, groupxs in tqdm.tqdm(grouped_indices.items(), desc='predict group proba'):
 
             grouped_probs = ub.odict()
             grouped_probs[''] = []
             grouped_probs['1'] = []
 
-            for ix in ub.ProgIter(groupxs, label='pred'):
+            for ix in tqdm.tqdm(groupxs, desc='pred'):
 
                 if pharn.dataset.with_gt:
                     inputs_ = pharn.dataset[ix][0]
