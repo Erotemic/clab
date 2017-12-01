@@ -917,35 +917,35 @@ class PredictHarness(object):
         pharn._restitch_type('blend_probs1/c0_non-building', blend='avew')
         pharn._restitch_type('blend_probs1/c1_building', blend='avew')
 
-    from clab.profiler import profile_onthefly
-    @profile_onthefly
+    # from clab.profiler import profile_onthefly
+    # @profile_onthefly
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
         pharn.model.train(False)
 
         loader = torch.utils.data.DataLoader(
-            pharn.dataset, shuffle=False, pin_memory=True, num_workers=3,
+            pharn.dataset, shuffle=False,
+            pin_memory=True,
+            num_workers=0,
             batch_size=1,
         )
 
         prog = ub.ProgIter(length=len(loader), label='predict proba')
-        for ix in enumerate(prog(loader)):
-            if ix > 200:
-                break
+        for ix, loaded in enumerate(prog(loader)):
             fname = pharn.dataset.inputs.dump_im_names[ix]
             fname = os.path.splitext(fname)[0] + '.png'
 
             if pharn.dataset.with_gt:
-                inputs_ = pharn.dataset[ix][0][None, :]
+                inputs_ = loaded[0]
             else:
-                inputs_ = pharn.dataset[ix][None, :]
+                inputs_ = loaded
 
             if not isinstance(inputs_, (list, tuple)):
                 inputs_ = [inputs_]
 
             inputs_ = pharn.xpu.to_xpu_var(*inputs_)
-
             outputs = pharn.model.forward(inputs_)
+
             if not isinstance(outputs, (list, tuple)):
                 outputs = [outputs]
 
@@ -954,9 +954,10 @@ class PredictHarness(object):
 
                 output_tensor = outputs[ox]
                 log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
-                log_probs = log_prob_tensor.data.cpu().numpy()
-                probs = np.exp(log_probs).astype(np.float32)
+                prob_tensor = torch.exp(log_prob_tensor)
+                probs = prob_tensor.data.cpu().numpy()
 
+                # .astype(np.float32)
                 # Just reload rgb data without inverting the transform
                 # bgr = imutil.imread(pharn.dataset.inputs.im_paths[ix])
 
@@ -999,7 +1000,8 @@ class PredictHarness(object):
                     ub.ensuredir(dpath)
                     fpath = join(dpath, fname)
                     if key == 'probs' + suffix:
-                        np.save(ub.augpath(fpath, ext='.npy'), data)
+                        fpath = ub.augpath(fpath, ext='.npy')
+                        np.save(fpath, data)
                     else:
                         imutil.imwrite(fpath, data)
 
