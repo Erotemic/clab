@@ -644,7 +644,7 @@ def urban_fit():
     else:
         raise ValueError('unknown arch')
 
-    if ub.get_argflag('--finetune'):
+    if ub.argflag('--finetune'):
         # Hack in a reduced learning rate
         hyper = hyperparams.HyperParams(
             criterion=(criterions.CrossEntropyLoss2D, {
