@@ -75,15 +75,15 @@ def eval_contest_testset():
     #     train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4')
     #     load_path = get_snapshot(train_dpath, epoch=100)
 
-    if True:
-        eval_dataset = urban_mapper_eval_dataset()
-        from clab.live.urban_train import load_task_dataset
-        datasets = load_task_dataset('urban_mapper_3d', combine=True)
-        eval_dataset.center_inputs = datasets['train']._make_normalizer()
-        train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_8438-xqwzrwfj/solver_8438-xqwzrwfj_unet2_edmtxaov_gksatgso_a=1,c=RGB,n_ch=5,n_cl=4')
-        # TODO: just read the normalization from the train_dpath instead of
-        # hacking it together from the train dataset
-        load_path = get_snapshot(train_dpath, epoch=75)
+    # if True:
+    #     eval_dataset = urban_mapper_eval_dataset()
+    #     from clab.live.urban_train import load_task_dataset
+    #     datasets = load_task_dataset('urban_mapper_3d', combine=True)
+    #     eval_dataset.center_inputs = datasets['train']._make_normalizer()
+    #     train_dpath = ub.truepath('~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_8438-xqwzrwfj/solver_8438-xqwzrwfj_unet2_edmtxaov_gksatgso_a=1,c=RGB,n_ch=5,n_cl=4')
+    #     # TODO: just read the normalization from the train_dpath instead of
+    #     # hacking it together from the train dataset
+    #     load_path = get_snapshot(train_dpath, epoch=75)
 
     MODE = 'UNET6CH'
     if MODE == 'DENSE':
@@ -100,6 +100,18 @@ def eval_contest_testset():
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
         epoch = 19
         use_aux_diff = True
+        # params = {
+        #     'seed_thresh': 0.6573,
+        #     'mask_thresh': 0.8338,
+        #     'min_seed_size': 25,
+        #     'min_size': 38,
+        # }
+        params = {
+            'mask_thresh': 0.8367,
+            'seed_thresh': 0.4549,
+            'min_seed_size': 97,
+            'min_size': 33,
+        }
     else:
         raise KeyError(MODE)
 
@@ -119,6 +131,60 @@ def eval_contest_testset():
     if needs_predict:
         pharn.load_snapshot(load_path)
         pharn.run()
+
+    def compact_idstr(dict_):
+        short_keys = util.shortest_unique_prefixes(dict_.keys())
+        short_dict = ub.odict(sorted(zip(short_keys, dict_.values())))
+        idstr = ub.repr2(short_dict, nobr=1, itemsep='', si=1, nl=0,
+                         explicit=1)
+        return idstr
+
+    def two_channel_prob_version():
+        task = eval_dataset.task
+        prob_paths = pharn._restitch_type('log_probs', blend='avew', force=False)
+        prob1_paths = pharn._restitch_type('log_probs1', blend='avew', force=False)
+
+        def seeded_predictions(**params):
+            # Convert to submission output format
+            seed_thresh = params.pop('seed_thresh')
+            mask_thresh = params.pop('mask_thresh')
+
+            for path, path1 in ub.ProgIter(list(zip(prob_paths, prob1_paths))):
+                probs = np.load(path)['arr_0']
+                seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+                seed = (seed_probs > seed_thresh).astype(np.uint8)
+
+                probs1 = np.load(path1)['arr_0']
+                mask_probs = probs1[:, :, 1]
+                mask = (mask_probs > mask_thresh).astype(np.uint8)
+
+                pred = seeded_instance_label(seed, mask, **params)
+                tile_id = splitext(basename(path))[0]
+                yield tile_id, pred
+
+        post_idstr = compact_idstr(params)
+
+        lines = []
+        for tile_id, pred in seeded_predictions(**params):
+            (width, height), runlen = imutil.run_length_encoding(pred)
+            lines.append(tile_id)
+            lines.append('{},{}'.format(width, height))
+            lines.append(','.join(list(map(str, runlen))))
+
+        text = '\n'.join(lines)
+        post_idstr = 'seeded'
+        mode = 'prob'
+        suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
+        fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
+        print('fpath = {!r}'.format(fpath))
+        ub.writeto(fpath, text)
+        print(ub.codeblock(
+            '''
+            # Execute on remote computer
+            cd ~/Dropbox/TopCoder
+            rsync aretha:{fpath} .
+            '''
+        ).format(fpath=fpath))
 
     # mode = 'pred_crf'
     def two_channel_version():
@@ -164,13 +230,6 @@ def eval_contest_testset():
         if True:
             pharn._restitch_type('blend_' + mode, blend=None)
         restitched_pred = eval_dataset.fullres.align(restitched_pred)
-
-        def compact_idstr(dict_):
-            short_keys = util.shortest_unique_prefixes(dict_.keys())
-            short_dict = ub.odict(sorted(zip(short_keys, dict_.values())))
-            idstr = ub.repr2(short_dict, nobr=1, itemsep='', si=1, nl=0,
-                             explicit=1)
-            return idstr
 
         # Convert to submission output format
         post_kw = dict(k=15, n_iters=1, dist_thresh=5, watershed=True)
@@ -350,31 +409,19 @@ def eval_internal_testset():
                                          min_seed_size=min_seed_size,
                                          min_size=min_size)
 
-            scores, assign = instance_fscore(gti, uncertain, dsm, pred, info=True)
+            scores, infod = instance_fscore(gti, uncertain, dsm, pred, info=True)
+
+            fn_labels = infod['fn']
+
             # visualize failure cases
             if True:
                 from clab.tasks import urban_mapper_3d
                 from clab.tasks.urban_mapper_3d import instance_contours, draw_contours
 
-                assign = np.array(assign)
-                tp_pred_labels = assign.T[0]
-                tp_true_labels = assign.T[1]
-
                 gtl = (uncertain * 65)
-
-                fp_labels = set(np.unique(pred)) - set(tp_pred_labels) - {0}
-                fn_labels = set(np.unique(gti)) - set(tp_true_labels) - {0}
-
-                TP = len(assign)
-                FN = len(fn_labels)
-                FP = len(fp_labels)
-
-                precision = TP / (TP + FP) if TP > 0 else 0
-                recall = TP / (TP + FN) if TP > 0 else 0
-                if precision > 0 and recall > 0:
-                    f_score = 2 * precision * recall / (precision + recall)
-                else:
-                    f_score = 0
+                # tp_assign = infod['tp']
+                fp_labels = infod['fp']
+                fn_labels = infod['fn']
 
                 fn_contours = list(ub.flatten(ub.take(instance_contours(gti), fn_labels)))
                 fp_contours = list(ub.flatten(ub.take(instance_contours(pred), fp_labels)))
@@ -458,12 +505,13 @@ def eval_internal_testset():
         }
         seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
         seeded_bo.explore(pd.DataFrame([
-            {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},  # 'max_val': 0.6024}
+            {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
             {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
             {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
-            {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},  # 0.6501
-            {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},  #: 0.6021
-            {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},  # 'max_val': 0.6033}
+            {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
+            {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
+            {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
+            {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
         ]).to_dict(orient='list'))
         seeded_bo.plog.print_header(initialization=True)
         seeded_bo.init(20)
@@ -556,11 +604,11 @@ def eval_internal_testset():
         # {'max_params': {'thresh': 0.8000, 'min_size': 0.0000}, 'max_val': 0.6445}
         gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
 
-        n_iter = 20
+        n_iter = 5
         for kappa in [10, 5, 1]:
             seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
-            inner_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
-            outer_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+            # inner_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+            # outer_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
 
         print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
         print('inner ' + ub.repr2(best(inner_bo), nl=0, precision=4))
@@ -1429,6 +1477,7 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
     assignment = []
     fp_labels = []
     fn_labels = []
+    tp_labels = []
 
     for pred_label, pred_rc_set in pred_rcs_.items():
 
@@ -1448,10 +1497,11 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
                     best_label = true_label
 
         if best_label is not None:
-            assignment.append((pred_label, true_label, best_score[0]))
+            assignment.append((pred_label, best_label, best_score[0]))
             unused_true_keys.remove(best_label)
             if true_label not in uncertain_labels:
                 TP += 1
+                tp_labels.append((pred_label, best_label, best_score[0]))
         else:
             FP += 1
             fp_labels.append(pred_label)
@@ -1462,8 +1512,8 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
     # * Certain true building as marked as uncertain, but I was checking
     #   against the pred labels instead (possibly decreasing/increasing TP)
 
-    fn_labels = unused_true_keys  # NOQA
-    FN += len(unused_true_keys)
+    fn_labels = unused_true_keys - uncertain_labels  # NOQA
+    FN = len(fn_labels)
 
     precision = TP / (TP + FP) if TP > 0 else 0
     recall = TP / (TP + FN) if TP > 0 else 0
@@ -1474,9 +1524,17 @@ def instance_fscore(gti, uncertain, dsm, pred, info=False):
 
     # They multiply by 1e6, but lets not do that.
     if info:
-        return (f_score, precision, recall), assignment
+        infod = {
+            'assign': assignment,
+            'tp': tp_labels,
+            'fp': fp_labels,
+            'fn': fn_labels,
+            'uncertain': uncertain_labels,
+        }
+        return (f_score, precision, recall), infod
 
     return (f_score, precision, recall)
+
 
 if __name__ == '__main__':
     r"""

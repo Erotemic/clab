@@ -920,3 +920,30 @@ class InternalRunningStats():
         return {
             key: run.detail() for key, (run, _) in irun.runs.items()
         }
+
+
+def putMultiLineText(img, text, org, **kwargs):
+    """
+    References:
+        https://stackoverflow.com/questions/27647424/
+
+
+    Example:
+        stacked = putMultiLineText(stacked, text, org=center1,
+                                   fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                   fontScale=1.5, color=accepted_color,
+                                   thickness=2, lineType=cv2.LINE_AA)
+    """
+    getsize_kw = {
+        k: kwargs[k]
+        for k in ['fontFace', 'fontScale', 'thickness']
+        if k in kwargs
+    }
+    x0, y0 = org
+    ypad = kwargs.get('thickness', 2) + 4
+    y = y0
+    for i, line in enumerate(text.split('\n')):
+        (w, h), text_sz = cv2.getTextSize(text, **getsize_kw)
+        img = cv2.putText(img, line, (x0, y), **kwargs)
+        y += (h + ypad)
+    return img
