@@ -644,6 +644,31 @@ def urban_fit():
     else:
         raise ValueError('unknown arch')
 
+    if ub.get_argflag('--finetune'):
+        # Hack in a reduced learning rate
+        hyper = hyperparams.HyperParams(
+            criterion=(criterions.CrossEntropyLoss2D, {
+                'ignore_label': ignore_label,
+                # TODO: weight should be a FloatTensor
+                'weight': class_weights,
+            }),
+            optimizer=(torch.optim.SGD, {
+                # 'weight_decay': .0006,
+                'weight_decay': .0005,
+                'momentum': 0.99 if arch == 'dense_unet' else .9,
+                'nesterov': True,
+            }),
+            scheduler=('Constant', {
+                'base_lr': 0.0001,
+            }),
+            other={
+                'n_classes': n_classes,
+                'n_channels': n_channels,
+                'augment': datasets['train'].augment,
+                'colorspace': datasets['train'].colorspace,
+            }
+        )
+
     xpu = xpu_device.XPU.from_argv()
 
     if arch in ['unet2', 'dense_unet']:

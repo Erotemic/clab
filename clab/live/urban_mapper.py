@@ -282,6 +282,7 @@ def eval_internal_testset():
     pharn = PredictHarness(test_dataset)
     test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
+    task = test_dataset.task
 
     # needs_predict = len(pharn._restitch_type('probs', blend='avew', force=0)) == 0
     paths = {}
@@ -292,8 +293,6 @@ def eval_internal_testset():
         # gpu part
         pharn.load_snapshot(load_path)
         pharn.run()
-
-    task = test_dataset.task
 
     paths = {}
     paths['probs'] = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
@@ -428,18 +427,26 @@ def eval_internal_testset():
                     'max_params': dict(zip(self.keys,
                                            self.X[self.Y.argmax()]))}
 
+        @ub.memoize
+        def memo_read_arr(fpath):
+            return util.read_arr(fpath)
+
         def seeded_objective(**params):
             seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
                 params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
             fscores = []
-            for path, path1 in zip(ub.take(prob_paths, subx), ub.take(prob1_paths, subx)):
+            sub0 = ub.take(prob_paths, subx)
+            sub1 = ub.take(prob1_paths, subx)
+            # sub0 = prob_paths
+            # sub1 = prob1_paths
+            for path, path1 in zip(sub0, sub1):
                 gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
-                probs = util.read_arr(path)
+                probs = memo_read_arr(path)
                 seed_probs = probs[:, :, task.classname_to_id['inner_building']]
                 seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-                probs1 = util.read_arr(path1)
+                probs1 = memo_read_arr(path1)
                 mask_probs = probs1[:, :, 1]
                 mask = (mask_probs > mask_thresh).astype(np.uint8)
 
@@ -451,6 +458,7 @@ def eval_internal_testset():
                 fscores.append(fscore)
             mean_fscore = np.mean(fscores)
             return mean_fscore
+        # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
 
         seeded_bounds = {
             'mask_thresh': (.4, .9),
@@ -458,7 +466,7 @@ def eval_internal_testset():
             'min_seed_size': (0, 100),
             'min_size': (0, 100),
         }
-        n_init = 50
+        n_init = 10
         seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
         seeded_bo.explore(pd.DataFrame([
             {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
@@ -468,13 +476,11 @@ def eval_internal_testset():
             {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
             {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
             {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
-            {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
             {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
+            {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
         ]).to_dict(orient='list'))
         seeded_bo.plog.print_header(initialization=True)
         seeded_bo.init(n_init)
-        print(ub.repr2(best(seeded_bo), nl=0, precision=4))
-
         print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
 
         gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
@@ -913,6 +919,15 @@ class PredictHarness(object):
         groupids = [basename(p).split('_part')[0]
                     for p in pharn.dataset.inputs.dump_im_names]
         grouped_indices = ub.group_items(range(len(groupids)), groupids)
+
+        # map(len, grouped_indices)
+        # ub.chunks
+        #     loader = torch.utils.data.DataLoader(
+        #         pharn.dataset, shuffle=False,
+        #         pin_memory=True,
+        #         num_workers=0,
+        #         batch_size=1,
+        #     )
 
         output_dpath = join(pharn.test_dump_dpath, 'stitched')
         ub.ensuredir(output_dpath)
