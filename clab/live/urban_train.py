@@ -367,7 +367,7 @@ def get_task(taskname, boundary=True, arch=None):
         from clab.tasks.urban_mapper_3d import UrbanMapper3D
         if boundary:
             workdir = '~/data/work/urban_mapper2'
-            if arch == 'dense_unet':
+            if arch.startswith('dense_unet'):
                 workdir = '~/data/work/urban_mapper4'
         else:
             workdir = '~/data/work/urban_mapper'
