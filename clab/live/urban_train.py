@@ -677,7 +677,7 @@ def urban_fit():
         # model.init_he_normal()
         snapshot = xpu_device.XPU(None).load(pretrained)
         model_state_dict = snapshot['model_state_dict']
-        model.load_partial_state(model_state_dict)
+        model.load_partial_state(model_state_dict, shock_partial=False)
     elif arch == 'dummy':
         model = models.SSegDummy(in_channels=n_channels, n_classes=n_classes)
     else:
