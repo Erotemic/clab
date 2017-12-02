@@ -540,7 +540,7 @@ class DenseUNet2(nn.Module, mixin.NetMixin):
 
     """
     def __init__(self, n_classes=21, n_alt_classes=3, in_channels=3,
-                 bn_size=3, growth_rate=20, is_deconv=True):
+                 bn_size=2, growth_rate=32, is_deconv=True):
         util.super2(DenseUNet2, self).__init__()
         self.in_channels = in_channels
 
