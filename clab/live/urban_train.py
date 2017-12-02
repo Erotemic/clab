@@ -102,7 +102,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
                 if mode == 1:
                     im_mean = 0
                     im_scale = 1
-                elif mode == 2:
+                elif mode == 2 or mode == 3:
                     im_mean = .5
                     im_scale = .75
                 else:
