@@ -127,7 +127,10 @@ class NetMixin(object):
                         import numpy as np
                         print('Partially add {} with incompatable size'.format(key))
                         # Initialize all weights in case any are unspecified
-                        nninit.he_normal(self_state[key])
+                        try:
+                            nninit.he_normal(self_state[key])
+                        except ValueError:
+                            pass
 
                         # Transfer as much as possible
                         min_size = np.minimum(self_state[key].shape, other_value.shape)
@@ -150,5 +153,8 @@ class NetMixin(object):
             if key.endswith('.bias'):
                 self_state[key].fill_(0)
             else:
-                nninit.he_normal(self_state[key])
+                try:
+                    nninit.he_normal(self_state[key])
+                except ValueError:
+                    pass
         model.load_state_dict(self_state)
