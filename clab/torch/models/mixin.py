@@ -18,7 +18,6 @@ class ConnectivityInfo(object):
         input_shapes = ub.odict()
         # prev = None
         for node in conn.topsort:
-            pass
             in_names = conn.input_nodes[node]
             if in_names is None:
                 in_shapes = [input_shape]
@@ -76,8 +75,9 @@ class NetMixin(object):
         graph = nx.DiGraph()
         conn = ConnectivityInfo(graph)
         # Main FCN path
-        nx.add_path(graph, self.connectivity['path'])
-        graph.add_edges_from(self.connectivity['edges'])
+        nx.add_path(graph, self.connections['path'])
+        graph.add_edges_from(self.connections['edges'])
+        conn.build_graph()
         return conn
 
     def number_of_parameters(self):

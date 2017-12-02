@@ -490,3 +490,224 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         final1 = self.final1.forward(up1)
         final2 = self.final2.forward(up1)
         return final1, final2
+
+
+class DenseUNet2(nn.Module, mixin.NetMixin):
+    """
+    Note input shapes should be a power of 2.
+
+    In this case there will be a ~188 pixel difference between input and output
+    dims, so the input should be mirrored with
+
+    Example:
+        >>> from clab.live.unet3 import *
+        >>> from torch.autograd import Variable
+        >>> B, C, W, H = (4, 3, 480, 360)
+        >>> input_shape = (B, C, W, H)
+
+        >>> self = DenseUNet2(n_classes=4, in_channels=C, is_deconv=False)
+        >>> print('nParams = {}'.format(self.number_of_parameters()))
+        >>> print('output shapes')
+        >>> print(ub.repr2(self.output_shapes(input_shape), nl=1))
+
+        # Rough estimate of how many floating point numbers need to be alloced
+        x = self.output_shapes(input_shape)
+        float_n_bytes = 4
+
+        rough_num_floats = sum([np.prod(val) for val in x.values()])
+        param_bytes = float_n_bytes * self.number_of_parameters()
+        activation_bytes = float_n_bytes * rough_num_floats
+        print(ut.byte_str2(activation_bytes))
+        print(ut.byte_str2(param_bytes))
+
+        >>> inputs = Variable(torch.rand(B, C, W, H), volatile=True)
+        >>> outputs = self(inputs)
+
+        >>> from clab.torch.models import unet
+        >>> model_unet = unet.UNet()
+        >>> self.number_of_parameters()
+
+        >>> B, C, W, H = (4, 5, 480, 360)
+        >>> input_shape = (B, C, W, H)
+        >>> n_classes = 11
+        >>> inputs = Variable(torch.rand(B, C, W, H))
+        >>> labels = Variable((torch.rand(B, W, H) * n_classes).long())
+        >>> self = DenseUNet2(in_channels=C, n_classes=n_classes)
+        >>> outputs = self.forward(inputs)
+        >>> print('inputs.size() = {!r}'.format(inputs.size()))
+        >>> print('outputs.size() = {!r}'.format(outputs.size()))
+        >>> print(np.array(inputs.size()) - np.array(outputs.size()))
+
+    """
+    def __init__(self, n_classes=21, n_alt_classes=3, in_channels=3,
+                 bn_size=3, growth_rate=32, is_deconv=True):
+        util.super2(DenseUNet2, self).__init__()
+        self.in_channels = in_channels
+
+        n_feat0 = 36
+        from torch import nn
+        features = nn.Sequential(ub.odict([
+            ('conv0', nn.Conv2d(in_channels, n_feat0, kernel_size=7, stride=1,
+                                padding=3,
+                                bias=False)),
+            ('norm0', nn.BatchNorm2d(n_feat0)),
+            ('noli0', default_nonlinearity()),
+            # ('pool0', nn.MaxPool2d(kernel_size=3, stride=2, padding=1)),
+        ]))
+
+        block_config = [2, 3, 3, 3, 3]
+        bn_size = bn_size
+        compress = .4
+        growth_rate = growth_rate
+
+        n_feat = n_feat0
+
+        # downsampling
+        down = []
+        densekw = dict(bn_size=bn_size, growth_rate=growth_rate)
+
+        for i, num_layers in enumerate(block_config[0:-1]):
+            down.append(('denseblock%d' % (i + 1), DenseBlock(num_layers=num_layers, num_input_features=n_feat, **densekw)))
+            n_feat = n_feat + num_layers * growth_rate
+            n_feat_compress = int(n_feat * compress)
+            down.append(('transition%d' % (i + 1), Transition(num_input_features=n_feat, num_output_features=n_feat_compress)))
+            n_feat = n_feat_compress
+
+        # for key, value in down:
+        #     self.add_module(key, value)
+        self.denseblock1 = down[0][1]
+        self.transition1 = down[1][1]
+        self.denseblock2 = down[2][1]
+        self.transition2 = down[3][1]
+        self.denseblock3 = down[4][1]
+        self.transition3 = down[5][1]
+        self.denseblock4 = down[6][1]
+        self.transition4 = down[7][1]
+
+        num_layers = block_config[-1]
+        center5 = DenseBlock(num_layers=num_layers, num_input_features=n_feat, **densekw)
+        n_feat = n_feat + num_layers * growth_rate
+
+        center5.n_feat_out
+
+        up_concat4 = DenseUNetUp(self.denseblock4.n_feat_out, center5.n_feat_out, is_deconv=is_deconv)
+        up_concat3 = DenseUNetUp(self.denseblock3.n_feat_out, up_concat4.n_feat_out, is_deconv=is_deconv)
+        up_concat2 = DenseUNetUp(self.denseblock2.n_feat_out, up_concat3.n_feat_out, is_deconv=is_deconv)
+        up_concat1 = DenseUNetUp(self.denseblock1.n_feat_out, up_concat2.n_feat_out, is_deconv=is_deconv)
+
+        self.features = features
+        self.center5 = center5
+
+        self.up_concat4 = up_concat4
+        self.up_concat3 = up_concat3
+        self.up_concat2 = up_concat2
+        self.up_concat1 = up_concat1
+
+        # final conv (without any concat)
+        self.final1 = nn.Conv2d(up_concat1.n_feat_out, n_classes, 1)
+        self.final2 = nn.Conv2d(up_concat1.n_feat_out, n_alt_classes, 1)
+        self._cache = {}
+
+        self.connections = {
+            'path': [
+                # Main network forward path
+                'features',
+                'denseblock1',
+                'transition1',
+                'denseblock2',
+                'transition2',
+                'denseblock3',
+                'transition3',
+                'denseblock4',
+                'transition4',
+                'center5',
+                'up_concat4',
+                'up_concat3',
+                'up_concat2',
+                'up_concat1',
+            ],
+            'edges': [
+                # When a node accepts multiple inputs, we need to specify which
+                # order they appear in the signature
+                ('denseblock4', 'up_concat4', {'argx': 0}),
+                ('denseblock3', 'up_concat3', {'argx': 0}),
+                ('denseblock2', 'up_concat2', {'argx': 0}),
+                ('denseblock1', 'up_concat1', {'argx': 0}),
+                ('up_concat1', 'final1', {'argx': 0}),
+                ('up_concat1', 'final2', {'argx': 0}),
+            ]
+        }
+        # down_net = nn.Sequential(ub.odict(down))
+        # self.down_net = down_net
+
+    def output_shapes(self, input_shape):
+        conn = self.connectivity()
+        conn.io_shapes(self, input_shape)
+        return conn.output_shapes
+
+        #     print('* {}'.format(node))
+        #     implicit_input_shape = len(preds) == 1 and prev in preds
+        #     if not implicit_input_shape:
+        #         print('   * in_shapes  = {!r}'.format(in_shapes))
+        #     print('   * out_shapes = {!r}'.format(out_shapes))
+        #     prev = node
+        # print('output_shapes = {}'.format(ub.repr2(output_shapes, nl=1)))
+
+    def activation_shapes(self, input_shape):
+        """
+        >>> from clab.live.unet3 import *
+        >>> from torch.autograd import Variable
+        >>> input_shape = (10, 3, 480, 360)
+        >>> self = DenseUNet2(in_channels=3, is_deconv=False)
+        >>> activations = self.activation_shapes(input_shape)
+        >>> print(ut.byte_str2(sum(map(np.prod, activations)) * 4))
+        """
+        conn = self.connectivity()
+        conn.io_shapes(self, input_shape)
+        conn.output_shapes
+
+        activations = []
+        for node in conn.topsort:
+            in_shapes = conn.input_shapes[node]
+            module = self._modules[node]
+            if hasattr(module, 'activation_shapes'):
+                activations += module.activation_shapes(*in_shapes)
+            else:
+                print('module = {!r}'.format(module))
+                activations += [conn.output_shapes[node]]
+        return activations
+
+    def output_shape_for(self, input_shape):
+        output_shapes = self.output_shapes(input_shape)
+        return (output_shapes['final1'], output_shapes['final2'])
+
+    def forward(self, inputs):
+        if isinstance(inputs, (list, tuple)):
+            if len(inputs) != 1:
+                raise ValueError('Only accepts one input')
+            inputs = inputs[0]
+
+        features = self.features(inputs)
+
+        conv1 = self.denseblock1.forward(features)
+        maxpool1 = self.transition1.forward(conv1)
+
+        conv2 = self.denseblock2.forward(maxpool1)
+        maxpool2 = self.transition2.forward(conv2)
+
+        conv3 = self.denseblock3.forward(maxpool2)
+        maxpool3 = self.transition3.forward(conv3)
+
+        conv4 = self.denseblock4.forward(maxpool3)
+        maxpool4 = self.transition4.forward(conv4)
+
+        center = self.center5.forward(maxpool4)
+
+        up4 = self.up_concat4.forward(conv4, center)
+        up3 = self.up_concat3.forward(conv3, up4)
+        up2 = self.up_concat2.forward(conv2, up3)
+        up1 = self.up_concat1.forward(conv1, up2)
+
+        final1 = self.final1.forward(up1)
+        final2 = self.final2.forward(up1)
+        return final1, final2

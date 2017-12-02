@@ -76,17 +76,20 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         self.use_aux_diff = ub.argflag('--use_aux_diff')
         self.use_dual_gt = ub.argval('--arch', default='unet')
 
-    def _make_normalizer(self, mode=2):
+    # def _make_normalizer(self, mode=2):
+    def _make_normalizer(self, mode=3):
         transforms = []
         nan_value = -32767.0  # hack: specific number for DTM
         if len(self.inputs):
-            self.center_stats = self.inputs.prepare_center_stats(
-                self.task, nan_value=nan_value, colorspace=self.colorspace,
-                with_im=(mode == 3), stride=100,
-            )
-            # self.center_stats['image'].pop('detail')
-            # if self.aux_keys:
-            #     self.center_stats['aux'].pop('detail')
+
+            if mode != 3:
+                self.center_stats = self.inputs.prepare_center_stats(
+                    self.task, nan_value=nan_value, colorspace=self.colorspace,
+                    with_im=(mode == 3), stride=100,
+                )
+                # self.center_stats['image'].pop('detail')
+                # if self.aux_keys:
+                #     self.center_stats['aux'].pop('detail')
 
             if self.colorspace == 'LAB':
                 # Do per-channel mean / std centering independently for LAB images
@@ -123,6 +126,8 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
                     scale = internal_aux_stats['image']['mean_absdev_from_median']['mean']
                 elif mode == 2:
                     scale = self.center_stats['aux']['internal']['image']['std']['mean']
+                elif mode == 3:
+                    scale = 4.7431301577290377
                 else:
                     raise KeyError(mode)
                 # zero the median on a per-chip basis, but use
@@ -329,6 +334,12 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             >>> self = load_task_dataset('urban_mapper_3d')['train']
             >>> self.class_weights()
         """
+        # HACK
+        class_weights = np.array([ 0.05496113,  0.67041818,  1.96697962,  0. ])
+        print('class_weights = {!r}'.format(class_weights))
+        print('class_names   = {!r}'.format(self.task.classnames))
+        return class_weights
+
         # Handle class weights
         print('prep class weights')
         gtstats = self.inputs.prepare_gtstats(self.task)
@@ -492,6 +503,13 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=dense_unet --colorspace=RGB --use_aux_diff
 
 
+        # Train a variant of the dense net with more parameters
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=dense_unet2 --colorspace=RGB --use_aux_diff \
+                --pretrained=/home/local/KHQ/jon.crall/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000030.pt --gpu=1
+
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff --combine \
+                --pretrained=/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000042.pt --gpu=3
+
     Example:
         >>> from clab.torch.fit_harness import *
         >>> harn = urban_fit()
@@ -593,14 +611,21 @@ def urban_fit():
         )
     }
 
-    if arch == 'segnet':
-        pretrained = 'vgg'
-    else:
-        pretrained = None
-        if ub.argflag('--combine'):
-            pretrained = starting_points['unet_rgb_8k']
+    pretrained = ub.argval('--pretrained', default=None)
+    if pretrained is None:
+        if arch == 'segnet':
+            pretrained = 'vgg'
         else:
-            pretrained = starting_points['unet_rgb_4k']
+            pretrained = None
+            if ub.argflag('--combine'):
+                pretrained = starting_points['unet_rgb_8k']
+
+                if arch == 'unet2':
+                    pretrained = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000042.pt'
+                elif arch == 'dense_unet2':
+                    pretrained = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000042.pt'
+            else:
+                pretrained = starting_points['unet_rgb_4k']
 
     train_dpath, test_dpath = directory_structure(
         datasets['train'].task.workdir, arch, datasets,
@@ -639,6 +664,18 @@ def urban_fit():
         model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
                                 n_classes=n_classes)
         model.init_he_normal()
+        snapshot = xpu_device.XPU(None).load(pretrained)
+        model_state_dict = snapshot['model_state_dict']
+        model.load_partial_state(model_state_dict)
+    elif arch == 'dense_unet2':
+        from clab.live import unet3
+        model = unet3.DenseUNet2(n_alt_classes=3, in_channels=n_channels,
+                                 n_classes=n_classes, bn_size=3,
+                                 growth_rate=32)
+        model.init_he_normal()
+        snapshot = xpu_device.XPU(None).load(pretrained)
+        model_state_dict = snapshot['model_state_dict']
+        model.load_partial_state(model_state_dict)
     elif arch == 'dummy':
         model = models.SSegDummy(in_channels=n_channels, n_classes=n_classes)
     else:
@@ -671,7 +708,8 @@ def urban_fit():
 
     xpu = xpu_device.XPU.from_argv()
 
-    if arch in ['unet2', 'dense_unet']:
+    if datasets['train'].use_aux_diff:
+        # arch in ['unet2', 'dense_unet']:
 
         from clab.live import fit_harn2
         harn = fit_harn2.FitHarness(
