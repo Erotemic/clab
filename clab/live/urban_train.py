@@ -505,10 +505,11 @@ def urban_fit():
 
         # Train a variant of the dense net with more parameters
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=dense_unet2 --colorspace=RGB --use_aux_diff \
-                --pretrained=/home/local/KHQ/jon.crall/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000030.pt --gpu=1
+                --pretrained '/home/local/KHQ/jon.crall/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000030.pt' --gpu=1
 
+        # Fine tune the model using all the available data
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff --combine \
-                --pretrained=/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000042.pt --gpu=3 --finetune
+                --pretrained '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000041.pt' --gpu=3 --finetune
 
     Example:
         >>> from clab.torch.fit_harness import *
@@ -673,7 +674,7 @@ def urban_fit():
         model = unet3.DenseUNet2(n_alt_classes=3, in_channels=n_channels,
                                  n_classes=n_classes, bn_size=3,
                                  growth_rate=32)
-        model.init_he_normal()
+        # model.init_he_normal()
         snapshot = xpu_device.XPU(None).load(pretrained)
         model_state_dict = snapshot['model_state_dict']
         model.load_partial_state(model_state_dict)
