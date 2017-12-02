@@ -98,7 +98,7 @@ class NetMixin(object):
             if layer.bias is not None:
                 layer.bias.data *= .1
 
-    def load_partial_state(model, model_state_dict, shock_partial=True):
+    def load_partial_state(model, model_state_dict, shock_partial=False):
         """
         Example:
             >>> from clab.torch.models.unet import *  # NOQA

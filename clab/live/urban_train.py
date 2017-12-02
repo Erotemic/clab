@@ -672,8 +672,7 @@ def urban_fit():
     elif arch == 'dense_unet2':
         from clab.live import unet3
         model = unet3.DenseUNet2(n_alt_classes=3, in_channels=n_channels,
-                                 n_classes=n_classes, bn_size=3,
-                                 growth_rate=32)
+                                 n_classes=n_classes)
         # model.init_he_normal()
         snapshot = xpu_device.XPU(None).load(pretrained)
         model_state_dict = snapshot['model_state_dict']
