@@ -70,17 +70,30 @@ def eval_contest_testset():
             'solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4')
         # epoch = 34
         # epoch = None
+        boundary = True
         use_aux_diff = True
         # params = {'seed_thresh': 0.6573, 'mask_thresh': 0.8338, 'min_seed_size': 25, 'min_size': 38,}
         # params = {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33}
         # params = {'mask_thresh': 0.7664, 'seed_thresh': 0.4090, 'min_seed_size': 48, 'min_size': 61}
-        if epoch == 34:
-            params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82}  # 0.9091
+        # if epoch == 34:
+        #     params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82}  # 0.9091
 
-        if epoch == 36:
-            # TODO: FIND CORRECT PARAMS FOR THIS EPOCH
-            params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82}
-        boundary = True
+        # if epoch == 36:
+        #     # TODO: FIND CORRECT PARAMS FOR THIS EPOCH
+        #     params = {'mask_thresh': 0.8427, 'seed_thresh': 0.4942, 'min_seed_size': 56, 'min_size': 82}
+
+        train_dpath = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_52200-fqljkqlk/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4'
+        epoch = 0
+        if epoch == 0:
+            params = {'mask_thresh': 0.6666, 'min_seed_size': 81, 'min_size': 13, 'seed_thresh': 0.4241}  # best on more data
+            params = {'mask_thresh': 0.7870, 'min_seed_size': 85, 'min_size': 64, 'seed_thresh': 0.4320}  # 0.9169 (vali seen in training)
+
+        epoch = 5
+
+        epoch = 9
+        if epoch == 9:
+            # just guessing
+            params = {'mask_thresh': 0.6666, 'min_seed_size': 81, 'min_size': 13, 'seed_thresh': 0.4241}
     else:
         raise KeyError(MODE)
 
@@ -96,8 +109,9 @@ def eval_contest_testset():
     eval_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
 
-    needs_predict = True
-    if needs_predict:
+    prob_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
+    prob1_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
+    if len(prob_paths) == 0:
         pharn.load_snapshot(load_path)
         pharn.run()
 
@@ -133,8 +147,6 @@ def eval_contest_testset():
                 tile_id = splitext(basename(path))[0]
                 yield tile_id, pred
 
-        post_idstr = compact_idstr(params)
-
         lines = []
         for tile_id, pred in seeded_predictions(**params):
             (width, height), runlen = imutil.run_length_encoding(pred)
@@ -143,7 +155,7 @@ def eval_contest_testset():
             lines.append(','.join(list(map(str, runlen))))
 
         text = '\n'.join(lines)
-        post_idstr = 'seeded'
+        post_idstr = 'seeded_' + compact_idstr(params)
         mode = 'prob'
         suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
         fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
@@ -158,78 +170,79 @@ def eval_contest_testset():
             # submit here: https://community.topcoder.com/longcontest/
             '''
         ).format(fpath=fpath))
+    two_channel_prob_version()
 
-    # mode = 'pred_crf'
-    def two_channel_version():
-        task = eval_dataset.task
-        restitched_pred0 = pharn._restitch_type('pred', blend='vote')
-        restitched_pred1 = pharn._restitch_type('pred1', blend='vote')
-        pharn._restitch_type('blend_pred', blend=None)
-        pharn._restitch_type('blend_pred1', blend=None)
+    # # mode = 'pred_crf'
+    # def two_channel_version():
+    #     task = eval_dataset.task
+    #     restitched_pred0 = pharn._restitch_type('pred', blend='vote')
+    #     restitched_pred1 = pharn._restitch_type('pred1', blend='vote')
+    #     pharn._restitch_type('blend_pred', blend=None)
+    #     pharn._restitch_type('blend_pred1', blend=None)
 
-        out_fpaths = unet2_instance_restitch(restitched_pred0, restitched_pred1, task)
+    #     out_fpaths = unet2_instance_restitch(restitched_pred0, restitched_pred1, task)
 
-        lines = []
-        for fpath in sorted(out_fpaths):
-            pred = imutil.imread(fpath)
-            import cv2
-            cc_labels = cv2.connectedComponents(pred, connectivity=4)[1]
+    #     lines = []
+    #     for fpath in sorted(out_fpaths):
+    #         pred = imutil.imread(fpath)
+    #         import cv2
+    #         cc_labels = cv2.connectedComponents(pred, connectivity=4)[1]
 
-            fname = splitext(basename(fpath))[0]
-            (width, height), runlen = imutil.run_length_encoding(cc_labels)
+    #         fname = splitext(basename(fpath))[0]
+    #         (width, height), runlen = imutil.run_length_encoding(cc_labels)
 
-            lines.append(fname)
-            lines.append('{},{}'.format(width, height))
-            lines.append(','.join(list(map(str, runlen))))
+    #         lines.append(fname)
+    #         lines.append('{},{}'.format(width, height))
+    #         lines.append(','.join(list(map(str, runlen))))
 
-        text = '\n'.join(lines)
-        post_idstr = 'dualout'
-        mode = 'pred'
-        suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
-        fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
-        print('fpath = {!r}'.format(fpath))
-        ub.writeto(fpath, text)
-        print(ub.codeblock(
-            '''
-            # Execute on remote computer
-            cd ~/Dropbox/TopCoder
-            rsync aretha:{fpath} .
-            '''
-        ).format(fpath=fpath))
+    #     text = '\n'.join(lines)
+    #     post_idstr = 'dualout'
+    #     mode = 'pred'
+    #     suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
+    #     fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
+    #     print('fpath = {!r}'.format(fpath))
+    #     ub.writeto(fpath, text)
+    #     print(ub.codeblock(
+    #         '''
+    #         # Execute on remote computer
+    #         cd ~/Dropbox/TopCoder
+    #         rsync aretha:{fpath} .
+    #         '''
+    #     ).format(fpath=fpath))
 
-    def one_channel_version():
-        mode = 'pred'
-        restitched_pred = pharn._restitch_type(mode, blend='vote')
-        if True:
-            pharn._restitch_type('blend_' + mode, blend=None)
-        restitched_pred = eval_dataset.fullres.align(restitched_pred)
+    # def one_channel_version():
+    #     mode = 'pred'
+    #     restitched_pred = pharn._restitch_type(mode, blend='vote')
+    #     if True:
+    #         pharn._restitch_type('blend_' + mode, blend=None)
+    #     restitched_pred = eval_dataset.fullres.align(restitched_pred)
 
-        # Convert to submission output format
-        post_kw = dict(k=15, n_iters=1, dist_thresh=5, watershed=True)
-        # post_kw = dict(k=0, watershed=False)
-        post_idstr = compact_idstr(post_kw)
+    #     # Convert to submission output format
+    #     post_kw = dict(k=15, n_iters=1, dist_thresh=5, watershed=True)
+    #     # post_kw = dict(k=0, watershed=False)
+    #     post_idstr = compact_idstr(post_kw)
 
-        lines = []
-        for ix, fpath in enumerate(ub.ProgIter(restitched_pred, label='rle')):
-            pred = imutil.imread(fpath)
-            cc_labels = eval_dataset.task.instance_label(pred, **post_kw)
+    #     lines = []
+    #     for ix, fpath in enumerate(ub.ProgIter(restitched_pred, label='rle')):
+    #         pred = imutil.imread(fpath)
+    #         cc_labels = eval_dataset.task.instance_label(pred, **post_kw)
 
-            fname = splitext(basename(fpath))[0]
-            (width, height), runlen = imutil.run_length_encoding(cc_labels)
+    #         fname = splitext(basename(fpath))[0]
+    #         (width, height), runlen = imutil.run_length_encoding(cc_labels)
 
-            lines.append(fname)
-            lines.append('{},{}'.format(width, height))
-            lines.append(','.join(list(map(str, runlen))))
+    #         lines.append(fname)
+    #         lines.append('{},{}'.format(width, height))
+    #         lines.append(','.join(list(map(str, runlen))))
 
-        text = '\n'.join(lines)
-        suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
-        fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
-        ub.writeto(fpath, text)
+    #     text = '\n'.join(lines)
+    #     suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
+    #     fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
+    #     ub.writeto(fpath, text)
 
-    if '/unet2/' in train_dpath:
-        two_channel_version()
-    else:
-        one_channel_version()
+    # if '/unet2/' in train_dpath:
+    #     two_channel_version()
+    # else:
+    #     one_channel_version()
 
     # Submission URL
     # https://community.topcoder.com/longcontest/
@@ -278,6 +291,10 @@ def eval_internal_testset():
         epoch = None
         epoch = 34
         use_aux_diff = True
+
+        train_dpath = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_52200-fqljkqlk/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4'
+        epoch = 0
+        epoch = 5
     else:
         raise KeyError(MODE)
 
@@ -331,6 +348,88 @@ def eval_internal_testset():
         bgr = util.imread(bgr_fpath)
         uncertain = (gtl == 65)
         return gti, uncertain, dsm, bgr
+
+    def hypersearch_probs():
+        prob_paths  = paths['probs']
+        prob1_paths = paths['probs1']
+
+        # https://github.com/fmfn/BayesianOptimization
+        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/usage.py
+        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/exploitation%20vs%20exploration.ipynb
+        # subx = [0, 1, 2, 3, 4, 5]
+        subx = [2, 4, 5, 9, 10, 14, 17, 18, 20, 30, 33, 39, 61, 71, 72, 73, 75, 81, 84]
+        from bayes_opt import BayesianOptimization
+
+        def best(self):
+            return {'max_val': self.Y.max(),
+                    'max_params': dict(zip(self.keys,
+                                           self.X[self.Y.argmax()]))}
+
+        @ub.memoize
+        def memo_read_arr(fpath):
+            return util.read_arr(fpath)
+
+        def seeded_objective(**params):
+            seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
+                params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
+            fscores = []
+            sub0 = ub.take(prob_paths, subx)
+            sub1 = ub.take(prob1_paths, subx)
+            sub0 = prob_paths
+            sub1 = prob1_paths
+            for path, path1 in zip(sub0, sub1):
+                gti, uncertain, dsm, bgr = gt_info_from_path(path)
+
+                probs = memo_read_arr(path)
+                seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+                seed = (seed_probs > seed_thresh).astype(np.uint8)
+
+                probs1 = memo_read_arr(path1)
+                mask_probs = probs1[:, :, 1]
+                mask = (mask_probs > mask_thresh).astype(np.uint8)
+
+                pred = seeded_instance_label(seed, mask,
+                                             min_seed_size=min_seed_size,
+                                             min_size=min_size)
+                scores = instance_fscore(gti, uncertain, dsm, pred)
+                fscore = scores[0]
+                fscores.append(fscore)
+            mean_fscore = np.mean(fscores)
+            return mean_fscore
+        # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
+
+        seeded_bounds = {
+            'mask_thresh': (.4, .9),
+            'seed_thresh': (.4, .9),
+            'min_seed_size': (0, 100),
+            'min_size': (0, 100),
+        }
+        n_init = 50
+        seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
+        seeded_bo.explore(pd.DataFrame([
+            {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
+            {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
+            {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
+            {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
+            {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
+            {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
+            {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
+            {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
+            {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
+            {'mask_thresh': 0.6666, 'min_seed_size': 81.5941, 'min_size': 13.2919, 'seed_thresh': 0.4241},  # full dataset 'max_val': 0.9142}
+        ]).to_dict(orient='list'))
+        seeded_bo.plog.print_header(initialization=True)
+        seeded_bo.init(n_init)
+        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
+
+        gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
+
+        n_iter = n_init // 2
+        for kappa in [10, 5, 1]:
+            seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+
+        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
+        print(arch)
 
     def draw_failures():
         prob_paths  = paths['probs']
@@ -423,87 +522,6 @@ def eval_internal_testset():
         print(ave_scores.average())
         # mean_fscore = np.mean(fscores)
         # print('mean_fscore = {!r}'.format(mean_fscore))
-
-    def hypersearch_probs():
-        prob_paths  = paths['probs']
-        prob1_paths = paths['probs1']
-
-        # https://github.com/fmfn/BayesianOptimization
-        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/usage.py
-        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/exploitation%20vs%20exploration.ipynb
-        # subx = [0, 1, 2, 3, 4, 5]
-        subx = [2, 4, 5, 9, 10, 14, 17, 18, 20, 30, 33, 39, 61, 71, 72, 73, 75, 81, 84]
-        from bayes_opt import BayesianOptimization
-
-        def best(self):
-            return {'max_val': self.Y.max(),
-                    'max_params': dict(zip(self.keys,
-                                           self.X[self.Y.argmax()]))}
-
-        @ub.memoize
-        def memo_read_arr(fpath):
-            return util.read_arr(fpath)
-
-        def seeded_objective(**params):
-            seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
-                params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
-            fscores = []
-            sub0 = ub.take(prob_paths, subx)
-            sub1 = ub.take(prob1_paths, subx)
-            # sub0 = prob_paths
-            # sub1 = prob1_paths
-            for path, path1 in zip(sub0, sub1):
-                gti, uncertain, dsm, bgr = gt_info_from_path(path)
-
-                probs = memo_read_arr(path)
-                seed_probs = probs[:, :, task.classname_to_id['inner_building']]
-                seed = (seed_probs > seed_thresh).astype(np.uint8)
-
-                probs1 = memo_read_arr(path1)
-                mask_probs = probs1[:, :, 1]
-                mask = (mask_probs > mask_thresh).astype(np.uint8)
-
-                pred = seeded_instance_label(seed, mask,
-                                             min_seed_size=min_seed_size,
-                                             min_size=min_size)
-                scores = instance_fscore(gti, uncertain, dsm, pred)
-                fscore = scores[0]
-                fscores.append(fscore)
-            mean_fscore = np.mean(fscores)
-            return mean_fscore
-        # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
-
-        seeded_bounds = {
-            'mask_thresh': (.4, .9),
-            'seed_thresh': (.4, .9),
-            'min_seed_size': (0, 100),
-            'min_size': (0, 100),
-        }
-        n_init = 10
-        seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
-        seeded_bo.explore(pd.DataFrame([
-            {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
-            {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
-            {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
-            {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
-            {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
-            {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
-            {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
-            {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
-            {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
-        ]).to_dict(orient='list'))
-        seeded_bo.plog.print_header(initialization=True)
-        seeded_bo.init(n_init)
-        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
-
-        gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
-
-        n_iter = n_init // 2
-        for kappa in [10, 5, 1]:
-            seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
-
-        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
-        print(arch)
 
     # draw_failures()
     hypersearch_probs()

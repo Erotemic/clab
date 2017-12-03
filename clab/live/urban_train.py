@@ -398,6 +398,19 @@ def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, bou
     if combine is None:
         combine = ub.argflag('--combine')
 
+    halfcombo = None
+    if halfcombo is None:
+        halfcombo = ub.argflag('--halfcombo')
+
+    if halfcombo:
+        # decrease testing for training
+        n = len(test) // 2
+        new_test = test[n:]
+        train = learn + test[:n]
+        test = new_test
+        train.tag = 'train_h'
+        test.tag = 'test_h'
+
     if combine:
         # HACK EVERYTHING TOGETHER
         train = learn + test
@@ -504,7 +517,7 @@ def urban_fit():
 
 
         # Train a variant of the dense net with more parameters
-        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=dense_unet2 --colorspace=RGB --use_aux_diff \
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=dense_unet --colorspace=RGB --use_aux_diff --combine \
                 --pretrained '/home/local/KHQ/jon.crall/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000030.pt' --gpu=1
 
         # Fine tune the model using all the available data
