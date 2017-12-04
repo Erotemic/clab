@@ -86,7 +86,7 @@ def eval_contest_testset():
         train_dpath = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_52200-fqljkqlk/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4'
         epoch = 0
         if epoch == 0:
-            params = {'mask_thresh': 0.6666, 'min_seed_size': 81, 'min_size': 13, 'seed_thresh': 0.4241}  # best on more data
+            params = {'mask_thresh': 0.6666, 'min_seed_size': 81, 'min_size': 13, 'seed_thresh': 0.4241}  # bo_best on more data
             params = {'mask_thresh': 0.7870, 'min_seed_size': 85, 'min_size': 64, 'seed_thresh': 0.4320}  # 0.9169 (vali seen in training)
 
         epoch = 5
@@ -220,11 +220,11 @@ def eval_internal_testset():
         epoch = None
         epoch = 34
         use_aux_diff = True
-
-        halfcombo = True
-        train_dpath = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_52200-fqljkqlk/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4'
         epoch = 0
         epoch = 5
+
+        train_dpath = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_39000-xsldtcgn/solver_39000-xsldtcgn_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4'
+        halfcombo = True
         epoch = 10
     else:
         raise KeyError(MODE)
@@ -233,11 +233,6 @@ def eval_internal_testset():
     datasets = load_task_dataset('urban_mapper_3d', combine=False, arch=arch,
                                  halfcombo=halfcombo)
     test_dataset = datasets['test']
-    if halfcombo:
-        # we used more training data
-        n = len(test_dataset) // 2
-        new_test = test_dataset[n:]
-        test_dataset = new_test
     test_dataset.use_aux_diff = use_aux_diff
     test_dataset.with_gt = False
     test_dataset.inputs.make_dumpsafe_names()
@@ -255,7 +250,7 @@ def eval_internal_testset():
     paths['probs'] = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
     paths['probs1'] = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
 
-    if len(paths['probs']) < 88:
+    if len(paths['probs']) == 0:
         # gpu part
         pharn.load_snapshot(load_path)
         pharn.run()
@@ -266,6 +261,21 @@ def eval_internal_testset():
     if False:
         pharn._blend_full_probs(task, 'probs', npy_fpaths=paths['probs'])
         pharn._blend_full_probs(task, 'probs1', npy_fpaths=paths['probs1'])
+
+    # draw_failures()
+    seeded_bo = hypersearch_probs(task, paths)
+    print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
+    print(arch)
+
+
+def bo_best(self):
+    return {'max_val': self.Y.max(),
+            'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
+
+
+def hypersearch_probs(task, paths):
+    prob_paths  = paths['probs']
+    prob1_paths = paths['probs1']
 
     @ub.memoize
     def gt_info_from_path(pred_fpath):
@@ -285,185 +295,192 @@ def eval_internal_testset():
         uncertain = (gtl == 65)
         return gti, uncertain, dsm, bgr
 
-    def hypersearch_probs():
-        prob_paths  = paths['probs']
-        prob1_paths = paths['probs1']
+    # https://github.com/fmfn/BayesianOptimization
+    # https://github.com/fmfn/BayesianOptimization/blob/master/examples/usage.py
+    # https://github.com/fmfn/BayesianOptimization/blob/master/examples/exploitation%20vs%20exploration.ipynb
+    # subx = [0, 1, 2, 3, 4, 5]
+    # subx = [2, 4, 5, 9, 10, 14, 17, 18, 20, 30, 33, 39, 61, 71, 72, 73, 75, 81, 84]
+    # sub0 = ub.take(prob_paths, subx)
+    # sub1 = ub.take(prob1_paths, subx)
+    sub0 = prob_paths
+    sub1 = prob1_paths
+    from bayes_opt import BayesianOptimization
 
-        # https://github.com/fmfn/BayesianOptimization
-        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/usage.py
-        # https://github.com/fmfn/BayesianOptimization/blob/master/examples/exploitation%20vs%20exploration.ipynb
-        # subx = [0, 1, 2, 3, 4, 5]
-        subx = [2, 4, 5, 9, 10, 14, 17, 18, 20, 30, 33, 39, 61, 71, 72, 73, 75, 81, 84]
-        from bayes_opt import BayesianOptimization
+    @ub.memoize
+    def memo_read_arr(fpath):
+        return util.read_arr(fpath)
 
-        def best(self):
-            return {'max_val': self.Y.max(),
-                    'max_params': dict(zip(self.keys,
-                                           self.X[self.Y.argmax()]))}
-
-        @ub.memoize
-        def memo_read_arr(fpath):
-            return util.read_arr(fpath)
-
-        def seeded_objective(**params):
-            seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
-                params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
-            fscores = []
-            sub0 = ub.take(prob_paths, subx)
-            sub1 = ub.take(prob1_paths, subx)
-            sub0 = prob_paths
-            sub1 = prob1_paths
-            for path, path1 in zip(sub0, sub1):
-                gti, uncertain, dsm, bgr = gt_info_from_path(path)
-
-                probs = memo_read_arr(path)
-                seed_probs = probs[:, :, task.classname_to_id['inner_building']]
-                seed = (seed_probs > seed_thresh).astype(np.uint8)
-
-                probs1 = memo_read_arr(path1)
-                mask_probs = probs1[:, :, 1]
-                mask = (mask_probs > mask_thresh).astype(np.uint8)
-
-                pred = seeded_instance_label(seed, mask,
-                                             min_seed_size=min_seed_size,
-                                             min_size=min_size)
-                scores = instance_fscore(gti, uncertain, dsm, pred)
-                fscore = scores[0]
-                fscores.append(fscore)
-            mean_fscore = np.mean(fscores)
-            return mean_fscore
-        # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
-
-        seeded_bounds = {
-            'mask_thresh': (.4, .9),
-            'seed_thresh': (.4, .9),
-            'min_seed_size': (0, 100),
-            'min_size': (0, 100),
-        }
-        n_init = 50
-        seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
-        import pandas as pd
-        seeded_bo.explore(pd.DataFrame([
-            {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
-            {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
-            {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
-            {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
-            {'mask_thresh': 0.6666, 'min_seed_size': 81.5941, 'min_size': 13.2919, 'seed_thresh': 0.4241},  # full dataset 'max_val': 0.9142}
-
-            {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
-            {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
-            {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
-            {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
-            {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
-        ]).to_dict(orient='list'))
-        seeded_bo.plog.print_header(initialization=True)
-        seeded_bo.init(n_init)
-        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
-
-        gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
-
-        n_iter = n_init // 2
-        for kappa in [10, 5, 1]:
-            seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
-
-        print('seeded ' + ub.repr2(best(seeded_bo), nl=0, precision=4))
-        print(arch)
-
-    def draw_failures():
-        import cv2
-        prob_paths  = paths['probs']
-        prob1_paths = paths['probs1']
-
-        params = {
-            'mask_thresh': 0.8338, 'min_seed_size': 25.7651,
-            'min_size': 38.6179, 'seed_thresh': 0.6573
-        }
-
+    def seeded_objective(**params):
         seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
             params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
-        for ix, (path, path1) in enumerate(ub.ProgIter(list(zip(prob_paths, prob1_paths)))):
+        fscores = []
+        for path, path1 in zip(sub0, sub1):
             gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
-            probs = util.read_arr(path)
+            probs = memo_read_arr(path)
             seed_probs = probs[:, :, task.classname_to_id['inner_building']]
             seed = (seed_probs > seed_thresh).astype(np.uint8)
 
-            probs1 = util.read_arr(path1)
+            probs1 = memo_read_arr(path1)
             mask_probs = probs1[:, :, 1]
             mask = (mask_probs > mask_thresh).astype(np.uint8)
 
             pred = seeded_instance_label(seed, mask,
                                          min_seed_size=min_seed_size,
                                          min_size=min_size)
+            scores = instance_fscore(gti, uncertain, dsm, pred)
+            fscore = scores[0]
+            fscores.append(fscore)
+        mean_fscore = np.mean(fscores)
+        return mean_fscore
+    # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
 
-            scores, infod = instance_fscore(gti, uncertain, dsm, pred, info=True)
+    seeded_bounds = {
+        'mask_thresh': (.4, .9),
+        'seed_thresh': (.4, .9),
+        'min_seed_size': (0, 100),
+        'min_size': (0, 100),
+    }
+    n_init = 50
+    seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
+    import pandas as pd
+    seeded_bo.explore(pd.DataFrame([
+        {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
+        {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
+        {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
+        {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
+        {'mask_thresh': 0.6666, 'min_seed_size': 81.5941, 'min_size': 13.2919, 'seed_thresh': 0.4241},  # full dataset 'max_val': 0.9142}
 
+        {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
+        {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
+        {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
+        {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
+        {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
+    ]).to_dict(orient='list'))
+    seeded_bo.plog.print_header(initialization=True)
+    seeded_bo.init(n_init)
+    print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
+
+    gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
+
+    n_iter = n_init // 2
+    for kappa in [10, 5, 1]:
+        seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+
+    print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
+    return seeded_bo
+
+
+def draw_failures(task, paths):
+    import cv2
+    prob_paths  = paths['probs']
+    prob1_paths = paths['probs1']
+
+    params = {
+        'mask_thresh': 0.8338, 'min_seed_size': 25.7651,
+        'min_size': 38.6179, 'seed_thresh': 0.6573
+    }
+
+    @ub.memoize
+    def gt_info_from_path(pred_fpath):
+        gtl_fname = ub.augpath(basename(pred_fpath), suffix='_GTL', ext='.tif')
+        gti_fname = ub.augpath(basename(pred_fpath), suffix='_GTI', ext='.tif')
+        dsm_fname = ub.augpath(basename(pred_fpath), suffix='_DSM', ext='.tif')
+        bgr_fname = ub.augpath(basename(pred_fpath), suffix='_RGB', ext='.tif')
+        gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+        gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+        dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+        bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+
+        gti = util.imread(gti_fpath)
+        gtl = util.imread(gtl_fpath)
+        dsm = util.imread(dsm_fpath)
+        bgr = util.imread(bgr_fpath)
+        uncertain = (gtl == 65)
+        return gti, uncertain, dsm, bgr
+
+    seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
+        params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
+    for ix, (path, path1) in enumerate(ub.ProgIter(list(zip(prob_paths, prob1_paths)))):
+        gti, uncertain, dsm, bgr = gt_info_from_path(path)
+
+        probs = util.read_arr(path)
+        seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+        seed = (seed_probs > seed_thresh).astype(np.uint8)
+
+        probs1 = util.read_arr(path1)
+        mask_probs = probs1[:, :, 1]
+        mask = (mask_probs > mask_thresh).astype(np.uint8)
+
+        pred = seeded_instance_label(seed, mask,
+                                     min_seed_size=min_seed_size,
+                                     min_size=min_size)
+
+        scores, infod = instance_fscore(gti, uncertain, dsm, pred, info=True)
+
+        fn_labels = infod['fn']
+
+        # visualize failure cases
+        from clab.torch.metrics import CumMovingAve
+        ave_scores = CumMovingAve()
+        if True:
+            from clab.tasks import urban_mapper_3d
+            from clab.tasks.urban_mapper_3d import instance_contours, draw_contours
+
+            gtl = (uncertain * 65)
+            # tp_assign = infod['tp']
+            fp_labels = infod['fp']
             fn_labels = infod['fn']
 
-            # visualize failure cases
-            from clab.torch.metrics import CumMovingAve
-            ave_scores = CumMovingAve()
-            if True:
-                from clab.tasks import urban_mapper_3d
-                from clab.tasks.urban_mapper_3d import instance_contours, draw_contours
+            fn_contours = list(ub.flatten(ub.take(instance_contours(gti), fn_labels)))
+            fp_contours = list(ub.flatten(ub.take(instance_contours(pred), fp_labels)))
 
-                gtl = (uncertain * 65)
-                # tp_assign = infod['tp']
-                fp_labels = infod['fp']
-                fn_labels = infod['fn']
+            color_probs = util.make_heatmask(mask_probs)
+            color_probs[:, :, 3] *= .3
+            blend_probs = util.overlay_colorized(color_probs, bgr, keepcolors=False)
 
-                fn_contours = list(ub.flatten(ub.take(instance_contours(gti), fn_labels)))
-                fp_contours = list(ub.flatten(ub.take(instance_contours(pred), fp_labels)))
+            # Draw False Positives and False Negatives with a big thickness
+            DEEP_SKY_BLUE_BGR = (255, 191, 0)
+            MAGENTA_BGR = (255, 0, 255)
+            RED_BGR = (0, 0, 255)
+            GREEN_BGR = (0, 255, 0)
 
-                color_probs = util.make_heatmask(mask_probs)
-                color_probs[:, :, 3] *= .3
-                blend_probs = util.overlay_colorized(color_probs, bgr, keepcolors=False)
+            draw_img = blend_probs
+            draw_img = draw_contours(draw_img, fp_contours, thickness=6, alpha=.5, color=MAGENTA_BGR)
+            draw_img = draw_contours(draw_img, fn_contours, thickness=6, alpha=.5, color=RED_BGR)
 
-                # Draw False Positives and False Negatives with a big thickness
-                DEEP_SKY_BLUE_BGR = (255, 191, 0)
-                MAGENTA_BGR = (255, 0, 255)
-                RED_BGR = (0, 0, 255)
-                GREEN_BGR = (0, 255, 0)
+            # Overlay GT and Pred contours
+            draw_img = urban_mapper_3d.draw_instance_contours(
+                draw_img, gti, gtl=gtl, color=GREEN_BGR, thickness=2, alpha=.5)
 
-                draw_img = blend_probs
-                draw_img = draw_contours(draw_img, fp_contours, thickness=6, alpha=.5, color=MAGENTA_BGR)
-                draw_img = draw_contours(draw_img, fn_contours, thickness=6, alpha=.5, color=RED_BGR)
+            draw_img = urban_mapper_3d.draw_instance_contours(
+                draw_img, pred, color=DEEP_SKY_BLUE_BGR, thickness=2, alpha=.5)
 
-                # Overlay GT and Pred contours
-                draw_img = urban_mapper_3d.draw_instance_contours(
-                    draw_img, gti, gtl=gtl, color=GREEN_BGR, thickness=2, alpha=.5)
+            ave_scores.update(dict(zip(['fscore', 'precision', 'recall'], scores)))
 
-                draw_img = urban_mapper_3d.draw_instance_contours(
-                    draw_img, pred, color=DEEP_SKY_BLUE_BGR, thickness=2, alpha=.5)
+            text = ub.codeblock(
+                '''
+                F-score:   {:.4f}
+                Precision: {:.4f}
+                Recall:    {:.4f}
+                '''
+            ).format(*scores)
 
-                ave_scores.update(dict(zip(['fscore', 'precision', 'recall'], scores)))
+            draw_img = imutil.putMultiLineText(draw_img, text, org=(10, 70),
+                                               fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                               fontScale=1.5,
+                                               color=GREEN_BGR, thickness=3,
+                                               lineType=cv2.LINE_AA)
 
-                text = ub.codeblock(
-                    '''
-                    F-score:   {:.4f}
-                    Precision: {:.4f}
-                    Recall:    {:.4f}
-                    '''
-                ).format(*scores)
+            out_fpath = ub.augpath(path.replace('/probs/', '/failures/'), ext='.png')
+            from os.path import dirname
+            ub.ensuredir(dirname(out_fpath))
+            imutil.imwrite(out_fpath, draw_img)
+            print(ave_scores.average())
 
-                draw_img = imutil.putMultiLineText(draw_img, text, org=(10, 70),
-                                                   fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                                                   fontScale=1.5,
-                                                   color=GREEN_BGR, thickness=3,
-                                                   lineType=cv2.LINE_AA)
-
-                out_fpath = ub.augpath(path.replace('/probs/', '/failures/'), ext='.png')
-                from os.path import dirname
-                ub.ensuredir(dirname(out_fpath))
-                imutil.imwrite(out_fpath, draw_img)
-                print(ave_scores.average())
-
-        print(ave_scores.average())
-        # mean_fscore = np.mean(fscores)
-        # print('mean_fscore = {!r}'.format(mean_fscore))
-
-    # draw_failures()
-    hypersearch_probs()
+    print(ave_scores.average())
+    # mean_fscore = np.mean(fscores)
+    # print('mean_fscore = {!r}'.format(mean_fscore))
 
 
 class PredictHarness(object):
