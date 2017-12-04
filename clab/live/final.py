@@ -350,31 +350,6 @@ def train(train_data_path):
     print('n_channels = {!r}'.format(n_channels))
     print('batch_size = {!r}'.format(batch_size))
 
-    hyper = hyperparams.HyperParams(
-        criterion=(criterions.CrossEntropyLoss2D, {
-            'ignore_label': ignore_label,
-            # TODO: weight should be a FloatTensor
-            'weight': class_weights,
-        }),
-        optimizer=(torch.optim.SGD, {
-            # 'weight_decay': .0006,
-            'weight_decay': .0005,
-            'momentum': .9,
-            'nesterov': True,
-        }),
-        scheduler=('Exponential', {
-            'gamma': 0.99,
-            'base_lr': 0.001,
-            'stepsize': 2,
-        }),
-        other={
-            'n_classes': n_classes,
-            'n_channels': n_channels,
-            'augment': datasets['train'].augment,
-            'colorspace': datasets['train'].colorspace,
-        }
-    )
-
     arches = [
         'unet2',
         'dense_unet',
@@ -386,6 +361,32 @@ def train(train_data_path):
     arch_to_best_epochs = {}
 
     for arch in arches:
+
+        hyper = hyperparams.HyperParams(
+            criterion=(criterions.CrossEntropyLoss2D, {
+                'ignore_label': ignore_label,
+                # TODO: weight should be a FloatTensor
+                'weight': class_weights,
+            }),
+            optimizer=(torch.optim.SGD, {
+                # 'weight_decay': .0006,
+                'weight_decay': .0005,
+                'momentum': .9,
+                'nesterov': True,
+            }),
+            scheduler=('Exponential', {
+                'gamma': 0.99,
+                'base_lr': 0.001,
+                'stepsize': 2,
+            }),
+            other={
+                'n_classes': n_classes,
+                'n_channels': n_channels,
+                'augment': datasets['train'].augment,
+                'colorspace': datasets['train'].colorspace,
+            }
+        )
+
         from clab.live.urban_train import directory_structure
         train_dpath = directory_structure(
             datasets['train'].task.workdir, arch, datasets,
