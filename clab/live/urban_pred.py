@@ -311,6 +311,7 @@ def hypersearch_probs(task, paths):
         return util.read_arr(fpath)
 
     def seeded_objective(**params):
+        # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
         seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
             params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
         fscores = []
@@ -318,16 +319,17 @@ def hypersearch_probs(task, paths):
             gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
             probs = memo_read_arr(path)
-            seed_probs = probs[:, :, task.classname_to_id['inner_building']]
-            seed = (seed_probs > seed_thresh).astype(np.uint8)
+            seed_prob = probs[:, :, task.classname_to_id['inner_building']]
 
             probs1 = memo_read_arr(path1)
-            mask_probs = probs1[:, :, 1]
-            mask = (mask_probs > mask_thresh).astype(np.uint8)
+            mask_prob = probs1[:, :, 1]
 
-            pred = seeded_instance_label(seed, mask,
-                                         min_seed_size=min_seed_size,
-                                         min_size=min_size)
+            pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
+                                                    seed_thresh=seed_thresh,
+                                                    mask_thresh=mask_thresh,
+                                                    min_seed_size=min_seed_size,
+                                                    min_size=min_size)
+
             scores = instance_fscore(gti, uncertain, dsm, pred)
             fscore = scores[0]
             fscores.append(fscore)
@@ -358,6 +360,9 @@ def hypersearch_probs(task, paths):
         {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
     ]).to_dict(orient='list'))
     seeded_bo.plog.print_header(initialization=True)
+
+    # Basically just using this package for random search.
+    # The BO doesnt seem to help much
     seeded_bo.init(n_init)
     print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
 
@@ -865,6 +870,22 @@ def mask_instance_label(pred, k=15, n_iters=1, dist_thresh=5,
                 pred_ccs[tuple(inner_rcs.T)] = 0
 
     return pred_ccs
+
+
+def seeded_instance_label_from_probs(seed_prob, mask_prob, seed_thresh=.4,
+                                     mask_thresh=.6, inner_k=0, outer_k=0,
+                                     post_k=0, min_seed_size=0, min_size=0):
+    """
+    Convert outputs from the sseg network to an instance prediction
+    TODO: deep watershed
+    """
+
+    seed = (seed_prob > seed_thresh).astype(np.uint8)
+    mask = (mask_prob > mask_thresh).astype(np.uint8)
+
+    return seeded_instance_label(seed, mask, inner_k=inner_k, outer_k=outer_k,
+                                 post_k=post_k, min_seed_size=min_seed_size,
+                                 min_size=min_size)
 
 
 def seeded_instance_label(seed, mask, inner_k=0, outer_k=0, post_k=0,
