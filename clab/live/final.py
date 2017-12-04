@@ -405,7 +405,7 @@ def train(train_data_path):
             model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
                                     n_classes=n_classes)
 
-        dry = True
+        dry = 0
 
         from clab.live import fit_harn2
         harn = fit_harn2.FitHarness(

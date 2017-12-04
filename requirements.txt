@@ -3,3 +3,5 @@ numpy
 ubelt
 pytorch
 xdoctest
+sortedcontainers
+tqdm
