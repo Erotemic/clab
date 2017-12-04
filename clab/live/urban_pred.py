@@ -1,4 +1,44 @@
 # -*- coding: utf-8 -*-
+"""
+Plan for Phase II:
+
+    TRAINING PHASE:
+
+        Optimize Network Weights:
+            for each model:
+                * Read dataset
+                * split into train / validation
+                * stop once validation loss does not improve after 5-20 epochs
+                * record top N epochs with lowest loss
+
+        Choose Operating Points / Postprocess Params / Ensemble Weights:
+
+            # Output static probability maps for the final layer
+            for each model:
+                * for each of the top N epochs with the lowest loss
+                    * evaluated stiched probabilities on validation dataset
+                    * record path to these stiched predictions; tag path with model-id and epoch.
+
+            For each combination of model/epoch-id tags:
+                * load predictions and groundtruth into memory
+                * run seeded / random search / Baysian hyper param search using
+                  the contest criteria as the objective function.
+                    * note: the parameters also include the ensemble weights
+                * choose the best hyperparm config.
+                * run a grid search over ensemble weights
+                * choose the best.
+            * choose the best over all of these runs.
+            * Record these the model weights / ensemble weights / hyperparams / ...
+
+        Test:
+            * apply the preprocessor
+            * do stiched prediction for all models in the ensemble
+            * weight the predicted probabilities
+            * transform combined probabilities into predictions using the
+              chosen hyperparams
+            * return the result
+
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 import torch
 import glob
@@ -115,29 +155,76 @@ def eval_contest_testset():
     eval_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
     pharn.hack_dump_path(load_path)
 
-    prob_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
-    prob1_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
+    stitched_dpath = join(pharn.test_dump_dpath, 'stitched')
+
+    prob_paths = glob.glob(join(stitched_dpath, 'probs', '*.h5'))
+    prob1_paths = glob.glob(join(stitched_dpath, 'probs1', '*.h5'))
     if len(prob_paths) == 0:
         pharn.load_snapshot(load_path)
         pharn.run()
 
+    stitched_dpaths = [stitched_dpath]
+    dump_dpath = pharn.test_dump_dpath
     task = eval_dataset.task
+    make_submission_file(task, stitched_dpaths, params, dump_dpath)
+
+
+def make_submission_file(task, stitched_dpaths, params, dump_dpath, ensemble_weights=None):
+    """
+    TODO: take in multiple prediction paths for an enemble
+
+    # Ensemble these two predictions together
+    params = {}
+    params = {'alpha': 0.8800, 'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320}
+
+    alpha = params.get('alpha')
+
+    stitched_dpath1 = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/eval/input_18600-vvhcfmyo/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000000/stitched'
+
+    stitched_dpath2 = '/home/local/KHQ/jon.crall/data/work/urban_mapper4/eval/input_18600-vkmqiooh/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000026/stitched'
+
+    dump_dpath = ub.ensuredir('/home/local/KHQ/jon.crall/data/work/urban_mapper_ensemble')
+    stitched_dpaths = [stitched_dpath1, stitched_dpath2]
+    ensemble_weights = [alpha, 1 - alpha]
+    """
+
     # prob_paths = pharn._restitch_type('probs', blend='avew', force=False)
     # prob1_paths = pharn._restitch_type('probs1', blend='avew', force=False)
-    prob_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
-    prob1_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
+    ensemble_paths = []
+    for dpath in stitched_dpaths:
+        paths = {}
+        paths['prob'] = glob.glob(join(dpath, 'probs', '*.h5'))
+        paths['prob1'] = glob.glob(join(dpath, 'probs1', '*.h5'))
+        ensemble_paths.append(paths)
+
+    if ensemble_weights is None:
+        assert len(stitched_dpaths) == 1
+        ensemble_weights = [1]
 
     def seeded_predictions(**params):
         # Convert to submission output format
+        import tqdm
 
-        for path, path1 in ub.ProgIter(list(zip(prob_paths, prob1_paths))):
-            probs = util.read_arr(path)
-            probs1 = util.read_arr(path1)
-            seed_prob = probs[:, :, task.classname_to_id['inner_building']]
-            mask_prob = probs1[:, :, 1]
+        params.pop('alpha')
 
-            pred  = seeded_instance_label_from_probs(seed_prob, mask_prob,
-                                                     **params)
+        n_scenes = len(ensemble_paths[0]['prob'])
+
+        for ix in tqdm.tqdm(list(range(n_scenes)), desc='classifying'):
+            probs = 0
+            probs1 = 0
+            for paths, w in zip(ensemble_paths, ensemble_weights):
+                path = paths['prob'][ix]
+                probs = probs +  w * util.read_arr(paths['prob'][ix])
+                probs1 = probs1 + w * util.read_arr(paths['prob1'][ix])
+
+            INNER_BUILDING_ID = 1
+            BUILDING_ID = 1
+
+            seed_prob = probs[:, :, INNER_BUILDING_ID]
+            mask_prob = probs1[:, :, BUILDING_ID]
+
+            pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
+                                                    **params)
 
             tile_id = splitext(basename(path))[0]
             yield tile_id, pred
@@ -152,8 +239,8 @@ def eval_contest_testset():
     text = '\n'.join(lines)
     post_idstr = 'seeded_' + util.compact_idstr(params)
     mode = 'prob'
-    suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
-    fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
+    suffix = '_'.join(dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
+    fpath = join(dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
     print('fpath = {!r}'.format(fpath))
     ub.writeto(fpath, text)
     print(ub.codeblock(
@@ -301,15 +388,30 @@ def check_ensemble():
     def memo_read_arr(fpath):
         return util.read_arr(fpath)
 
+    def preload():
+        import tqdm
+        n_paths = len(paths_m2['probs'])
+        for ix in tqdm.trange(n_paths, leave=True, desc='preload'):
+            gti, uncertain, dsm, bgr = gt_info_from_path(paths_m1['probs'][ix])
+
+            memo_read_arr(paths_m1['probs'][ix])
+            memo_read_arr(paths_m1['probs1'][ix])
+
+            memo_read_arr(paths_m2['probs'][ix])
+            memo_read_arr(paths_m2['probs1'][ix])
+
+    preload()  # read datas into memory
+
     def seeded_objective(**params):
         # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
-        names = 'seed_thresh, mask_thresh, min_seed_size, min_size'
-        seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
-            params, names.split(', '))
+        import tqdm
+
+        alpha = params.pop('alpha', .88)
 
         fscores = []
         # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
-        for ix in range(len(paths_m2['probs'])):
+        n_paths = len(paths_m2['probs'])
+        for ix in tqdm.trange(n_paths, leave=False, desc='eval objective'):
 
             gti, uncertain, dsm, bgr = gt_info_from_path(paths_m1['probs'][ix])
 
@@ -319,38 +421,68 @@ def check_ensemble():
             probs_m2 = memo_read_arr(paths_m2['probs'][ix])
             probs1_m2 = memo_read_arr(paths_m2['probs1'][ix])
 
-            probs_e = (probs_m1 + probs_m2) / 2
-            probs1_e = (probs1_m1 + probs1_m2) / 2
+            probs = (alpha * probs_m1 + (1 - alpha) * probs_m2)
+            probs1 = (alpha * probs1_m1 + (1 - alpha) * probs1_m2)
 
-            def _s(probs, probs1):
-                seed_prob = probs[:, :, 1]
-                mask_prob = probs1[:, :, 1]
+            INNER_BUILDING_ID = 1
+            BUILDING_ID = 1
 
-                pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
-                                                        **params)
+            seed_prob = probs[:, :, INNER_BUILDING_ID]
+            mask_prob = probs1[:, :, BUILDING_ID]
 
-                scores = instance_fscore(gti, uncertain, dsm, pred)
-                return scores
+            pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
+                                                    **params)
 
-            probs, probs1 = probs_m1, probs1_m1
-            print(_s(probs, probs1))
-            probs, probs1 = probs_e, probs1_e
-            print(_s(probs, probs1))
-            probs, probs1 = probs_m2, probs1_m2
-            print(_s(probs, probs1))
-
-            a = .88
-
-            for a in np.linspace(0, 1):
-                probs_e = (a * probs_m1 + (1 - a) * probs_m2)
-                probs1_e = (a * probs1_m1 + (1 - a) * probs1_m2)
-                probs, probs1 = probs_e, probs1_e
-                print('{} - {}'.format(_s(probs, probs1), a))
+            scores = instance_fscore(gti, uncertain, dsm, pred)
 
             fscore = scores[0]
             fscores.append(fscore)
         mean_fscore = np.mean(fscores)
         return mean_fscore
+
+    seeded_bounds = {
+        'mask_thresh': (.4, .9),
+        'seed_thresh': (.4, .9),
+        'min_seed_size': (0, 100),
+        'min_size': (0, 100),
+        'alpha': (.80, 1.0),
+    }
+
+    from bayes_opt import BayesianOptimization
+    seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
+    import pandas as pd
+    cand_params = [
+        {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
+        {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
+        {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
+        {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
+        {'mask_thresh': 0.6666, 'min_seed_size': 81.5941, 'min_size': 13.2919, 'seed_thresh': 0.4241},  # full dataset 'max_val': 0.9142}
+        # {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
+        # {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
+        # {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
+        # {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
+        # {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
+    ]
+    for p in cand_params:
+        p['alpha'] = .88
+    n_init = 20
+
+    seeded_bo.explore(pd.DataFrame(cand_params).to_dict(orient='list'))
+
+    # Basically just using this package for random search.
+    # The BO doesnt seem to help much
+    seeded_bo.plog.print_header(initialization=True)
+    seeded_bo.init(n_init)
+    print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
+
+    gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
+
+    n_iter = n_init // 4
+    for kappa in [10, 5, 1]:
+        seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+
+    print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
+    return seeded_bo
 
 
 def hypersearch_probs(task, paths):
@@ -386,6 +518,7 @@ def hypersearch_probs(task, paths):
     # subx = [0, 1]
     # sub0 = list(ub.take(prob_paths, subx))
     # sub1 = list(ub.take(prob1_paths, subx))
+    # pip install bayesian-optimization
     from bayes_opt import BayesianOptimization
 
     @ub.memoize
@@ -394,10 +527,6 @@ def hypersearch_probs(task, paths):
 
     def seeded_objective(**params):
         # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
-        names = 'seed_thresh, mask_thresh, min_seed_size, min_size'
-        seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
-            params, names.split(', '))
-
         fscores = []
         for path, path1 in zip(sub0, sub1):
             gti, uncertain, dsm, bgr = gt_info_from_path(path)
@@ -414,10 +543,7 @@ def hypersearch_probs(task, paths):
             mask_prob = probs1[:, :, 1]
 
             pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
-                                                    seed_thresh=seed_thresh,
-                                                    mask_thresh=mask_thresh,
-                                                    min_seed_size=min_seed_size,
-                                                    min_size=min_size)
+                                                    **params)
 
             scores = instance_fscore(gti, uncertain, dsm, pred)
             fscore = scores[0]
