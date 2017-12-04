@@ -66,7 +66,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         >>> center_stats = self.inputs.prepare_center_stats(
         >>>     task, nan_value=nan_value, colorspace='RGB')
     """
-    def __init__(task, root=None, workdir=None, boundary=False):
+    def __init__(task, root=None, workdir=None, boundary=True):
         if root is None:
             assert False
         task.workdir = expanduser(workdir)

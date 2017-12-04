@@ -445,10 +445,10 @@ def directory_structure(workdir, arch, datasets, pretrained=None,
     """
     arch_dpath = ub.ensuredir((workdir, 'arch', arch))
     train_base = ub.ensuredir((arch_dpath, 'train'))
-    test_base = ub.ensuredir((arch_dpath, 'test'))
-    test_dpath = ub.ensuredir((test_base, 'input_' + datasets['test'].input_id))
 
-    if len(pretrained) < 8:
+    if pretrained is None:
+        train_init_id = 'None'
+    elif  len(pretrained) < 8:
         train_init_id = pretrained
     else:
         train_init_id = util.hash_data(pretrained)[:8]
@@ -488,7 +488,7 @@ def directory_structure(workdir, arch, datasets, pretrained=None,
     print('train_id = {!r}'.format(train_id))
     print('+=========')
 
-    return train_dpath, test_dpath
+    return train_dpath
 
 
 def urban_fit():
@@ -646,7 +646,7 @@ def urban_fit():
             else:
                 pretrained = starting_points['unet_rgb_4k']
 
-    train_dpath, test_dpath = directory_structure(
+    train_dpath = directory_structure(
         datasets['train'].task.workdir, arch, datasets,
         pretrained=pretrained,
         train_hyper_id=hyper.hyper_id(),

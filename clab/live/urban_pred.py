@@ -291,6 +291,12 @@ def eval_internal_testset():
         use_aux_diff = True
         epoch = 26
 
+        train_dpath = ub.truepath(
+            '~/data/work/urban_mapper4/arch/dense_unet/train/input_52200-qnwuaiqm/'
+            'solver_52200-qnwuaiqm_dense_unet_dbszrgef_qzavgexx_a=1,c=RGB,n_ch=6,n_cl=4'
+        )
+        epoch = None
+
     elif MODE == 'UNET6CH':
         arch = 'unet2'
         train_dpath = ub.truepath(
@@ -356,7 +362,9 @@ def bo_best(self):
 def check_ensemble():
     model1 = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/test/input_26400-sotwptrx/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000000/stitched'
 
-    model2 = '/home/local/KHQ/jon.crall/data/work/urban_mapper4/test/input_26400-fgetszbh/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000026/stitched'
+    # model2 = '/home/local/KHQ/jon.crall/data/work/urban_mapper4/test/input_26400-fgetszbh/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000026/stitched'
+
+    model2 = '/home/local/KHQ/jon.crall/data/work/urban_mapper4/test/input_26400-fgetszbh/solver_52200-qnwuaiqm_dense_unet_dbszrgef_qzavgexx_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000028/stitched'
 
     paths_m1 = {}
     paths_m1['probs'] = glob.glob(join(model1, 'probs', '*.h5'))
@@ -525,10 +533,20 @@ def hypersearch_probs(task, paths):
     def memo_read_arr(fpath):
         return util.read_arr(fpath)
 
+    def preload():
+        import tqdm
+        n_paths = len(paths['probs'])
+        for ix in tqdm.trange(n_paths, leave=True, desc='preload'):
+            gti, uncertain, dsm, bgr = gt_info_from_path(paths['probs'][ix])
+
+            memo_read_arr(paths['probs'][ix])
+            memo_read_arr(paths['probs1'][ix])
+
     def seeded_objective(**params):
         # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
         fscores = []
-        for path, path1 in zip(sub0, sub1):
+        import tqdm
+        for path, path1 in tqdm.tqdm(list(zip(sub0, sub1)), desc='calc objective', leave=False):
             gti, uncertain, dsm, bgr = gt_info_from_path(path)
 
             probs = memo_read_arr(path)
@@ -558,7 +576,7 @@ def hypersearch_probs(task, paths):
         'min_seed_size': (0, 100),
         'min_size': (0, 100),
     }
-    n_init = 50
+    n_init = 10
     seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
     import pandas as pd
     cand_params = [
@@ -581,10 +599,10 @@ def hypersearch_probs(task, paths):
     #     print(seeded_objective(**params, use_crf=True))
 
     seeded_bo.explore(pd.DataFrame(cand_params).to_dict(orient='list'))
-    seeded_bo.plog.print_header(initialization=True)
 
     # Basically just using this package for random search.
-    # The BO doesnt seem to help much
+    # The BO doesnt seem to help much (due to int constraints?)
+    seeded_bo.plog.print_header(initialization=True)
     seeded_bo.init(n_init)
     print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
 
