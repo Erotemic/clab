@@ -364,7 +364,6 @@ def train(train_data_path):
         }),
         scheduler=('Exponential', {
             'gamma': 0.99,
-            # 'base_lr': 0.0015,
             'base_lr': 0.001,
             'stepsize': 2,
         }),
@@ -417,7 +416,7 @@ def train(train_data_path):
             weight=torch.FloatTensor([.1, 1, 0]),
             ignore_label=2
         )
-        harn.config['max_iter'] = 20
+        harn.config['max_iter'] = 3
 
         def compute_loss(harn, outputs, labels):
 
@@ -448,7 +447,10 @@ def train(train_data_path):
         fit_harn2.get_snapshot(train_dpath)
 
         # free up memory for the next model
+        import utool
+        utool.embed()
         del harn
+        del hyper
         del model
 
 
