@@ -349,6 +349,8 @@ class FitHarness(object):
             if prev_states:
                 harn.load_snapshot(prev_states[-1])
                 # TODO: Load saved params into the optimizer?
+            else:
+                print('harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
 
     def move_model_to_xpu(harn):
         if not harn.dry:
@@ -372,8 +374,6 @@ class FitHarness(object):
         harn.log('Begin training')
 
         harn.initialize_training()
-
-        print('harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
 
         if harn.early_stop.is_done():
             harn.log('The early stopping criterion already triggered')
