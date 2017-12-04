@@ -384,12 +384,14 @@ def train(train_data_path):
             }
         )
 
-        from clab.live.urban_train import directory_structure
-        train_dpath = directory_structure(
-            datasets['train'].task.workdir, arch, datasets,
-            pretrained=None,
-            train_hyper_id=hyper.hyper_id(),
-            suffix='_' + hyper.other_id())
+        # from clab.live.urban_train import directory_structure
+        # train_dpath = directory_structure(
+        #     datasets['train'].task.workdir, arch, datasets,
+        #     pretrained=None,
+        #     train_hyper_id=hyper.hyper_id(),
+        #     suffix='_' + hyper.other_id())
+
+        train_dpath = ub.ensuredir((datasets['train'].task.workdir, 'train', arch))
 
         arch_to_train_dpath[arch] = train_dpath
 
