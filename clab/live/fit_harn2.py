@@ -692,8 +692,9 @@ class FitHarness(object):
         return prev_states
 
     def load_snapshot(harn, load_path):
-        snapshot = torch.load(load_path, map_location=nnio.device_mapping(harn.xpu.num))
         harn.log('Loading previous state: {}'.format(load_path))
+        # snapshot = torch.load(load_path, map_location=nnio.device_mapping(harn.xpu.num))
+        snapshot = torch.load(load_path, map_location=nnio.device_mapping(None))
         harn.epoch = snapshot['epoch']
         harn.model.load_state_dict(snapshot['model_state_dict'])
         if 'optimizer_state_dict' in snapshot:
