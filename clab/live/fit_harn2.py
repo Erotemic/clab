@@ -354,6 +354,7 @@ class FitHarness(object):
             harn.log('Moving model and criterion to {}'.format(harn.xpu))
             harn.xpu.to_xpu(harn.model)
             harn.criterion = harn.xpu.to_xpu(harn.criterion)
+            harn.optimizer = harn.xpu.to_xpu(harn.optimizer)
             if hasattr(harn, 'criterion2'):
                 harn.criterion2 = harn.xpu.to_xpu(harn.criterion2)
 
