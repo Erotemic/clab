@@ -337,17 +337,18 @@ class FitHarness(object):
             # if hasattr(harn, 'criterion2'):
             #     harn.criterion2 = harn.xpu.to_xpu(harn.criterion2)
 
-            harn.log('Optimizer: {}'.format(harn.optimizer_cls.__name__))
-            if harn.lr_scheduler:
-                lr = harn.lr_scheduler(harn.epoch)
-                harn.optimizer = harn.optimizer_cls(
-                    harn.model.parameters(), lr=lr, **harn.optimizer_params)
-            else:
-                harn.optimizer = harn.optimizer_cls(
-                    harn.model.parameters(), **harn.optimizer_params)
+            # harn.log('Optimizer: {}'.format(harn.optimizer_cls.__name__))
+            # if harn.lr_scheduler:
+            #     lr = harn.lr_scheduler(harn.epoch)
+            #     harn.optimizer = harn.optimizer_cls(
+            #         harn.model.parameters(), lr=lr, **harn.optimizer_params)
+            # else:
+            #     harn.optimizer = harn.optimizer_cls(
+            #         harn.model.parameters(), **harn.optimizer_params)
 
             if prev_states:
                 harn.load_snapshot(prev_states[-1])
+                # TODO: Load saved params into the optimizer?
 
     def move_model_to_xpu(harn):
         if not harn.dry:
@@ -356,9 +357,17 @@ class FitHarness(object):
             import utool
             utool.embed()
             harn.criterion = harn.xpu.to_xpu(harn.criterion)
-            harn.optimizer = harn.xpu.to_xpu(harn.optimizer)
             if hasattr(harn, 'criterion2'):
                 harn.criterion2 = harn.xpu.to_xpu(harn.criterion2)
+
+            harn.log('Optimizer: {}'.format(harn.optimizer_cls.__name__))
+            if harn.lr_scheduler:
+                lr = harn.lr_scheduler(harn.epoch)
+                harn.optimizer = harn.optimizer_cls(
+                    harn.model.parameters(), lr=lr, **harn.optimizer_params)
+            else:
+                harn.optimizer = harn.optimizer_cls(
+                    harn.model.parameters(), **harn.optimizer_params)
 
     def run(harn):
 
@@ -700,8 +709,8 @@ class FitHarness(object):
         snapshot = torch.load(load_path, map_location=nnio.device_mapping(None))
         harn.epoch = snapshot['epoch']
         harn.model.load_state_dict(snapshot['model_state_dict'])
-        if 'optimizer_state_dict' in snapshot:
-            harn.optimizer.load_state_dict(snapshot['optimizer_state_dict'])
+        # if 'optimizer_state_dict' in snapshot:
+        #     harn.optimizer.load_state_dict(snapshot['optimizer_state_dict'])
         if 'early_stop' in snapshot:
             harn.early_stop = snapshot['early_stop']
         harn.log('Resuming training from epoch={}...'.format(harn.epoch))
