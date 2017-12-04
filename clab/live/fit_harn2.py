@@ -369,7 +369,7 @@ class FitHarness(object):
             harn.log('The early stopping criterion already triggered')
             harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.early_stop.memory), nl=1)))
             return
-        if harn.epoch > harn.config['max_iter']:
+        if harn.epoch >= harn.config['max_iter']:
             harn.log('Maximum harn.epoch already reached.')
             return
 
@@ -417,16 +417,6 @@ class FitHarness(object):
         try:
             for harn.epoch in it.count(harn.epoch):
 
-                # check for termination
-                if harn.epoch > harn.config['max_iter']:
-                    _close_prog()
-                    harn.log('Maximum harn.epoch reached, terminating ...')
-                    break
-                if harn.early_stop.is_done():
-                    _close_prog()
-                    harn.log('Validation set is not improving, terminating ...')
-                    break
-
                 # Make subprogress bars for each epoch
                 for tag in ['train', 'vali', 'test']:
                     _reset_subprog(tag)
@@ -461,6 +451,16 @@ class FitHarness(object):
                     harn.save_snapshot()
 
                 harn.prog.update()
+
+                # check for termination
+                if harn.epoch >= harn.config['max_iter']:
+                    _close_prog()
+                    harn.log('Maximum harn.epoch reached, terminating ...')
+                    break
+                if harn.early_stop.is_done():
+                    _close_prog()
+                    harn.log('Validation set is not improving, terminating ...')
+                    break
         except Exception as ex:
             harn.log('An {} error occurred in the train loop'.format(type(ex)))
             _close_prog()
