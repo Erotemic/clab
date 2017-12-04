@@ -230,7 +230,8 @@ def eval_internal_testset():
         raise KeyError(MODE)
 
     from clab.live.urban_train import load_task_dataset
-    datasets = load_task_dataset('urban_mapper_3d', combine=False, arch=arch)
+    datasets = load_task_dataset('urban_mapper_3d', combine=False, arch=arch,
+                                 halfcombo=halfcombo)
     test_dataset = datasets['test']
     if halfcombo:
         # we used more training data

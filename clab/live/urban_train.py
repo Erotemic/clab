@@ -382,7 +382,7 @@ def get_task(taskname, boundary=True, arch=None):
     return task
 
 
-def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, boundary=True, arch=None):
+def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, boundary=True, arch=None, halfcombo=None):
     task = get_task(taskname, boundary=boundary, arch=arch)
     learn, test = next(task.xval_splits())
     learn.tag = 'learn'
@@ -398,7 +398,6 @@ def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, bou
     if combine is None:
         combine = ub.argflag('--combine')
 
-    halfcombo = None
     if halfcombo is None:
         halfcombo = ub.argflag('--halfcombo')
 
