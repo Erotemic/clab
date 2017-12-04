@@ -451,6 +451,9 @@ def train(train_data_path):
         del hyper
         del model
 
+    print('arch_to_train_dpath = {!r}'.format(arch_to_train_dpath))
+    print('arch_to_best_epochs = {!r}'.format(arch_to_best_epochs))
+
 
 def test(train_data_path, test_data_path, output_file):
     """
