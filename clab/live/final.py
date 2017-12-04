@@ -447,8 +447,6 @@ def train(train_data_path):
         fit_harn2.get_snapshot(train_dpath)
 
         # free up memory for the next model
-        import utool
-        utool.embed()
         del harn
         del hyper
         del model
