@@ -453,6 +453,15 @@ def train(train_data_path):
         del model
 
 
+def test(train_data_path, test_data_path, output_file):
+    """
+    train_data_path
+    test_data_path
+    output_file
+    """
+    pass
+
+
 if __name__ == '__main__':
     r"""
     CommandLine:
