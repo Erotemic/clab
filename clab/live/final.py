@@ -339,8 +339,6 @@ def train(train_data_path):
 
     datasets['train'].augment = True
 
-    batch_size = 14
-
     n_classes = datasets['train'].n_classes
     n_channels = datasets['train'].n_channels
     class_weights = datasets['train'].class_weights()
@@ -348,11 +346,10 @@ def train(train_data_path):
 
     print('n_classes = {!r}'.format(n_classes))
     print('n_channels = {!r}'.format(n_channels))
-    print('batch_size = {!r}'.format(batch_size))
 
     arches = [
-        'dense_unet',
         # 'unet2',
+        'dense_unet',
     ]
 
     xpu = xpu_device.XPU.from_argv()
@@ -397,10 +394,12 @@ def train(train_data_path):
         arch_to_train_dpath[arch] = train_dpath
 
         if arch == 'unet2':
+            batch_size = 14
             from clab.live import unet2
             model = unet2.UNet2(n_alt_classes=3, in_channels=n_channels,
                                 n_classes=n_classes, nonlinearity='leaky_relu')
         elif arch == 'dense_unet':
+            batch_size = 6
             from clab.live import unet3
             model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
                                     n_classes=n_classes)
