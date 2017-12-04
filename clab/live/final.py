@@ -431,12 +431,6 @@ def train(train_data_path):
 
         harn.compute_loss = compute_loss
 
-        # z = harn.loaders['train']
-        # b = next(iter(z))
-        # print('b = {!r}'.format(b))
-        # import sys
-        # sys.exit(0)
-
         def custom_metrics(harn, output, label):
             ignore_label = datasets['train'].ignore_label
             labels = datasets['train'].task.labels
