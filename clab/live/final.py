@@ -384,6 +384,7 @@ def train(train_data_path):
     xpu = xpu_device.XPU.from_argv()
 
     arch_to_train_dpath = {}
+    arch_to_best_epochs = {}
 
     for arch in arches:
         from clab.live.urban_train import directory_structure
@@ -447,7 +448,9 @@ def train(train_data_path):
 
         harn.add_metric_hook(custom_metrics)
 
-        best_epoch = harn.run()
+        harn.run()
+        arch_to_best_epochs[arch] = harn.early_stop.best_epochs()
+        fit_harn2.get_snapshot(train_dpath)
 
 
 if __name__ == '__main__':

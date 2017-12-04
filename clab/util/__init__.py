@@ -20,6 +20,7 @@ else:
     from clab.util import misc
     from clab.util import mplutil
     from clab.util import nputil
+    from clab.util import priority_queue
     from clab.util.colorutil import (colorbar_image, convert_hex_to_255,
                                      lookup_bgr255, make_distinct_bgr01_colors,
                                      make_heatmask,)
@@ -35,7 +36,7 @@ else:
                                   ensure_grayscale, get_num_channels, image_slices,
                                   imread, imscale, imwrite, load_image_paths,
                                   logger, make_channels_comparable,
-                                  overlay_alpha_images, overlay_colorized, print,
+                                  overlay_alpha_images, overlay_colorized,
                                   putMultiLineText, run_length_encoding,
                                   wide_strides_1d,)
     from clab.util.jsonutil import (JSONEncoder, NumpyAwareJSONEncoder,
@@ -50,4 +51,5 @@ else:
                                    render_figure_to_image, savefig2,)
     from clab.util.nputil import (apply_grouping, atleast_nd, group_indices,
                                   group_items, isect_flags, iter_reduce_ufunc,)
+    from clab.util.priority_queue import (PriorityQueue, SortedQueue,)
     # </AUTOGEN_INIT>

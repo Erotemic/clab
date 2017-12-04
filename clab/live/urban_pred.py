@@ -9,13 +9,13 @@ Plan for Phase II:
                 * Read dataset
                 * split into train / validation
                 * stop once validation loss does not improve after 5-20 epochs
-                * record top N epochs with lowest loss
+                * record top 3 epochs with lowest loss
 
         Choose Operating Points / Postprocess Params / Ensemble Weights:
 
             # Output static probability maps for the final layer
             for each model:
-                * for each of the top N epochs with the lowest loss
+                * for each of the top 3 epochs with the lowest loss
                     * evaluated stiched probabilities on validation dataset
                     * record path to these stiched predictions; tag path with model-id and epoch.
 

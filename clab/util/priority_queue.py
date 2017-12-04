@@ -1,11 +1,127 @@
 import heapq
 import ubelt as ub
+import sortedcontainers
+import operator
 
 
 def _heappush_max(heap, item):
     """ why is this not in heapq """
     heap.append(item)
     heapq._siftdown_max(heap, 0, len(heap) - 1)
+
+
+# class _Simple_iLocIndexer(object):
+#     def __init__(self, data):
+#         self.data = data
+
+#     def __getitem__(self, idx):
+#         return self.data.__getitem__(idx)
+
+#     # def __setitem__(self, idx, value):
+#     #     return self.data.__setitem__(idx, value)
+
+#     # def __delitem__(self, idx):
+#     #     return self.data.__delitem__(idx)
+
+
+class SortedQueue(ub.NiceRepr):
+    """
+
+    Example:
+        >>> items = [('a', 9), ('b', 8), ('c', 6), ('d', 5)]
+        >>> self = SortedQueue(items, maxlen=3)
+        >>> initial = list(self)
+        >>> # should be unable to add something with a higher value
+        >>> self['e'] = 10
+        >>> assert 'e' not in self
+        >>> # a lower value should kick out the worst so far
+        >>> self['f'] = 1
+        >>> assert 'f' in self
+        >>> assert self['f'] < self['c']
+        >>> self['c'] = 0
+        >>> assert self['f'] > self['c']
+
+        >>> pickled = pickle.loads(pickle.dumps(self))
+        >>> assert self is not pickled
+        >>> assert self == pickled
+    """
+    def __init__(self, items=None, maxlen=None):
+        self.maxlen = maxlen
+        self._dict = {}
+        self._list = sortedcontainers.SortedListWithKey(key=operator.itemgetter(1))
+        if items:
+            self.update(items)
+        # self.iloc = _Simple_iLocIndexer(self._list)
+
+    def update(self, items):
+        for key, value in items:
+            self[key] = value
+
+    def __len__(self):
+        return len(self._dict)
+
+    def __nice__(self):
+        return 'size=%r' % (len(self),)
+
+    def __contains__(self, key):
+        return key in self._dict
+
+    def __eq__(self, other):
+        return self._dict == other._dict
+
+    def _key_idx(self, key):
+        if key in self._dict:
+            # linear time when replacing an existing key
+            for ix, item in enumerate(self):
+                if item[0] == key:
+                    return ix
+            assert False
+        else:
+            return None
+
+    def __setitem__(self, key, value):
+        less_extreme = operator.lt  # change to gt if we want big things
+
+        idx = self._key_idx(key)
+        if idx is not None:
+            # overwrite existing item
+            del self._dict[key]
+            del self._list[idx]
+
+        if self.maxlen is not None and len(self) >= self.maxlen:
+            extreme_index = -1
+            extreme_key, extreme_val = self._list[extreme_index]
+            if less_extreme(value, extreme_val):
+                # if extreme_key not in self._dict:
+                #     import utool
+                #     utool.embed()
+
+                del self._dict[extreme_key]
+                del self._list[-1]
+                self._list.add((key, value))
+                self._dict[key] = value
+        else:
+            self._list.add((key, value))
+            self._dict[key] = value
+        assert len(self._list) == len(self._dict)
+
+    def __getitem__(self, key):
+        return self._dict[key]
+
+    def __iter__(self):
+        return iter(self._list)
+
+    def peek(self):
+        """
+        Peek at the next item in the queue
+        """
+        return self.peek_many(1)[0]
+
+    def peek_many(self, n):
+        """
+        Peek at the next n items in the queue
+        """
+        return self._list[:n]
 
 
 class PriorityQueue(ub.NiceRepr):
@@ -15,6 +131,10 @@ class PriorityQueue(ub.NiceRepr):
     Combines properties of dicts and heaps
     Uses a heap for fast minimum/maximum value search
     Uses a dict for fast read only operations
+
+    Args:
+        items (list): initial key/value pairs. Values are priorities.
+        ascending (bool): if True, lower numbers have higher priority
 
     References:
         http://code.activestate.com/recipes/522995-priority-dict-a-priority-queue-with-updatable-prio/
@@ -35,10 +155,12 @@ class PriorityQueue(ub.NiceRepr):
         >>> print(self.pop())
         >>> assert len(self) == 0
 
-
     Example:
         >>> items = dict(a=(1.0, (2, 3)), b=(1.0, (1, 2)), c=(.9, (3, 2)))
         >>> self = PriorityQueue(items)
+        >>> pickled = pickle.loads(pickle.dumps(self))
+        >>> assert self is not pickled
+        >>> assert self == pickled
 
     Ignore:
         # TODO: can also use sortedcontainers to maintain priority queue
@@ -75,6 +197,9 @@ class PriorityQueue(ub.NiceRepr):
 
     def __contains__(self, key):
         return key in self._dict
+
+    def __eq__(self, other):
+        return self._dict == other._dict
 
     def __getitem__(self, key):
         # Worse Case O(1)
