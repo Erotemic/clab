@@ -358,8 +358,11 @@ class FitHarness(object):
         print('harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
 
         if harn.early_stop.is_done():
-            harn.log('The stopping criterion already triggered')
+            harn.log('The early stopping criterion already triggered')
             harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.early_stop.memory), nl=1)))
+            return
+        if harn.epoch > harn.config['max_iter']:
+            harn.log('Maximum harn.epoch already reached.')
             return
 
         # train loop
