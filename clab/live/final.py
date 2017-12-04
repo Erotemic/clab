@@ -348,7 +348,7 @@ def train(train_data_path):
     print('n_channels = {!r}'.format(n_channels))
 
     arches = [
-        # 'unet2',
+        'unet2',
         'dense_unet',
     ]
 
