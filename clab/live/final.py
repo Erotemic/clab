@@ -416,7 +416,7 @@ def train(train_data_path):
             weight=torch.FloatTensor([.1, 1, 0]),
             ignore_label=2
         )
-        harn.config['max_iter'] = 3
+        harn.config['max_iter'] = 4
 
         def compute_loss(harn, outputs, labels):
 
