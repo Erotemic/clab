@@ -447,6 +447,10 @@ def train(train_data_path):
         arch_to_best_epochs[arch] = harn.early_stop.best_epochs()
         fit_harn2.get_snapshot(train_dpath)
 
+        # free up memory for the next model
+        del harn
+        del model
+
 
 if __name__ == '__main__':
     r"""
