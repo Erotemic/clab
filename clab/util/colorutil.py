@@ -72,7 +72,7 @@ def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20)):
 
     """
     import matplotlib as mpl
-    from clab.util import utildraw
+    from clab.util import mplutil
     mpl.use('agg', force=False, warn=False)
     from matplotlib import pyplot as plt
 
@@ -89,7 +89,7 @@ def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20)):
 
     plt.colorbar(sm, cax=ax)
 
-    cb = utildraw.render_figure_to_image(fig, dpi=dpi)
+    cb = mplutil.render_figure_to_image(fig, dpi=dpi)
 
     plt.close(fig)
 

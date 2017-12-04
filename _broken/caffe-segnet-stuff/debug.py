@@ -8,7 +8,7 @@ import itertools as it
 import numpy as np
 import ubelt as ub
 
-from pysseg.util import utildraw
+from pysseg.util import mplutil
 
 from pysseg import getLogger
 logger = getLogger(__name__)
@@ -39,9 +39,9 @@ def dump_polygon_overlap_analysis(task, scene_unique, scene_raw, total_isect):
     ax.set_xlabel('area')
     ax.set_title('Scene Element Polygon Area (per scene)')
     ax.figure.set_size_inches(12, 8)
-    utildraw.adjust_subplots(bottom=.1, left=.1, right=.95, top=.9)
+    mplutil.adjust_subplots(bottom=.1, left=.1, right=.95, top=.9)
     fig = ax.figure
-    cv2.imwrite('plots/freq_scene.png', utildraw.render_figure_to_image(fig, transparent=True))
+    cv2.imwrite('plots/freq_scene.png', mplutil.render_figure_to_image(fig, transparent=True))
 
     train, test = task.load_predefined_train_test()
 
@@ -57,10 +57,10 @@ def dump_polygon_overlap_analysis(task, scene_unique, scene_raw, total_isect):
     ax.set_xlabel('area')
     ax.set_title('Scene Element Polygon Area (test/train)')
     ax.figure.set_size_inches(12, 8)
-    utildraw.adjust_subplots(bottom=.1, left=.1, right=.95, top=.9)
+    mplutil.adjust_subplots(bottom=.1, left=.1, right=.95, top=.9)
     fig.canvas.draw()
     fig = ax.figure
-    cv2.imwrite('plots/freq_xval.png', utildraw.render_figure_to_image(fig, transparent=True))
+    cv2.imwrite('plots/freq_xval.png', mplutil.render_figure_to_image(fig, transparent=True))
 
     #### CLASS INTERSECTION (matrix)
     df = total_isect
@@ -71,12 +71,12 @@ def dump_polygon_overlap_analysis(task, scene_unique, scene_raw, total_isect):
     fig = plt.figure()
     fig.clear()
     ax = fig.add_subplot(111)
-    ax = utildraw.pandas_plot_matrix(df, rot=80, ax=ax, label='intersecting area')
+    ax = mplutil.pandas_plot_matrix(df, rot=80, ax=ax, label='intersecting area')
     ax.set_xlabel('Scene Element Polygon Overlap')
     ax.figure.set_size_inches(10, 8)
-    utildraw.adjust_subplots(bottom=.1, left=.1, right=.9, top=.7)
+    mplutil.adjust_subplots(bottom=.1, left=.1, right=.9, top=.7)
     fig = ax.figure
-    cv2.imwrite('plots/overlap_matrix.png', utildraw.render_figure_to_image(fig, transparent=True))
+    cv2.imwrite('plots/overlap_matrix.png', mplutil.render_figure_to_image(fig, transparent=True))
 
     #### CLASS INTERSECTION (bar)
     fig = plt.figure()
@@ -86,24 +86,24 @@ def dump_polygon_overlap_analysis(task, scene_unique, scene_raw, total_isect):
     top_flat = flat_df.iloc[:10][::-1]
     ax = top_flat.plot.barh(colormap='viridis', rot=0)
     # ax.legend(patches, labels, loc='lower right', prop={'size': 20})
-    utildraw.adjust_subplots(bottom=.1, left=.3, right=.95, top=.9)
+    mplutil.adjust_subplots(bottom=.1, left=.3, right=.95, top=.9)
     ax.figure.set_size_inches(12, 8)
     ax.set_xlabel('intersecting area')
     ax.set_title('Highest Overlap Class Pairs (Area)')
     fig = ax.figure
-    cv2.imwrite('plots/overlap_pairs.png', utildraw.render_figure_to_image(fig, transparent=True))
+    cv2.imwrite('plots/overlap_pairs.png', mplutil.render_figure_to_image(fig, transparent=True))
 
     fig = plt.figure()
     denom = [min(*ub.take(total_raw.loc, p)) for p in flat_df.index]
     percent_intersect = flat_df / denom
     top_flat = percent_intersect.sort_values(ascending=False).iloc[:10][::-1]
     ax = top_flat.plot.barh(colormap='viridis', rot=0)
-    utildraw.adjust_subplots(bottom=.1, left=.3, right=.95, top=.9)
+    mplutil.adjust_subplots(bottom=.1, left=.3, right=.95, top=.9)
     ax.figure.set_size_inches(12, 8)
     ax.set_xlabel('overlap(c1, c2) / min(c1.area, c2.area)')
     ax.set_title('Highest Overlap Class Pairs (Percent)')
     fig = ax.figure
-    cv2.imwrite('plots/overlap_pairs_percent.png', utildraw.render_figure_to_image(fig, transparent=True))
+    cv2.imwrite('plots/overlap_pairs_percent.png', mplutil.render_figure_to_image(fig, transparent=True))
 
     #### UNIQUE CLASS FREQUENCY (SCENES)
     fig = plt.figure()
@@ -112,10 +112,10 @@ def dump_polygon_overlap_analysis(task, scene_unique, scene_raw, total_isect):
     ax = scene_unique.plot.barh(stacked=True, colormap='viridis', rot=0)
     ax.set_xlabel('area')
     ax.set_title('Unique Scene Element Area (per scene)')
-    utildraw.adjust_subplots(bottom=.25, left=.25, right=.9, top=.9)
+    mplutil.adjust_subplots(bottom=.25, left=.25, right=.9, top=.9)
     ax.figure.set_size_inches(13, 10)
     fig = ax.figure
-    cv2.imwrite('plots/unique_area_total.png', utildraw.render_figure_to_image(fig, transparent=True))
+    cv2.imwrite('plots/unique_area_total.png', mplutil.render_figure_to_image(fig, transparent=True))
 
     fig = plt.figure()
     total_unique = scene_unique.sum(axis=1)
@@ -125,10 +125,10 @@ def dump_polygon_overlap_analysis(task, scene_unique, scene_raw, total_isect):
     ax = unique.plot.barh(stacked=True, colormap='viridis', rot=0)
     ax.set_xlabel('fraction')
     ax.set_title('Fraction of Unique Scene Elements')
-    utildraw.adjust_subplots(bottom=.25, left=.25, right=.9, top=.9)
+    mplutil.adjust_subplots(bottom=.25, left=.25, right=.9, top=.9)
     ax.figure.set_size_inches(13, 10)
     fig = ax.figure
-    cv2.imwrite('plots/unique_area_percent.png', utildraw.render_figure_to_image(fig, transparent=True))
+    cv2.imwrite('plots/unique_area_percent.png', mplutil.render_figure_to_image(fig, transparent=True))
 
 
 class DebugFuncs(object):
@@ -327,7 +327,7 @@ def viz_overlay_layers(task):
             ax.set_xticks([])
             ax.set_yticks([])
             plt.legend(handles=handles)
-            utildraw.adjust_subplots(top=.9, bottom=0, left=0, right=1, wspace=.01)
+            mplutil.adjust_subplots(top=.9, bottom=0, left=0, right=1, wspace=.01)
 
             fig = pt.gcf()
             inches = np.array(blend.shape[:2][::-1]) / fig.dpi
@@ -335,5 +335,5 @@ def viz_overlay_layers(task):
 
             ub.ensuredir('scene_plots')
             cv2.imwrite('scene_plots/scene_{}_{}.png'.format(scene, frame_id),
-                        utildraw.render_figure_to_image(fig, dpi=100,
+                        mplutil.render_figure_to_image(fig, dpi=100,
                                                         transparent=True))

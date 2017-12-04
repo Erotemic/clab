@@ -524,6 +524,11 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff --combine \
                 --pretrained '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000041.pt' --gpu=3 --finetune
 
+
+        # Keep a bit of the data for validation but use more
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff --halfcombo \
+                --pretrained '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000041.pt' --gpu=3
+
     Example:
         >>> from clab.torch.fit_harness import *
         >>> harn = urban_fit()
@@ -596,7 +601,7 @@ def urban_fit():
         scheduler=('Exponential', {
             'gamma': 0.99,
             # 'base_lr': 0.0015,
-            'base_lr': 0.001,
+            'base_lr': 0.001 if not ub.argflag('--halfcombo') else 0.0005,
             'stepsize': 2,
         }),
         other={

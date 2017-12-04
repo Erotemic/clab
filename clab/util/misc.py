@@ -181,3 +181,14 @@ def write_arr(fpath, arr):
         return write_h5arr(fpath, arr)
     else:
         raise KeyError(fpath)
+
+
+def cc_locs(mask):
+    from clab import util
+    import cv2
+    ccs = cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)[1]
+    rc_locs = np.where(mask > 0)
+    rc_ids = ccs[rc_locs]
+    rc_arrs = np.ascontiguousarray(np.vstack(rc_locs).T)
+    cc_to_loc = util.group_items(rc_arrs, rc_ids, axis=0)
+    return cc_to_loc

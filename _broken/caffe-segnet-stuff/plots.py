@@ -125,19 +125,19 @@ def get_iters_vs_miou(harn):
 
 def draw_confusion(df, fpath, logscale=False):
     # Draw the confusion matrix
-    from pysseg.util import utildraw
+    from pysseg.util import mplutil
     import pandas as pd
     import cv2
     if isinstance(df, dict):
         df = pd.DataFrame.from_dict(df)
     import matplotlib.pyplot as plt
-    fig = utildraw.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
+    fig = mplutil.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
     ax = plt.gca()
-    ax = utildraw.pandas_plot_matrix(df, rot=80, ax=ax, label='confusion', logscale=logscale)
+    ax = mplutil.pandas_plot_matrix(df, rot=80, ax=ax, label='confusion', logscale=logscale)
     # ax.set_xlabel('')
     ax.figure.set_size_inches(10, 8)
-    utildraw.adjust_subplots(bottom=.1, left=.1, right=.9, top=.7)
-    cv2.imwrite(fpath, utildraw.render_figure_to_image(fig, transparent=True))
+    mplutil.adjust_subplots(bottom=.1, left=.1, right=.9, top=.7)
+    cv2.imwrite(fpath, mplutil.render_figure_to_image(fig, transparent=True))
 
 
 class SnapshotPlots(object):
@@ -191,7 +191,7 @@ class SnapshotPlots(object):
 
     def _draw_iters_vs_global_metrics(self):
         import matplotlib.pyplot as plt
-        from pysseg.util import utildraw
+        from pysseg.util import mplutil
 
         _set_mpl_rcparams()
         for train_id, group_datas in self._read_snapshot_results():
@@ -199,7 +199,7 @@ class SnapshotPlots(object):
             subdata = [ub.dict_subset(d, keys) for d in group_datas]
             results_df = pd.DataFrame(subdata).set_index('n_iters', drop=True)
 
-            fig = utildraw.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
+            fig = mplutil.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
             ax = plt.gca()
             results_df.plot(ax=ax)
             ax.set_title('train_id = ' + str(train_id))
@@ -208,11 +208,11 @@ class SnapshotPlots(object):
             print(results_df.loc[n_iters])
 
             fig.set_size_inches(10, 8)
-            utildraw.savefig2(fig, 'iters_vs_global_metrics.png')
+            mplutil.savefig2(fig, 'iters_vs_global_metrics.png')
 
     def _draw_iters_vs_local_ious(self):
         import matplotlib.pyplot as plt
-        from pysseg.util import utildraw
+        from pysseg.util import mplutil
 
         _set_mpl_rcparams()
         for train_id, group_datas in self._read_snapshot_results():
@@ -228,7 +228,7 @@ class SnapshotPlots(object):
 
             iou_df = iou_df.drop('Unannotated', axis=1)
 
-            fig = utildraw.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
+            fig = mplutil.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
             ax = plt.gca()
             iou_df.plot(ax=ax)
             ax.set_title('train_id = ' + str(train_id))
@@ -238,11 +238,11 @@ class SnapshotPlots(object):
             # print(iou_df.loc[n_iters])
 
             fig.set_size_inches(10, 8)
-            utildraw.savefig2(fig, 'iters_vs_local_ious.png')
+            mplutil.savefig2(fig, 'iters_vs_local_ious.png')
 
     def _draw_iters_vs_local_accuracy(self):
         import matplotlib.pyplot as plt
-        from pysseg.util import utildraw
+        from pysseg.util import mplutil
 
         _set_mpl_rcparams()
         for train_id, group_datas in self._read_snapshot_results():
@@ -258,7 +258,7 @@ class SnapshotPlots(object):
             df = pd.DataFrame(subdata).set_index('n_iters', drop=True)
             df = df.drop('Unannotated', axis=1)
 
-            fig = utildraw.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
+            fig = mplutil.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
             ax = plt.gca()
             df.plot(ax=ax)
             ax.set_title('train_id = ' + str(train_id))
@@ -268,26 +268,26 @@ class SnapshotPlots(object):
             # print(iou_df.loc[n_iters])
 
             fig.set_size_inches(10, 8)
-            utildraw.savefig2(fig, 'iters_vs_local_class_acc.png')
+            mplutil.savefig2(fig, 'iters_vs_local_class_acc.png')
 
         # Draw the confusion matrix
         df = cfsn.drop('Unannotated', axis=1).drop('Unannotated', axis=0)
-        from pysseg.util import utildraw
+        from pysseg.util import mplutil
         import pandas as pd
         import cv2
         if isinstance(df, dict):
             df = pd.DataFrame.from_dict(df)
         import matplotlib.pyplot as plt
-        fig = utildraw.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
+        fig = mplutil.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
         ax = plt.gca()
-        ax = utildraw.pandas_plot_matrix(df, rot=80, ax=ax, label='confusion',
+        ax = mplutil.pandas_plot_matrix(df, rot=80, ax=ax, label='confusion',
                                          showvals=True,
                                          zerodiag=True, logscale=True)
         ax.set_ylabel('real')
         ax.set_xlabel('pred')
         ax.figure.set_size_inches(10, 8)
-        utildraw.adjust_subplots(bottom=.1, left=.1, right=.9, top=.7)
-        cv2.imwrite('acc_cfsn.png', utildraw.render_figure_to_image(fig, transparent=True))
+        mplutil.adjust_subplots(bottom=.1, left=.1, right=.9, top=.7)
+        cv2.imwrite('acc_cfsn.png', mplutil.render_figure_to_image(fig, transparent=True))
 
 
 # def draw_iters_vs_metric(test_dir):
@@ -299,8 +299,8 @@ class SnapshotPlots(object):
 
 
 #     import matplotlib.pyplot as plt
-#     from pysseg.util import utildraw
-#     fig = utildraw.figure(fnum=1, pnum=(1, 1, 1))
+#     from pysseg.util import mplutil
+#     fig = mplutil.figure(fnum=1, pnum=(1, 1, 1))
 #     ax = plt.gca()
 #     results_df.plot(ax=ax)
 

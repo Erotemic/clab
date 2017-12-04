@@ -19,7 +19,7 @@ else:
     from clab.util import jsonutil
     from clab.util import misc
     from clab.util import nputil
-    from clab.util import utildraw
+    from clab.util import mplutil
     from clab.util.colorutil import (colorbar_image, convert_hex_to_255,
                                      lookup_bgr255, make_distinct_bgr01_colors,
                                      make_heatmask,)
@@ -46,7 +46,7 @@ else:
     from clab.util.nputil import (apply_grouping, atleast_nd, group_indices,
                                   group_items, isect_flags, iter_reduce_ufunc,)
 
-    from clab.util.utildraw import (adjust_subplots, axes_extent,
+    from clab.util.mplutil import (adjust_subplots, axes_extent,
                                     copy_figure_to_clipboard, extract_axes_extents,
                                     figure, pandas_plot_matrix,
                                     render_figure_to_image, savefig2,)

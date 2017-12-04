@@ -1,7 +1,7 @@
 
 
 def opt_crf():
-    from clab.torch.urban_mapper import get_snapshot, urban_mapper_eval_dataset, PredictHarness  # NOQA
+    from clab.torch.urban_pred import get_snapshot, urban_mapper_eval_dataset, PredictHarness  # NOQA
     from clab.torch.sseg_train import task_datasets, get_task, SSegInputsWrapper  # NOQA
     from clab import util
     import ubelt as ub
