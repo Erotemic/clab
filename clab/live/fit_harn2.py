@@ -353,6 +353,8 @@ class FitHarness(object):
         if not harn.dry:
             harn.log('Moving model and criterion to {}'.format(harn.xpu))
             harn.xpu.to_xpu(harn.model)
+            import utool
+            utool.embed()
             harn.criterion = harn.xpu.to_xpu(harn.criterion)
             harn.optimizer = harn.xpu.to_xpu(harn.optimizer)
             if hasattr(harn, 'criterion2'):
