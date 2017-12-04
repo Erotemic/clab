@@ -95,6 +95,11 @@ def eval_contest_testset():
         if epoch == 9:
             # just guessing
             params = {'mask_thresh': 0.6666, 'min_seed_size': 81, 'min_size': 13, 'seed_thresh': 0.4241}
+
+        train_dpath = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_39000-xsldtcgn/solver_39000-xsldtcgn_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4'
+        epoch = 10
+        if epoch == 10:
+            params = {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000}
     else:
         raise KeyError(MODE)
 
@@ -116,62 +121,50 @@ def eval_contest_testset():
         pharn.load_snapshot(load_path)
         pharn.run()
 
-    def compact_idstr(dict_):
-        short_keys = util.shortest_unique_prefixes(dict_.keys())
-        short_dict = ub.odict(sorted(zip(short_keys, dict_.values())))
-        idstr = ub.repr2(short_dict, nobr=1, itemsep='', si=1, nl=0,
-                         explicit=1)
-        return idstr
+    task = eval_dataset.task
+    # prob_paths = pharn._restitch_type('probs', blend='avew', force=False)
+    # prob1_paths = pharn._restitch_type('probs1', blend='avew', force=False)
+    prob_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
+    prob1_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
 
-    def two_channel_prob_version():
-        task = eval_dataset.task
-        # prob_paths = pharn._restitch_type('probs', blend='avew', force=False)
-        # prob1_paths = pharn._restitch_type('probs1', blend='avew', force=False)
-        prob_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs', '*.h5'))
-        prob1_paths = glob.glob(join(pharn.test_dump_dpath, 'stitched', 'probs1', '*.h5'))
+    def seeded_predictions(**params):
+        # Convert to submission output format
 
-        def seeded_predictions(**params):
-            # Convert to submission output format
-            seed_thresh = params.pop('seed_thresh')
-            mask_thresh = params.pop('mask_thresh')
+        for path, path1 in ub.ProgIter(list(zip(prob_paths, prob1_paths))):
+            probs = util.read_arr(path)
+            probs1 = util.read_arr(path1)
+            seed_prob = probs[:, :, task.classname_to_id['inner_building']]
+            mask_prob = probs1[:, :, 1]
 
-            for path, path1 in ub.ProgIter(list(zip(prob_paths, prob1_paths))):
-                probs = util.read_arr(path)
-                seed_probs = probs[:, :, task.classname_to_id['inner_building']]
-                seed = (seed_probs > seed_thresh).astype(np.uint8)
+            pred  = seeded_instance_label_from_probs(seed_prob, mask_prob,
+                                                     **params)
 
-                probs1 = util.read_arr(path1)
-                mask_probs = probs1[:, :, 1]
-                mask = (mask_probs > mask_thresh).astype(np.uint8)
+            tile_id = splitext(basename(path))[0]
+            yield tile_id, pred
 
-                pred = seeded_instance_label(seed, mask, **params)
-                tile_id = splitext(basename(path))[0]
-                yield tile_id, pred
+    lines = []
+    for tile_id, pred in seeded_predictions(**params):
+        (width, height), runlen = imutil.run_length_encoding(pred)
+        lines.append(tile_id)
+        lines.append('{},{}'.format(width, height))
+        lines.append(','.join(list(map(str, runlen))))
 
-        lines = []
-        for tile_id, pred in seeded_predictions(**params):
-            (width, height), runlen = imutil.run_length_encoding(pred)
-            lines.append(tile_id)
-            lines.append('{},{}'.format(width, height))
-            lines.append(','.join(list(map(str, runlen))))
+    text = '\n'.join(lines)
+    post_idstr = 'seeded_' + util.compact_idstr(params)
+    mode = 'prob'
+    suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
+    fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
+    print('fpath = {!r}'.format(fpath))
+    ub.writeto(fpath, text)
+    print(ub.codeblock(
+        '''
+        # Execute on remote computer
+        cd ~/Dropbox/TopCoder
+        rsync aretha:{fpath} .
 
-        text = '\n'.join(lines)
-        post_idstr = 'seeded_' + compact_idstr(params)
-        mode = 'prob'
-        suffix = '_'.join(pharn.test_dump_dpath.split('/')[-2:]) + '_' + mode + '_' + post_idstr
-        fpath = join(pharn.test_dump_dpath, 'urban_mapper_test_pred_' + suffix + '.txt')
-        print('fpath = {!r}'.format(fpath))
-        ub.writeto(fpath, text)
-        print(ub.codeblock(
-            '''
-            # Execute on remote computer
-            cd ~/Dropbox/TopCoder
-            rsync aretha:{fpath} .
-
-            # submit here: https://community.topcoder.com/longcontest/
-            '''
-        ).format(fpath=fpath))
-    two_channel_prob_version()
+        # submit here: https://community.topcoder.com/longcontest/
+        '''
+    ).format(fpath=fpath))
 
     # Submission URL
     # https://community.topcoder.com/longcontest/
@@ -273,6 +266,93 @@ def bo_best(self):
             'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
 
 
+def check_ensemble():
+    model1 = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/test/input_26400-sotwptrx/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000000/stitched'
+
+    model2 = '/home/local/KHQ/jon.crall/data/work/urban_mapper4/test/input_26400-fgetszbh/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000026/stitched'
+
+    paths_m1 = {}
+    paths_m1['probs'] = glob.glob(join(model1, 'probs', '*.h5'))
+    paths_m1['probs1'] = glob.glob(join(model1, 'probs1', '*.h5'))
+
+    paths_m2 = {}
+    paths_m2['probs'] = glob.glob(join(model2, 'probs', '*.h5'))
+    paths_m2['probs1'] = glob.glob(join(model2, 'probs1', '*.h5'))
+
+    @ub.memoize
+    def gt_info_from_path(pred_fpath):
+        gtl_fname = ub.augpath(basename(pred_fpath), suffix='_GTL', ext='.tif')
+        gti_fname = ub.augpath(basename(pred_fpath), suffix='_GTI', ext='.tif')
+        dsm_fname = ub.augpath(basename(pred_fpath), suffix='_DSM', ext='.tif')
+        bgr_fname = ub.augpath(basename(pred_fpath), suffix='_RGB', ext='.tif')
+        gtl_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gtl_fname)
+        gti_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), gti_fname)
+        dsm_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), dsm_fname)
+        bgr_fpath = join(ub.truepath('~/remote/aretha/data/UrbanMapper3D/training/'), bgr_fname)
+
+        gti = util.imread(gti_fpath)
+        gtl = util.imread(gtl_fpath)
+        dsm = util.imread(dsm_fpath)
+        bgr = util.imread(bgr_fpath)
+        uncertain = (gtl == 65)
+        return gti, uncertain, dsm, bgr
+
+    @ub.memoize
+    def memo_read_arr(fpath):
+        return util.read_arr(fpath)
+
+    def seeded_objective(**params):
+        # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
+        names = 'seed_thresh, mask_thresh, min_seed_size, min_size'
+        seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
+            params, names.split(', '))
+
+        fscores = []
+        # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
+        for ix in range(len(paths_m2['probs'])):
+
+            gti, uncertain, dsm, bgr = gt_info_from_path(paths_m1['probs'][ix])
+
+            probs_m1 = memo_read_arr(paths_m1['probs'][ix])
+            probs1_m1 = memo_read_arr(paths_m1['probs1'][ix])
+
+            probs_m2 = memo_read_arr(paths_m2['probs'][ix])
+            probs1_m2 = memo_read_arr(paths_m2['probs1'][ix])
+
+            probs_e = (probs_m1 + probs_m2) / 2
+            probs1_e = (probs1_m1 + probs1_m2) / 2
+
+            def _s(probs, probs1):
+                seed_prob = probs[:, :, 1]
+                mask_prob = probs1[:, :, 1]
+
+                pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
+                                                        **params)
+
+                scores = instance_fscore(gti, uncertain, dsm, pred)
+                return scores
+
+            probs, probs1 = probs_m1, probs1_m1
+            print(_s(probs, probs1))
+            probs, probs1 = probs_e, probs1_e
+            print(_s(probs, probs1))
+            probs, probs1 = probs_m2, probs1_m2
+            print(_s(probs, probs1))
+
+            a = .88
+
+            for a in np.linspace(0, 1):
+                probs_e = (a * probs_m1 + (1 - a) * probs_m2)
+                probs1_e = (a * probs1_m1 + (1 - a) * probs1_m2)
+                probs, probs1 = probs_e, probs1_e
+                print('{} - {}'.format(_s(probs, probs1), a))
+
+            fscore = scores[0]
+            fscores.append(fscore)
+        mean_fscore = np.mean(fscores)
+        return mean_fscore
+
+
 def hypersearch_probs(task, paths):
     prob_paths  = paths['probs']
     prob1_paths = paths['probs1']
@@ -298,12 +378,14 @@ def hypersearch_probs(task, paths):
     # https://github.com/fmfn/BayesianOptimization
     # https://github.com/fmfn/BayesianOptimization/blob/master/examples/usage.py
     # https://github.com/fmfn/BayesianOptimization/blob/master/examples/exploitation%20vs%20exploration.ipynb
-    # subx = [0, 1, 2, 3, 4, 5]
-    # subx = [2, 4, 5, 9, 10, 14, 17, 18, 20, 30, 33, 39, 61, 71, 72, 73, 75, 81, 84]
-    # sub0 = ub.take(prob_paths, subx)
-    # sub1 = ub.take(prob1_paths, subx)
     sub0 = prob_paths
     sub1 = prob1_paths
+
+    # subx = [0, 1, 2, 3, 4, 5]
+    # subx = [2, 4, 5, 9, 10, 14, 17, 18, 20, 30, 33, 39, 61, 71, 72, 73, 75, 81, 84]
+    # subx = [0, 1]
+    # sub0 = list(ub.take(prob_paths, subx))
+    # sub1 = list(ub.take(prob1_paths, subx))
     from bayes_opt import BayesianOptimization
 
     @ub.memoize
@@ -312,8 +394,10 @@ def hypersearch_probs(task, paths):
 
     def seeded_objective(**params):
         # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
+        names = 'seed_thresh, mask_thresh, min_seed_size, min_size'
         seed_thresh, mask_thresh, min_seed_size, min_size = ub.take(
-            params, 'seed_thresh, mask_thresh, min_seed_size, min_size'.split(', '))
+            params, names.split(', '))
+
         fscores = []
         for path, path1 in zip(sub0, sub1):
             gti, uncertain, dsm, bgr = gt_info_from_path(path)
@@ -322,6 +406,11 @@ def hypersearch_probs(task, paths):
             seed_prob = probs[:, :, task.classname_to_id['inner_building']]
 
             probs1 = memo_read_arr(path1)
+            # from clab.torch.filters import crf_posterior
+            # Doesnt help
+            # if use_crf:
+            #     probs1 = crf_posterior(bgr[:, :, ::-1], np.log(probs1).transpose(2, 0, 1)).transpose(1, 2, 0)
+
             mask_prob = probs1[:, :, 1]
 
             pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
@@ -346,7 +435,7 @@ def hypersearch_probs(task, paths):
     n_init = 50
     seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
     import pandas as pd
-    seeded_bo.explore(pd.DataFrame([
+    cand_params = [
         {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
         {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
         {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
@@ -358,7 +447,14 @@ def hypersearch_probs(task, paths):
         {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
         {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
         {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
-    ]).to_dict(orient='list'))
+    ]
+
+    # for params in cand_params:
+    #     print('---')
+    #     print(seeded_objective(**params, use_crf=False))
+    #     print(seeded_objective(**params, use_crf=True))
+
+    seeded_bo.explore(pd.DataFrame(cand_params).to_dict(orient='list'))
     seeded_bo.plog.print_header(initialization=True)
 
     # Basically just using this package for random search.

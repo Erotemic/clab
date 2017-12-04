@@ -184,7 +184,7 @@ def crf_posterior(img, log_probs, **kwargs):
 
     n_iters = kwargs.get('n_iters', 10)
 
-    assert log_probs.max() < 0, 'must be negative log probs'
+    assert log_probs.max() < 0, 'must be log probs'
     # assert np.exp(log_probs).max() <= (1.0 + 1e-6)
     # assert np.exp(log_probs).min() >= (0.0 - 1e-6)
 

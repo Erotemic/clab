@@ -184,6 +184,9 @@ def write_arr(fpath, arr):
 
 
 def cc_locs(mask):
+    """
+    Grouped row/col locations of 4-connected-components
+    """
     from clab import util
     import cv2
     ccs = cv2.connectedComponents(mask.astype(np.uint8), connectivity=4)[1]
@@ -192,3 +195,16 @@ def cc_locs(mask):
     rc_arrs = np.ascontiguousarray(np.vstack(rc_locs).T)
     cc_to_loc = util.group_items(rc_arrs, rc_ids, axis=0)
     return cc_to_loc
+
+
+def compact_idstr(dict_):
+    """
+    A short unique id string for a dict param config that is semi-interpretable
+    """
+    from clab import util
+    import ubelt as ub
+    short_keys = util.shortest_unique_prefixes(dict_.keys())
+    short_dict = ub.odict(sorted(zip(short_keys, dict_.values())))
+    idstr = ub.repr2(short_dict, nobr=1, itemsep='', si=1, nl=0,
+                     explicit=1)
+    return idstr
