@@ -466,7 +466,13 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         python -m clab.live.final train
+        python -m clab.live.final test
     """
+    import sys
+    if sys.argv[1] == 'train':
+        train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
+        train(train_data_path)
+
     import sys
     if sys.argv[1] == 'train':
         train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
