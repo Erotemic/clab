@@ -351,8 +351,8 @@ def train(train_data_path):
     print('batch_size = {!r}'.format(batch_size))
 
     arches = [
-        'unet2',
         'dense_unet',
+        'unet2',
     ]
 
     xpu = xpu_device.XPU.from_argv()

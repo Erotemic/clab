@@ -446,8 +446,8 @@ class FitHarness(object):
                     harn.save_snapshot()
 
                 harn.prog.update()
-        except Exception:
-            harn.log('An error occurred')
+        except Exception as ex:
+            harn.log('An {} error occurred in the train loop'.format(type(ex)))
             _close_prog()
             raise
 
