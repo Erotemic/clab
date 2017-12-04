@@ -352,7 +352,7 @@ def train(train_data_path):
 
     arches = [
         'dense_unet',
-        'unet2',
+        # 'unet2',
     ]
 
     xpu = xpu_device.XPU.from_argv()
