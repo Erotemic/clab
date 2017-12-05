@@ -670,8 +670,10 @@ def script_workdir():
     return workdir
 
 
-def load_training_datasets(train_data_path):
-    workdir = script_workdir()
+def load_training_datasets(train_data_path, workdir):
+    """
+    Loads a dataset with groundtruth and splits it into train / validation
+    """
     task = UrbanMapper3D(root=train_data_path, workdir=workdir, boundary=True)
 
     fullres = task.load_fullres_inputs('.')
@@ -728,6 +730,31 @@ def load_training_datasets(train_data_path):
     datasets['vali'].center_inputs = datasets['train'].center_inputs
 
     datasets['train'].augment = True
+
+
+def load_testing_dataset(test_data_path, workdir):
+    """
+    Loads a dataset without groundtruth
+    """
+    task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
+    test_fullres = task.load_fullres_inputs('.')
+
+    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
+    if DEBUG:
+        prep.part_config['overlap'] = 0
+    else:
+        prep.part_config['overlap'] = .75
+    prep.ignore_label = task.ignore_label
+    test_part_inputs = prep.make_parts(test_fullres, scale=1, clear=0)
+
+    if DEBUG:
+        test_dataset = UrbanDataset(test_part_inputs[:30], task)
+    else:
+        test_dataset = UrbanDataset(test_part_inputs, task)
+
+    test_dataset.inputs.make_dumpsafe_names()
+    test_dataset.with_gt = False
+    return test_dataset
 
 
 def fit_networks(datasets, xpu):
@@ -848,10 +875,12 @@ def fit_networks(datasets, xpu):
 
 def train(train_data_path):
     """
-    train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
+    Fits multiple networks and learns postprocessing parameters.
+    Writes a single file that contains paths to the best model snapshots and
+    postprocessing parameters to the GLOBAL work directory.
     """
     workdir = script_workdir()
-    datasets = load_training_datasets(train_data_path)
+    datasets = load_training_datasets(train_data_path, workdir)
 
     xpu = xpu_device.XPU.from_argv()
 
@@ -899,33 +928,22 @@ def train(train_data_path):
         file.write(pickle.dumps(solution))
 
 
-def test(train_data_path, test_data_path, output_file):
+def test(train_data_path, test_data_path, output_file, soln_fpath):
     """
+
     train_data_path
     test_data_path
     output_file
     """
     workdir = script_workdir()
-    task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
-    test_fullres = task.load_fullres_inputs('.')
+    test_dataset = load_testing_dataset(test_data_path, workdir)
 
-    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
-    if DEBUG:
-        prep.part_config['overlap'] = 0
-    else:
-        prep.part_config['overlap'] = .75
-    prep.ignore_label = task.ignore_label
-    test_part_inputs = prep.make_parts(test_fullres, scale=1, clear=0)
+    if soln_fpath is None:
+        # Check if we have a locally trained model
+        soln_fpath = join(workdir, 'trained_soln.pkl')
+        # TODO: if not default to the pretained one
+        # (that should exist in docker)
 
-    if DEBUG:
-        test_dataset = UrbanDataset(test_part_inputs[:30], task)
-    else:
-        test_dataset = UrbanDataset(test_part_inputs, task)
-
-    test_dataset.inputs.make_dumpsafe_names()
-    test_dataset.with_gt = False
-
-    soln_fpath = join(workdir, 'trained_soln.pkl')
     with open(soln_fpath, 'rb') as file:
         solution = pickle.load(file)
 
@@ -949,12 +967,7 @@ def test(train_data_path, test_data_path, output_file):
                          ensemble_weights)
 
 
-if __name__ == '__main__':
-    r"""
-    CommandLine:
-        python -m clab.live.final train
-        python -m clab.live.final test
-    """
+def main():
     train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
     test_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/testing')
     output_file = 'prediction'
@@ -964,3 +977,12 @@ if __name__ == '__main__':
 
     if sys.argv[1] == 'test':
         test(train_data_path, test_data_path, output_file)
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.live.final train
+        python -m clab.live.final test
+    """
+    main()
