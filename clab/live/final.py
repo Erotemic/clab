@@ -594,7 +594,7 @@ def train(train_data_path):
     """
     train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
     """
-    workdir = ub.ensuredir(ub.truepath('~/work'))
+    workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
 
     task = UrbanMapper3D(root=train_data_path, workdir=workdir, boundary=True)
 
@@ -921,6 +921,8 @@ def test(train_data_path, test_data_path, output_file):
     test_data_path
     output_file
     """
+    import utool
+    utool.embed()
     workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
 
     task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
