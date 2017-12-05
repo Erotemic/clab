@@ -84,10 +84,10 @@ class UrbanDataset(torch.utils.data.Dataset):
         self.use_aux_diff = True
         self.use_dual_gt = True
 
-    # def _make_normalizer(self, mode=2):
     def _make_normalizer(self):
         transforms = []
-        nan_value = -32767.0  # hack: specific number for DTM
+        # hack: specific number for DTM
+        nan_value = -32767.0
         if len(self.inputs):
             # HACK IN CONSTANT VALS
             im_mean = .5
@@ -97,8 +97,6 @@ class UrbanDataset(torch.utils.data.Dataset):
 
             im_center = ImageCenterScale(im_mean, im_scale)
             transforms.append(im_center)
-
-            # im_scale = np.ceil(channel_stats['max']) - np.floor(channel_stats['min'])
 
             if self.aux_keys:
                 scale = 4.7431301577290377
@@ -224,8 +222,6 @@ class UrbanDataset(torch.utils.data.Dataset):
         data_tensor = torch.cat(input_tuple, dim=0)
 
         if self.with_gt:
-            # print('gotitem: ' + str(data_tensor.shape))
-            # print('gt_tensor: ' + str(gt_tensor.shape))
             if self.use_dual_gt:
                 mask = gt_tensor >= 2
                 gt_tensor_alt = gt_tensor.clone()
@@ -339,14 +335,6 @@ class UrbanPredictHarness(object):
 
         pharn.model = pharn.xpu.to_xpu(pharn.model)
         pharn.model.load_state_dict(snapshot['model_state_dict'])
-
-    def hack_dump_path(pharn, load_path):
-        # HACK
-        eval_dpath = ub.ensuredir((pharn.dataset.task.workdir, pharn.dataset.tag, 'input_' + pharn.dataset.input_id))
-        subdir = list(ub.take(os.path.splitext(load_path)[0].split('/'), [-3, -1]))
-        # base output dump path on the training id string
-        pharn.test_dump_dpath = ub.ensuredir((eval_dpath, '/'.join(subdir)))
-        print('pharn.test_dump_dpath = {!r}'.format(pharn.test_dump_dpath))
 
     def run(pharn):
         print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
@@ -537,7 +525,7 @@ def find_params(arch_to_paths, arches):
         'seed_thresh': (.4, .9),
         'min_seed_size': (0, 100),
         'min_size': (0, 100),
-        'alpha': (.80, 1.0),
+        'alpha': (0, 1.0),
     }
 
     from bayes_opt import BayesianOptimization
@@ -820,28 +808,30 @@ def train(train_data_path):
         file.write(pickle.dumps(solution))
 
 
-def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir, _epochs, tag):
+def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
+                         _epochs, tag):
     # Predict probabilities for each model in the ensemble
     arch_to_paths = {}
     for arch in arches:
+        train_dpath = arch_to_train_dpath[arch]
+
         pharn = UrbanPredictHarness(dataset, xpu)
-        dataset.center_inputs = pharn.load_normalize_center(arch_to_train_dpath[arch])
+        dataset.center_inputs = pharn.load_normalize_center(train_dpath)
 
         # test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
         epoch = _epochs[arch]
         pharn.test_dump_dpath = ub.ensuredir((workdir, tag, arch, 'epoch{}'.format(epoch)))
-        train_dpath = arch_to_train_dpath[arch]
         load_path = fit_harn2.get_snapshot(train_dpath, epoch=epoch)
 
         stitched_dpath = join(pharn.test_dump_dpath, 'stitched')
 
         # predict the whole scene
-
-        prob_paths = glob.glob(join(stitched_dpath, 'probs', '*.h5'))
-        # if len(prob_paths) < n_vali:
-        if len(prob_paths) == 0:
+        cacher = ub.Cacher('prediction_stamp', dpath=stitched_dpath)
+        if cacher.tryload() is None:
+            # Only execute this if we haven't done so
             pharn.load_snapshot(load_path)
             pharn.run()
+            cacher.save(True)
 
         paths = {
             'probs': glob.glob(join(stitched_dpath, 'probs', '*.h5')),

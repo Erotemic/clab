@@ -208,3 +208,13 @@ def compact_idstr(dict_):
     idstr = ub.repr2(short_dict, nobr=1, itemsep='', si=1, nl=0,
                      explicit=1)
     return idstr
+
+
+# class CacheStamp(object):
+#     def __init__(self, fname, dpath=None, cfgstr=None):
+#         import ubelt as ub
+#         self.cacher = ub.Cacher(fname, dpath=dpath, cfgstr=cfgstr)
+
+#     def __enter__(self):
+
+#         return self
