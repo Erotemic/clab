@@ -740,7 +740,10 @@ def write_submission_file(arch_to_paths, params, output_file, arches,
 
 
 def script_workdir():
-    workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
+    if DEBUG:
+        workdir = ub.ensuredir(ub.truepath('~/data/phase2_work'))
+    else:
+        workdir = ub.ensuredir(ub.truepath('~/data/phase2_work_debug'))
     return workdir
 
 
@@ -1069,6 +1072,7 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         python -m clab.live.final train
-        python -m clab.live.final test
+
+        python -m clab.live.final test --pretrained
     """
     main()
