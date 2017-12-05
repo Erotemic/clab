@@ -782,8 +782,9 @@ def train(train_data_path):
         _epochs = dict(zip(arches, epoch_combo))
 
         # Predict probabilities for each model in the ensemble
-        arch_to_paths = stitched_predictions(datasets['vali'], arches, xpu, train_dpath,
-                                             workdir, _epochs, 'vali')
+        arch_to_paths = stitched_predictions(datasets['vali'], arches, xpu,
+                                             arch_to_train_dpath, workdir,
+                                             _epochs, 'vali')
 
         # Find the right hyper-params
         value, params = find_params(arch_to_paths, arches)
