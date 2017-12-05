@@ -1,21 +1,34 @@
-import torch
-import numpy as np
-import ubelt as ub
 from os.path import join, splitext, basename  # NOQA
+import glob
+import itertools as it
+import numpy as np
+import os
+import pickle
+import sys
+import torch
 import torch  # NOQA
 import torchvision  # NOQA
-import itertools as it
-import glob
 import tqdm  # NOQA
+import ubelt as ub
+from clab import preprocess
 from clab import util
-from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
-from clab.torch.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
-from clab.torch import xpu_device
-from clab.torch import models
-from clab.torch import metrics
+from clab.live import fit_harn2
+from clab.live import unet2
+from clab.live import unet3
+from clab.live.urban_metrics import instance_fscore
+from clab.live.urban_pred import seeded_instance_label_from_probs
+from clab.tasks.urban_mapper_3d import UrbanMapper3D
+from clab.torch import criterions
 from clab.torch import hyperparams
 from clab.torch import im_loaders
-from clab.torch import criterions
+from clab.torch import metrics
+from clab.torch import models
+from clab.torch import transforms
+from clab.torch import xpu_device
+from clab.torch.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
+from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+
+DEBUG = False
 
 
 class UrbanDataset(torch.utils.data.Dataset):
@@ -76,20 +89,9 @@ class UrbanDataset(torch.utils.data.Dataset):
         transforms = []
         nan_value = -32767.0  # hack: specific number for DTM
         if len(self.inputs):
-            # if mode != 3:
-            #     self.center_stats = self.inputs.prepare_center_stats(
-            #         self.task, nan_value=nan_value, colorspace=self.colorspace,
-            #         with_im=(mode == 3), stride=100,
-            #     )
-            #     # self.center_stats['image'].pop('detail')
-            #     # if self.aux_keys:
-            #     #     self.center_stats['aux'].pop('detail')
-
-            # Normalize across channels for RGB
-            # scalar_stats = self.center_stats['image']['simple']['image']
+            # HACK IN CONSTANT VALS
             im_mean = .5
             im_scale = .75
-            # self.im_center = ub.identity
             print('im_mean = {!r}'.format(im_mean))
             print('im_scale = {!r}'.format(im_scale))
 
@@ -297,7 +299,6 @@ class UrbanPredictHarness(object):
         info_dpath = join(train_dpath, 'train_info.json')
         info = util.read_json(info_dpath)
         # TODO: better deserialization
-        from clab.torch import transforms
         transform_list = []
         for tup in info['hack_centers']:
             classname = tup[0]
@@ -325,13 +326,11 @@ class UrbanPredictHarness(object):
                                       n_classes=n_classes,
                                       nonlinearity='leaky_relu')
         elif snapshot['model_class_name'] == 'UNet2':
-            from clab.live import unet2
             pharn.model = unet2.UNet2(
                 in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
                 nonlinearity='leaky_relu'
             )
         elif snapshot['model_class_name'] == 'DenseUNet':
-            from clab.live import unet3
             pharn.model = unet3.DenseUNet(
                 in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
             )
@@ -343,7 +342,6 @@ class UrbanPredictHarness(object):
 
     def hack_dump_path(pharn, load_path):
         # HACK
-        import os
         eval_dpath = ub.ensuredir((pharn.dataset.task.workdir, pharn.dataset.tag, 'input_' + pharn.dataset.input_id))
         subdir = list(ub.take(os.path.splitext(load_path)[0].split('/'), [-3, -1]))
         # base output dump path on the training id string
@@ -464,8 +462,6 @@ def find_params(arch_to_paths, arches):
         return {'max_val': self.Y.max(),
                 'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
 
-    from clab.live.urban_pred import seeded_instance_label_from_probs
-    from clab.live.urban_metrics import instance_fscore
     @ub.memoize
     def memo_read_arr(fpath):
         return util.read_arr(fpath)
@@ -487,7 +483,6 @@ def find_params(arch_to_paths, arches):
 
     # Search for good hyperparams for this config (boost if more than 2)
     def preload():
-        import tqdm
         n_paths = len(arch_to_paths[arches[0]]['probs'])
         for ix in tqdm.trange(n_paths, leave=True, desc='preload'):
             path = arch_to_paths[arches[0]]['probs'][ix]
@@ -601,8 +596,6 @@ def train(train_data_path):
     """
     workdir = ub.ensuredir(ub.truepath('~/work'))
 
-    from clab.tasks.urban_mapper_3d import UrbanMapper3D
-    from clab import preprocess
     task = UrbanMapper3D(root=train_data_path, workdir=workdir, boundary=True)
 
     fullres = task.load_fullres_inputs('.')
@@ -616,8 +609,12 @@ def train(train_data_path):
     vali_frac = .15
     n_vali = int(len(idxs) * vali_frac)
 
-    train_idx = idxs[0:-n_vali][0:1]
-    vali_idx = idxs[-n_vali:][0:1]
+    train_idx = idxs[0:-n_vali]
+    vali_idx = idxs[-n_vali:]
+
+    if DEBUG:
+        train_idx = train_idx[0:5]
+        vali_idx = vali_idx[0:5]
 
     train_fullres_inputs = fullres.take(train_idx)
     vali_fullres_inputs = fullres.take(vali_idx)
@@ -626,14 +623,18 @@ def train(train_data_path):
     vali_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, vali_idx))
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_train1')))
-    # prep.part_config['overlap'] = .75
-    prep.part_config['overlap'] = 0
+    if DEBUG:
+        prep.part_config['overlap'] = 0
+    else:
+        prep.part_config['overlap'] = .75
     prep.ignore_label = task.ignore_label
     train_part_inputs = prep.make_parts(train_fullres_inputs, scale=1, clear=0)
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali1')))
-    # prep.part_config['overlap'] = .75
-    prep.part_config['overlap'] = 0
+    if DEBUG:
+        prep.part_config['overlap'] = 0
+    else:
+        prep.part_config['overlap'] = .75
     prep.ignore_label = task.ignore_label
     vali_part_inputs = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
 
@@ -725,18 +726,15 @@ def train(train_data_path):
 
         if arch == 'unet2':
             batch_size = 14
-            from clab.live import unet2
             model = unet2.UNet2(n_alt_classes=3, in_channels=n_channels,
                                 n_classes=n_classes, nonlinearity='leaky_relu')
         elif arch == 'dense_unet':
             batch_size = 6
-            from clab.live import unet3
             model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
                                     n_classes=n_classes)
 
         dry = 0
 
-        from clab.live import fit_harn2
         harn = fit_harn2.FitHarness(
             model=model, hyper=hyper, datasets=datasets, xpu=xpu,
             train_dpath=train_dpath, dry=dry,
@@ -823,7 +821,6 @@ def train(train_data_path):
 
 
 def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir, _epochs, tag):
-    from clab.live import fit_harn2
     # Predict probabilities for each model in the ensemble
     arch_to_paths = {}
     for arch in arches:
@@ -876,7 +873,6 @@ def make_submission_file(arch_to_paths, params, output_file, arches,
 
     # prob_paths = pharn._restitch_type('probs', blend='avew', force=False)
     # prob1_paths = pharn._restitch_type('probs1', blend='avew', force=False)
-    from clab.live.urban_pred import seeded_instance_label_from_probs
     ensemble_paths = list(ub.take(arch_to_paths, arches))
 
     if ensemble_weights is None:
@@ -927,23 +923,26 @@ def test(train_data_path, test_data_path, output_file):
     """
     workdir = ub.ensuredir(ub.truepath('~/work'))
 
-    from clab.tasks.urban_mapper_3d import UrbanMapper3D
-    from clab import preprocess
     task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
 
     test_fullres = task.load_fullres_inputs('.')
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
-    # prep.part_config['overlap'] = .75
-    prep.part_config['overlap'] = 0
+    if DEBUG:
+        prep.part_config['overlap'] = 0
+    else:
+        prep.part_config['overlap'] = .75
     prep.ignore_label = task.ignore_label
     test_part_inputs = prep.make_parts(test_fullres, scale=1, clear=0)
 
-    test_dataset = UrbanDataset(test_part_inputs[:30], task)
+    if DEBUG:
+        test_dataset = UrbanDataset(test_part_inputs[:30], task)
+    else:
+        test_dataset = UrbanDataset(test_part_inputs, task)
+
     test_dataset.inputs.make_dumpsafe_names()
     test_dataset.with_gt = False
 
-    import pickle
     soln_fpath = join(workdir, 'trained_soln.pkl')
     with open(soln_fpath, 'rb') as file:
         solution = pickle.load(file)
@@ -978,10 +977,8 @@ if __name__ == '__main__':
     test_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/testing')
     output_file = 'prediction.txt'
 
-    import sys
     if sys.argv[1] == 'train':
         train(train_data_path)
 
-    import sys
     if sys.argv[1] == 'test':
         train(train_data_path, test_data_path, output_file)
