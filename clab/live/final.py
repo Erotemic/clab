@@ -275,237 +275,6 @@ class UrbanDataset(torch.utils.data.Dataset):
         # return class_weights
 
 
-def train(train_data_path):
-    """
-    train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
-    """
-    workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
-
-    task = UrbanMapper3D(root=train_data_path, workdir=workdir, boundary=True)
-
-    fullres = task.load_fullres_inputs('.')
-    fullres = task.create_boundary_groundtruth(fullres)
-    del fullres.paths['gti']
-
-    rng = np.random.RandomState(0)
-    idxs = np.arange(len(fullres))
-    rng.shuffle(idxs)
-
-    vali_frac = .15
-    n_vali = int(len(idxs) * vali_frac)
-
-    train_idx = idxs[0:-n_vali]
-    vali_idx = idxs[-n_vali:]
-
-    if DEBUG:
-        train_idx = train_idx[0:5]
-        vali_idx = vali_idx[0:5]
-
-    train_fullres_inputs = fullres.take(train_idx)
-    vali_fullres_inputs = fullres.take(vali_idx)
-    # take doesnt take the dump_im_names
-    train_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, train_idx))
-    vali_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, vali_idx))
-
-    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_train1')))
-    if DEBUG:
-        prep.part_config['overlap'] = 0
-    else:
-        prep.part_config['overlap'] = .75
-    prep.ignore_label = task.ignore_label
-    train_part_inputs = prep.make_parts(train_fullres_inputs, scale=1, clear=0)
-
-    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali1')))
-    if DEBUG:
-        prep.part_config['overlap'] = 0
-    else:
-        prep.part_config['overlap'] = .75
-    prep.ignore_label = task.ignore_label
-    vali_part_inputs = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
-
-    train_dataset = UrbanDataset(train_part_inputs, task)
-    vali_dataset = UrbanDataset(vali_part_inputs, task)
-
-    print('* len(train_dataset) = {}'.format(len(train_dataset)))
-    print('* len(vali_dataset) = {}'.format(len(vali_dataset)))
-    datasets = {
-        'train': train_dataset,
-        'vali': vali_dataset,
-    }
-
-    datasets['train'].center_inputs = datasets['train']._make_normalizer()
-    datasets['vali'].center_inputs = datasets['train'].center_inputs
-
-    datasets['train'].augment = True
-
-    n_classes = datasets['train'].n_classes
-    n_channels = datasets['train'].n_channels
-    class_weights = datasets['train'].class_weights()
-    ignore_label = datasets['train'].ignore_label
-
-    print('n_classes = {!r}'.format(n_classes))
-    print('n_channels = {!r}'.format(n_channels))
-
-    arches = [
-        'unet2',
-        'dense_unet',
-    ]
-
-    xpu = xpu_device.XPU.from_argv()
-
-    arch_to_train_dpath = {}
-    arch_to_best_epochs = {}
-
-    for arch in arches:
-
-        hyper = hyperparams.HyperParams(
-            criterion=(criterions.CrossEntropyLoss2D, {
-                'ignore_label': ignore_label,
-                # TODO: weight should be a FloatTensor
-                'weight': class_weights,
-            }),
-            optimizer=(torch.optim.SGD, {
-                # 'weight_decay': .0006,
-                'weight_decay': .0005,
-                'momentum': .9,
-                'nesterov': True,
-            }),
-            scheduler=('Exponential', {
-                'gamma': 0.99,
-                'base_lr': 0.001,
-                'stepsize': 2,
-            }),
-            other={
-                'n_classes': n_classes,
-                'n_channels': n_channels,
-                'augment': datasets['train'].augment,
-                'colorspace': datasets['train'].colorspace,
-            }
-        )
-
-        # from clab.live.urban_train import directory_structure
-        # train_dpath = directory_structure(
-        #     datasets['train'].task.workdir, arch, datasets,
-        #     pretrained=None,
-        #     train_hyper_id=hyper.hyper_id(),
-        #     suffix='_' + hyper.other_id())
-
-        train_dpath = ub.ensuredir((datasets['train'].task.workdir, 'train', arch))
-
-        train_info =  {
-            'arch': arch,
-            'train_id': datasets['train'].input_id,
-            'train_hyper_id': hyper.hyper_id(),
-            'colorspace': datasets['train'].colorspace,
-        }
-        if hasattr(datasets['train'], 'center_inputs'):
-            # Hack in centering information
-            train_info['hack_centers'] = [
-                (t.__class__.__name__, t.__getstate__())
-                # ub.map_vals(str, t.__dict__)
-                for t in datasets['train'].center_inputs.transforms
-            ]
-        util.write_json(join(train_dpath, 'train_info.json'), train_info)
-
-        arch_to_train_dpath[arch] = train_dpath
-
-        if arch == 'unet2':
-            batch_size = 14
-            model = unet2.UNet2(n_alt_classes=3, in_channels=n_channels,
-                                n_classes=n_classes, nonlinearity='leaky_relu')
-        elif arch == 'dense_unet':
-            batch_size = 6
-            model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
-                                    n_classes=n_classes)
-
-        dry = 0
-        harn = fit_harn2.FitHarness(
-            model=model, hyper=hyper, datasets=datasets, xpu=xpu,
-            train_dpath=train_dpath, dry=dry,
-            batch_size=batch_size,
-        )
-        harn.criterion2 = criterions.CrossEntropyLoss2D(
-            weight=torch.FloatTensor([0.1, 1.0, 0.0]),
-            ignore_label=2
-        )
-        if DEBUG:
-            harn.config['max_iter'] = 4
-
-        def compute_loss(harn, outputs, labels):
-
-            output1, output2 = outputs
-            label1, label2 = labels
-
-            # Compute the loss
-            loss1 = harn.criterion(output1, label1)
-            loss2 = harn.criterion2(output2, label2)
-            loss = (.45 * loss1 + .55 * loss2)
-            return loss
-
-        harn.compute_loss = compute_loss
-
-        def custom_metrics(harn, output, label):
-            ignore_label = datasets['train'].ignore_label
-            labels = datasets['train'].task.labels
-
-            metrics_dict = metrics._sseg_metrics(output[1], label[1],
-                                                 labels=labels,
-                                                 ignore_label=ignore_label)
-            return metrics_dict
-
-        harn.add_metric_hook(custom_metrics)
-
-        harn.run()
-        arch_to_best_epochs[arch] = harn.early_stop.best_epochs()
-
-    # Select model and hyperparams
-    print('arch_to_train_dpath = {}'.format(ub.repr2(arch_to_train_dpath, nl=1)))
-    print('arch_to_best_epochs = {}'.format(ub.repr2(arch_to_best_epochs, nl=1)))
-
-    # epochs = arch_to_best_epochs['unet2'][0:1]
-    # epochs1 = arch_to_best_epochs['dense_unet'][0:1]
-    # train_dpath = arch_to_train_dpath['unet2']
-
-    arches = ['unet2', 'dense_unet']
-
-    datasets['vali'].inputs.make_dumpsafe_names()
-    datasets['vali'].with_gt = False
-
-    max_value = None
-    max_params = None
-    max_epochs = None
-
-    for epoch_combo in it.product(*[arch_to_best_epochs[a][0:1] for a in arches]):
-        _epochs = dict(zip(arches, epoch_combo))
-
-        # Predict probabilities for each model in the ensemble
-        arch_to_paths = stitched_predictions(datasets['vali'], arches, xpu,
-                                             arch_to_train_dpath, workdir,
-                                             _epochs, 'vali')
-
-        # Find the right hyper-params
-        value, params = find_params(arch_to_paths, arches)
-
-        if max_value is None or max_value < value:
-            max_value = value
-            max_params = params
-            max_epochs = _epochs
-            print('max_epochs = {!r}'.format(max_epochs))
-            print('max_value = {!r}'.format(max_value))
-            print('max_params = {!r}'.format(max_params))
-
-    solution = {
-        'max_params': max_params,
-        'max_epochs': max_epochs,
-        'arch_to_train_dpath': arch_to_train_dpath,
-        'arches': arches,
-    }
-    soln_fpath = join(workdir, 'trained_soln.pkl')
-    print('write trained model/param info to = {!r}'.format(soln_fpath))
-    with open(soln_fpath, 'wb') as file:
-        file.write(pickle.dumps(solution))
-
-
 def find_params(arch_to_paths, arches):
     def bo_best(self):
         return {'max_val': self.Y.max(),
@@ -896,13 +665,247 @@ def make_submission_file(arch_to_paths, params, output_file, arches,
     ub.writeto(fpath, text)
 
 
+def script_workdir():
+    workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
+    return workdir
+
+
+def load_training_datasets(train_data_path):
+    workdir = script_workdir()
+    task = UrbanMapper3D(root=train_data_path, workdir=workdir, boundary=True)
+
+    fullres = task.load_fullres_inputs('.')
+    fullres = task.create_boundary_groundtruth(fullres)
+    del fullres.paths['gti']
+
+    rng = np.random.RandomState(0)
+    idxs = np.arange(len(fullres))
+    rng.shuffle(idxs)
+
+    vali_frac = .15
+    n_vali = int(len(idxs) * vali_frac)
+
+    train_idx = idxs[0:-n_vali]
+    vali_idx = idxs[-n_vali:]
+
+    if DEBUG:
+        train_idx = train_idx[0:5]
+        vali_idx = vali_idx[0:5]
+
+    train_fullres_inputs = fullres.take(train_idx)
+    vali_fullres_inputs = fullres.take(vali_idx)
+    # take doesnt take the dump_im_names
+    train_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, train_idx))
+    vali_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, vali_idx))
+
+    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_train1')))
+    if DEBUG:
+        prep.part_config['overlap'] = 0
+    else:
+        prep.part_config['overlap'] = .75
+    prep.ignore_label = task.ignore_label
+    train_part_inputs = prep.make_parts(train_fullres_inputs, scale=1, clear=0)
+
+    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali1')))
+    if DEBUG:
+        prep.part_config['overlap'] = 0
+    else:
+        prep.part_config['overlap'] = .75
+    prep.ignore_label = task.ignore_label
+    vali_part_inputs = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
+
+    train_dataset = UrbanDataset(train_part_inputs, task)
+    vali_dataset = UrbanDataset(vali_part_inputs, task)
+
+    print('* len(train_dataset) = {}'.format(len(train_dataset)))
+    print('* len(vali_dataset) = {}'.format(len(vali_dataset)))
+    datasets = {
+        'train': train_dataset,
+        'vali': vali_dataset,
+    }
+
+    datasets['train'].center_inputs = datasets['train']._make_normalizer()
+    datasets['vali'].center_inputs = datasets['train'].center_inputs
+
+    datasets['train'].augment = True
+
+
+def fit_networks(datasets, xpu):
+    n_classes = datasets['train'].n_classes
+    n_channels = datasets['train'].n_channels
+    class_weights = datasets['train'].class_weights()
+    ignore_label = datasets['train'].ignore_label
+
+    print('n_classes = {!r}'.format(n_classes))
+    print('n_channels = {!r}'.format(n_channels))
+
+    arches = [
+        'unet2',
+        'dense_unet',
+    ]
+
+    arch_to_train_dpath = {}
+    arch_to_best_epochs = {}
+
+    for arch in arches:
+
+        hyper = hyperparams.HyperParams(
+            criterion=(criterions.CrossEntropyLoss2D, {
+                'ignore_label': ignore_label,
+                # TODO: weight should be a FloatTensor
+                'weight': class_weights,
+            }),
+            optimizer=(torch.optim.SGD, {
+                # 'weight_decay': .0006,
+                'weight_decay': .0005,
+                'momentum': .9,
+                'nesterov': True,
+            }),
+            scheduler=('Exponential', {
+                'gamma': 0.99,
+                'base_lr': 0.001,
+                'stepsize': 2,
+            }),
+            other={
+                'n_classes': n_classes,
+                'n_channels': n_channels,
+                'augment': datasets['train'].augment,
+                'colorspace': datasets['train'].colorspace,
+            }
+        )
+
+        train_dpath = ub.ensuredir((datasets['train'].task.workdir, 'train', arch))
+
+        train_info =  {
+            'arch': arch,
+            'train_id': datasets['train'].input_id,
+            'train_hyper_id': hyper.hyper_id(),
+            'colorspace': datasets['train'].colorspace,
+            # Hack in centering information
+            'hack_centers': [
+                (t.__class__.__name__, t.__getstate__())
+                for t in datasets['train'].center_inputs.transforms
+            ]
+        }
+        util.write_json(join(train_dpath, 'train_info.json'), train_info)
+
+        arch_to_train_dpath[arch] = train_dpath
+
+        if arch == 'unet2':
+            batch_size = 14
+            model = unet2.UNet2(n_alt_classes=3, in_channels=n_channels,
+                                n_classes=n_classes, nonlinearity='leaky_relu')
+        elif arch == 'dense_unet':
+            batch_size = 6
+            model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
+                                    n_classes=n_classes)
+
+        dry = 0
+        harn = fit_harn2.FitHarness(
+            model=model, hyper=hyper, datasets=datasets, xpu=xpu,
+            train_dpath=train_dpath, dry=dry,
+            batch_size=batch_size,
+        )
+        harn.criterion2 = criterions.CrossEntropyLoss2D(
+            weight=torch.FloatTensor([0.1, 1.0, 0.0]),
+            ignore_label=2
+        )
+        if DEBUG:
+            harn.config['max_iter'] = 4
+
+        def compute_loss(harn, outputs, labels):
+
+            output1, output2 = outputs
+            label1, label2 = labels
+
+            # Compute the loss
+            loss1 = harn.criterion(output1, label1)
+            loss2 = harn.criterion2(output2, label2)
+            loss = (.45 * loss1 + .55 * loss2)
+            return loss
+
+        harn.compute_loss = compute_loss
+
+        def custom_metrics(harn, output, label):
+            ignore_label = datasets['train'].ignore_label
+            labels = datasets['train'].task.labels
+
+            metrics_dict = metrics._sseg_metrics(output[1], label[1],
+                                                 labels=labels,
+                                                 ignore_label=ignore_label)
+            return metrics_dict
+
+        harn.add_metric_hook(custom_metrics)
+
+        harn.run()
+        arch_to_best_epochs[arch] = harn.early_stop.best_epochs()
+
+    # Select model and hyperparams
+    print('arch_to_train_dpath = {}'.format(ub.repr2(arch_to_train_dpath, nl=1)))
+    print('arch_to_best_epochs = {}'.format(ub.repr2(arch_to_best_epochs, nl=1)))
+    return arch_to_train_dpath, arch_to_best_epochs
+
+
+def train(train_data_path):
+    """
+    train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
+    """
+    workdir = script_workdir()
+    datasets = load_training_datasets(train_data_path)
+
+    xpu = xpu_device.XPU.from_argv()
+
+    arch_to_train_dpath, arch_to_best_epochs = fit_networks(datasets, xpu)
+
+    arches = ['unet2', 'dense_unet']
+
+    datasets['vali'].inputs.make_dumpsafe_names()
+    datasets['vali'].with_gt = False
+
+    max_value = None
+    max_params = None
+    max_epochs = None
+
+    # Find the model that performs the best on the real objective
+    cand_epochs = [arch_to_best_epochs[a][0:1] for a in arches]
+    for epoch_combo in it.product(*cand_epochs):
+        _epochs = dict(zip(arches, epoch_combo))
+
+        # Predict probabilities for each model in the ensemble
+        arch_to_paths = stitched_predictions(datasets['vali'], arches, xpu,
+                                             arch_to_train_dpath, workdir,
+                                             _epochs, 'vali')
+
+        # Find the right hyper-params
+        value, params = find_params(arch_to_paths, arches)
+
+        if max_value is None or max_value < value:
+            max_value = value
+            max_params = params
+            max_epochs = _epochs
+            print('max_epochs = {!r}'.format(max_epochs))
+            print('max_value = {!r}'.format(max_value))
+            print('max_params = {!r}'.format(max_params))
+
+    solution = {
+        'max_params': max_params,
+        'max_epochs': max_epochs,
+        'arch_to_train_dpath': arch_to_train_dpath,
+        'arches': arches,
+    }
+    soln_fpath = join(workdir, 'trained_soln.pkl')
+    print('write trained model/param info to = {!r}'.format(soln_fpath))
+    with open(soln_fpath, 'wb') as file:
+        file.write(pickle.dumps(solution))
+
+
 def test(train_data_path, test_data_path, output_file):
     """
     train_data_path
     test_data_path
     output_file
     """
-    workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
+    workdir = script_workdir()
     task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
     test_fullres = task.load_fullres_inputs('.')
 
@@ -954,10 +957,10 @@ if __name__ == '__main__':
     """
     train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
     test_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/testing')
-    output_file = 'prediction.txt'
+    output_file = 'prediction'
 
     if sys.argv[1] == 'train':
         train(train_data_path)
 
     if sys.argv[1] == 'test':
-        train(train_data_path, test_data_path, output_file)
+        test(train_data_path, test_data_path, output_file)
