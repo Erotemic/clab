@@ -5,3 +5,5 @@ pytorch
 xdoctest
 sortedcontainers
 tqdm
+h5py
+bayesian-optimization
