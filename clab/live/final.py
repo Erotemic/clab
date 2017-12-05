@@ -1,15 +1,17 @@
 from os.path import join, splitext, basename  # NOQA
 import glob
 import itertools as it
-import numpy as np
-import os
 import pickle
+import numpy as np
+import os  # NOQA
 import sys
 import torch
 import torch  # NOQA
 import torchvision  # NOQA
 import tqdm  # NOQA
 import ubelt as ub
+from bayes_opt import BayesianOptimization
+import pandas as pd
 from clab import preprocess
 from clab import util
 from clab.live import fit_harn2
@@ -125,17 +127,6 @@ class UrbanDataset(torch.utils.data.Dataset):
             # 'class_weights': self.class_weights(),
         }
         return  meta
-
-    def _original_urban_mapper_normalizer(self, imcenter=.5, imscale=1.0):
-        return self._custom_urban_mapper_normalizer(imcenter, imscale, 5.3757350869126723)
-
-    def _custom_urban_mapper_normalizer(self, imcenter, imscale, aux_scale):
-        nan_value = -32767.0  # hack: specific number for DTM
-        im_center = ImageCenterScale(imcenter, imscale)
-        aux_center = DTMCenterScale(aux_scale, nan_value=nan_value,
-                                    fill='median')
-        transforms = [im_center, aux_center]
-        return ZipTransforms(transforms)
 
     def __len__(self):
         return len(self.inputs)
@@ -284,300 +275,6 @@ class UrbanDataset(torch.utils.data.Dataset):
         # return class_weights
 
 
-class UrbanPredictHarness(object):
-    def __init__(pharn, dataset, xpu):
-        pharn.dataset = dataset
-        pharn.xpu = xpu  # xpu_device.XPU.from_argv()
-        pharn.model = None
-        pharn.test_dump_dpath = None
-
-    def load_normalize_center(pharn, train_dpath):
-        info_dpath = join(train_dpath, 'train_info.json')
-        info = util.read_json(info_dpath)
-        # TODO: better deserialization
-        transform_list = []
-        for tup in info['hack_centers']:
-            classname = tup[0]
-            state = tup[1]
-            cls = getattr(transforms, classname, None)
-            transform_list.append(cls(**state))
-        centering = transforms.ZipTransforms(transform_list)
-        return centering
-
-    def load_snapshot(pharn, load_path):
-        print('Loading snapshot onto {}'.format(pharn.xpu))
-        snapshot = torch.load(load_path, map_location=pharn.xpu.map_location())
-
-        if 'model_kw' not in snapshot:
-            # FIXME: we should be able to get information from the snapshot
-            print('warning snapshot not saved with modelkw')
-            n_classes = pharn.dataset.n_classes
-            n_channels = pharn.dataset.n_channels
-
-        # Infer which model this belongs to
-        # FIXME: The model must be constructed with the EXACT same kwargs This
-        # will be easier when onnx supports model serialization.
-        if snapshot['model_class_name'] == 'UNet':
-            pharn.model = models.UNet(in_channels=n_channels,
-                                      n_classes=n_classes,
-                                      nonlinearity='leaky_relu')
-        elif snapshot['model_class_name'] == 'UNet2':
-            pharn.model = unet2.UNet2(
-                in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
-                nonlinearity='leaky_relu'
-            )
-        elif snapshot['model_class_name'] == 'DenseUNet':
-            pharn.model = unet3.DenseUNet(
-                in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
-            )
-        else:
-            raise NotImplementedError(snapshot['model_class_name'])
-
-        pharn.model = pharn.xpu.to_xpu(pharn.model)
-        pharn.model.load_state_dict(snapshot['model_state_dict'])
-
-    def run(pharn):
-        print('Preparing to predict {} on {}'.format(pharn.model.__class__.__name__, pharn.xpu))
-        pharn.model.train(False)
-
-        # Hack in the restitching here to not have to deal with expensive IO
-        def _extract_part_grid(paths):
-            # hack to use filenames to extract upper left locations of tiles in
-            # the larger image.
-            rc_locs = [[int(x) for x in basename(p).split('.')[0].split('_')[-2:]]
-                       for p in paths]
-            return rc_locs
-
-        def stitch_tiles_avew(rc_locs, tiles):
-            """
-            Recombine parts back into an entire image
-
-            Example:
-                >>> rc_locs = [(0, 0), (0, 5), (0, 10)]
-                >>> tiles = [np.ones((1, 7, 3)) + i for i in range(len(rc_locs))]
-                >>> tiles = [np.ones((1, 7)) + i for i in range(len(rc_locs))]
-            """
-            shapes = [t.shape[0:2] for t in tiles]
-            n_channels = 1 if len(tiles[0].shape) == 2 else tiles[0].shape[2]
-            bboxes = np.array([
-                (r, c, r + h, c + w)
-                for ((r, c), (h, w)) in zip(rc_locs, shapes)
-            ])
-            stiched_wh = tuple(bboxes.T[2:4].max(axis=1))
-            stiched_shape = stiched_wh
-            if n_channels > 1:
-                stiched_shape = stiched_wh + (n_channels,)
-            sums = np.zeros(stiched_shape)
-            nums = np.zeros(stiched_wh)
-
-            # assume all shapes are the same
-            h, w = shapes[0]
-            weight = np.ones((h, w) )
-            # Weight borders less than center
-            # should really use receptive fields for this calculation
-            # but this should be fine.
-            weight[:h // 4]  = .25
-            weight[-h // 4:] = .25
-            weight[:w // 4]  = .25
-            weight[-w // 4:] = .25
-            weight3c = weight
-            if n_channels > 1:
-                weight3c = weight[:, :, None]
-
-            # Assume we are not in log-space here, so the weighted average
-            # formula does not need any exponentiation.
-            for bbox, tile in zip(bboxes, tiles):
-                r1, c1, r2, c2 = bbox
-                sums[r1:r2, c1:c2] += (tile * weight3c)
-                nums[r1:r2, c1:c2] += weight
-
-            if len(sums.shape) == 2:
-                stiched = sums / nums
-            else:
-                stiched = sums / nums[:, :, None]
-            return stiched
-
-        groupids = [basename(p).split('_part')[0]
-                    for p in pharn.dataset.inputs.dump_im_names]
-        grouped_indices = ub.group_items(range(len(groupids)), groupids)
-
-        output_dpath = join(pharn.test_dump_dpath, 'stitched')
-        ub.ensuredir(output_dpath)
-
-        for key, groupxs in tqdm.tqdm(grouped_indices.items(), desc='predict group proba'):
-
-            grouped_probs = ub.odict()
-            grouped_probs[''] = []
-            grouped_probs['1'] = []
-
-            for ix in tqdm.tqdm(groupxs, desc='pred'):
-
-                if pharn.dataset.with_gt:
-                    inputs_ = pharn.dataset[ix][0]
-                else:
-                    inputs_ = pharn.dataset[ix]
-                inputs_ = inputs_[None, ...]
-
-                if not isinstance(inputs_, (list, tuple)):
-                    inputs_ = [inputs_]
-
-                inputs_ = pharn.xpu.to_xpu_var(*inputs_)
-                outputs = pharn.model.forward(inputs_)
-
-                for ox in range(len(outputs)):
-                    suffix = '' if ox == 0 else str(ox)
-
-                    output_tensor = outputs[ox]
-                    log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
-                    prob_tensor = torch.exp(log_prob_tensor)
-                    probs = np.ascontiguousarray(prob_tensor.data.cpu().numpy().transpose(1, 2, 0))
-
-                    grouped_probs[suffix].append(probs)
-
-            rc_locs = _extract_part_grid(ub.take(pharn.dataset.inputs.dump_im_names, groupxs))
-            for suffix, tiles in grouped_probs.items():
-                # from clab.profiler import profile_onthefly
-                # profile_onthefly(stitch_tiles_ave)(rc_locs, tiles, weighted=True)
-                stitched = stitch_tiles_avew(rc_locs, tiles)
-
-                dpath = ub.ensuredir(join(output_dpath, 'probs' + suffix))
-                fpath = join(dpath, key + '.h5')
-                util.write_h5arr(fpath, stitched)
-
-
-def find_params(arch_to_paths, arches):
-    def bo_best(self):
-        return {'max_val': self.Y.max(),
-                'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
-
-    @ub.memoize
-    def memo_read_arr(fpath):
-        return util.read_arr(fpath)
-
-    @ub.memoize
-    def gt_info_from_path(pred_fpath):
-        gtl_fname = ub.augpath(basename(pred_fpath), suffix='_GTL', ext='.tif')
-        gti_fname = ub.augpath(basename(pred_fpath), suffix='_GTI', ext='.tif')
-        dsm_fname = ub.augpath(basename(pred_fpath), suffix='_DSM', ext='.tif')
-        gtl_fpath = join(train_data_path, gtl_fname)
-        gti_fpath = join(train_data_path, gti_fname)
-        dsm_fpath = join(train_data_path, dsm_fname)
-
-        gti = util.imread(gti_fpath)
-        gtl = util.imread(gtl_fpath)
-        dsm = util.imread(dsm_fpath)
-        uncertain = (gtl == 65)
-        return gti, uncertain, dsm
-
-    # Search for good hyperparams for this config (boost if more than 2)
-    def preload():
-        n_paths = len(arch_to_paths[arches[0]]['probs'])
-        for ix in tqdm.trange(n_paths, leave=True, desc='preload'):
-            path = arch_to_paths[arches[0]]['probs'][ix]
-            gt_info_from_path(path)
-
-            for arch in arches:
-                memo_read_arr(arch_to_paths[arch]['probs'][ix])
-                memo_read_arr(arch_to_paths[arch]['probs1'][ix])
-
-    preload()  # read datas into memory
-
-    def seeded_objective(**params):
-        # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
-
-        alpha = params.pop('alpha', .88)
-
-        fscores = []
-        # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
-        n_paths = len(arch_to_paths[arches[0]]['probs'])
-        for ix in tqdm.trange(n_paths, leave=False, desc='eval objective'):
-            path = arch_to_paths[arches[0]]['probs'][ix]
-
-            gti, uncertain, dsm = gt_info_from_path(path)
-
-            probs_m1 = memo_read_arr(arch_to_paths['unet2']['probs'][ix])
-            probs1_m1 = memo_read_arr(arch_to_paths['unet2']['probs1'][ix])
-
-            probs_m2 = memo_read_arr(arch_to_paths['dense_unet']['probs'][ix])
-            probs1_m2 = memo_read_arr(arch_to_paths['dense_unet']['probs1'][ix])
-
-            probs = (alpha * probs_m1 + (1 - alpha) * probs_m2)
-            probs1 = (alpha * probs1_m1 + (1 - alpha) * probs1_m2)
-
-            INNER_BUILDING_ID = 1
-            BUILDING_ID = 1
-
-            seed_prob = probs[:, :, INNER_BUILDING_ID]
-            mask_prob = probs1[:, :, BUILDING_ID]
-
-            pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
-                                                    **params)
-
-            scores = instance_fscore(gti, uncertain, dsm, pred)
-
-            fscore = scores[0]
-            fscores.append(fscore)
-        mean_fscore = np.mean(fscores)
-        return mean_fscore
-
-    seeded_bounds = {
-        'mask_thresh': (.4, .9),
-        'seed_thresh': (.4, .9),
-        'min_seed_size': (0, 100),
-        'min_size': (0, 100),
-        'alpha': (0, 1.0),
-    }
-
-    from bayes_opt import BayesianOptimization
-    seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
-    import pandas as pd
-    cand_params = [
-        {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
-        {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
-        {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
-        {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
-        {'mask_thresh': 0.6666, 'min_seed_size': 81.5941, 'min_size': 13.2919, 'seed_thresh': 0.4241},  # full dataset 'max_val': 0.9142}
-        # {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
-        # {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
-        # {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
-        # {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
-        # {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
-    ]
-    for p in cand_params:
-        p['alpha'] = .88
-    n_init = 20
-
-    seeded_bo.explore(pd.DataFrame(cand_params).to_dict(orient='list'))
-
-    # Basically just using this package for random search.
-    # The BO doesnt seem to help much
-    seeded_bo.plog.print_header(initialization=True)
-    seeded_bo.init(n_init)
-    print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
-
-    gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
-
-    n_iter = n_init // 4
-    for kappa in [10, 5, 1]:
-        seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
-
-    best_res = bo_best(seeded_bo)
-    print('seeded ' + ub.repr2(best_res, nl=0, precision=4))
-
-    max_params = best_res['max_params']
-    max_value = best_res['max_val']
-
-    # search for a good alpha
-    for alpha in tqdm.tqdm(np.linspace(0, 1, 50), desc='opt alpha'):
-        params = max_params.copy()
-        params['alpha'] = alpha
-        val = seeded_objective(**params)
-        if val > max_value:
-            max_value = val
-            max_params = params
-    return max_value, max_params
-
-
 def train(train_data_path):
     """
     train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
@@ -722,17 +419,17 @@ def train(train_data_path):
                                     n_classes=n_classes)
 
         dry = 0
-
         harn = fit_harn2.FitHarness(
             model=model, hyper=hyper, datasets=datasets, xpu=xpu,
             train_dpath=train_dpath, dry=dry,
             batch_size=batch_size,
         )
         harn.criterion2 = criterions.CrossEntropyLoss2D(
-            weight=torch.FloatTensor([.1, 1, 0]),
+            weight=torch.FloatTensor([0.1, 1.0, 0.0]),
             ignore_label=2
         )
-        harn.config['max_iter'] = 4
+        if DEBUG:
+            harn.config['max_iter'] = 4
 
         def compute_loss(harn, outputs, labels):
 
@@ -803,10 +500,304 @@ def train(train_data_path):
         'arch_to_train_dpath': arch_to_train_dpath,
         'arches': arches,
     }
-    import pickle
     soln_fpath = join(workdir, 'trained_soln.pkl')
+    print('write trained model/param info to = {!r}'.format(soln_fpath))
     with open(soln_fpath, 'wb') as file:
         file.write(pickle.dumps(solution))
+
+
+def find_params(arch_to_paths, arches):
+    def bo_best(self):
+        return {'max_val': self.Y.max(),
+                'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
+
+    @ub.memoize
+    def memo_read_arr(fpath):
+        return util.read_arr(fpath)
+
+    @ub.memoize
+    def gt_info_from_path(pred_fpath):
+        # Hack to read UrbanMapper specific data
+        gtl_fname = ub.augpath(basename(pred_fpath), suffix='_GTL', ext='.tif')
+        gti_fname = ub.augpath(basename(pred_fpath), suffix='_GTI', ext='.tif')
+        dsm_fname = ub.augpath(basename(pred_fpath), suffix='_DSM', ext='.tif')
+        gtl_fpath = join(train_data_path, gtl_fname)
+        gti_fpath = join(train_data_path, gti_fname)
+        dsm_fpath = join(train_data_path, dsm_fname)
+
+        gti = util.imread(gti_fpath)
+        gtl = util.imread(gtl_fpath)
+        dsm = util.imread(dsm_fpath)
+        uncertain = (gtl == 65)
+        return gti, uncertain, dsm
+
+    # Search for good hyperparams for this config (boost if more than 2)
+    def preload():
+        n_paths = len(arch_to_paths[arches[0]]['probs'])
+        for ix in tqdm.trange(n_paths, leave=True, desc='preload'):
+            path = arch_to_paths[arches[0]]['probs'][ix]
+            gt_info_from_path(path)
+
+            for arch in arches:
+                memo_read_arr(arch_to_paths[arch]['probs'][ix])
+                memo_read_arr(arch_to_paths[arch]['probs1'][ix])
+
+    preload()  # read datas into memory
+
+    def seeded_objective(**params):
+        # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
+
+        alpha = params.pop('alpha', .88)
+
+        fscores = []
+        # params = {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090}
+        n_paths = len(arch_to_paths[arches[0]]['probs'])
+        for ix in tqdm.trange(n_paths, leave=False, desc='eval objective'):
+            path = arch_to_paths[arches[0]]['probs'][ix]
+
+            gti, uncertain, dsm = gt_info_from_path(path)
+
+            probs_m1 = memo_read_arr(arch_to_paths['unet2']['probs'][ix])
+            probs1_m1 = memo_read_arr(arch_to_paths['unet2']['probs1'][ix])
+
+            probs_m2 = memo_read_arr(arch_to_paths['dense_unet']['probs'][ix])
+            probs1_m2 = memo_read_arr(arch_to_paths['dense_unet']['probs1'][ix])
+
+            probs = (alpha * probs_m1 + (1 - alpha) * probs_m2)
+            probs1 = (alpha * probs1_m1 + (1 - alpha) * probs1_m2)
+
+            INNER_BUILDING_ID = 1
+            BUILDING_ID = 1
+
+            seed_prob = probs[:, :, INNER_BUILDING_ID]
+            mask_prob = probs1[:, :, BUILDING_ID]
+
+            pred = seeded_instance_label_from_probs(seed_prob, mask_prob,
+                                                    **params)
+
+            scores = instance_fscore(gti, uncertain, dsm, pred)
+
+            fscore = scores[0]
+            fscores.append(fscore)
+        mean_fscore = np.mean(fscores)
+        return mean_fscore
+
+    seeded_bounds = {
+        'mask_thresh': (.4, .9),
+        'seed_thresh': (.4, .9),
+        'min_seed_size': (0, 100),
+        'min_size': (0, 100),
+        'alpha': (0, 1.0),
+    }
+
+    seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
+    cand_params = [
+        {'mask_thresh': 0.9000, 'min_seed_size': 100.0000, 'min_size': 100.0000, 'seed_thresh': 0.4000},
+        {'mask_thresh': 0.8367, 'seed_thresh': 0.4549, 'min_seed_size': 97, 'min_size': 33},  # 'max_val': 0.8708
+        {'mask_thresh': 0.8367, 'min_seed_size': 97.0000, 'min_size': 33.0000, 'seed_thresh': 0.4549},  # max_val': 0.8991
+        {'mask_thresh': 0.7664, 'min_seed_size': 48.5327, 'min_size': 61.8757, 'seed_thresh': 0.4090},  # 'max_val': 0.9091}
+        {'mask_thresh': 0.6666, 'min_seed_size': 81.5941, 'min_size': 13.2919, 'seed_thresh': 0.4241},  # full dataset 'max_val': 0.9142}
+        # {'mask_thresh': 0.8, 'seed_thresh': 0.5, 'min_seed_size': 20, 'min_size': 0},
+        # {'mask_thresh': 0.5, 'seed_thresh': 0.8, 'min_seed_size': 20, 'min_size': 0},
+        # {'mask_thresh': 0.8338, 'min_seed_size': 25.7651, 'min_size': 38.6179, 'seed_thresh': 0.6573},
+        # {'mask_thresh': 0.6225, 'min_seed_size': 93.2705, 'min_size': 5, 'seed_thresh': 0.4401},
+        # {'mask_thresh': 0.7870, 'min_seed_size': 85.1641, 'min_size': 64.0634, 'seed_thresh': 0.4320},
+    ]
+    for p in cand_params:
+        p['alpha'] = .88
+    n_init = 20
+
+    seeded_bo.explore(pd.DataFrame(cand_params).to_dict(orient='list'))
+
+    # Basically just using this package for random search.
+    # The BO doesnt seem to help much
+    seeded_bo.plog.print_header(initialization=True)
+    seeded_bo.init(n_init)
+    print('seeded ' + ub.repr2(bo_best(seeded_bo), nl=0, precision=4))
+
+    gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
+
+    n_iter = n_init // 4
+    for kappa in [10, 5, 1]:
+        seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
+
+    best_res = bo_best(seeded_bo)
+    print('seeded ' + ub.repr2(best_res, nl=0, precision=4))
+
+    max_params = best_res['max_params']
+    max_value = best_res['max_val']
+
+    # search for a good alpha
+    for alpha in tqdm.tqdm(np.linspace(0, 1, 50), desc='opt alpha'):
+        params = max_params.copy()
+        params['alpha'] = alpha
+        val = seeded_objective(**params)
+        if val > max_value:
+            max_value = val
+            max_params = params
+    return max_value, max_params
+
+
+class UrbanPredictHarness(object):
+    def __init__(pharn, dataset, xpu):
+        pharn.dataset = dataset
+        pharn.xpu = xpu  # xpu_device.XPU.from_argv()
+        pharn.model = None
+        pharn.test_dump_dpath = None
+
+    def load_normalize_center(pharn, train_dpath):
+        info_dpath = join(train_dpath, 'train_info.json')
+        info = util.read_json(info_dpath)
+        # TODO: better deserialization
+        transform_list = []
+        for tup in info['hack_centers']:
+            classname = tup[0]
+            state = tup[1]
+            cls = getattr(transforms, classname, None)
+            transform_list.append(cls(**state))
+        centering = transforms.ZipTransforms(transform_list)
+        return centering
+
+    def load_snapshot(pharn, load_path):
+        print('Loading snapshot onto {}'.format(pharn.xpu))
+        snapshot = torch.load(load_path, map_location=pharn.xpu.map_location())
+
+        if 'model_kw' not in snapshot:
+            # FIXME: we should be able to get information from the snapshot
+            print('warning snapshot not saved with modelkw')
+            n_classes = pharn.dataset.n_classes
+            n_channels = pharn.dataset.n_channels
+
+        # Infer which model this belongs to
+        # FIXME: The model must be constructed with the EXACT same kwargs This
+        # will be easier when onnx supports model serialization.
+        if snapshot['model_class_name'] == 'UNet':
+            pharn.model = models.UNet(in_channels=n_channels,
+                                      n_classes=n_classes,
+                                      nonlinearity='leaky_relu')
+        elif snapshot['model_class_name'] == 'UNet2':
+            pharn.model = unet2.UNet2(
+                in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
+                nonlinearity='leaky_relu'
+            )
+        elif snapshot['model_class_name'] == 'DenseUNet':
+            pharn.model = unet3.DenseUNet(
+                in_channels=n_channels, n_classes=n_classes, n_alt_classes=3,
+            )
+        else:
+            raise NotImplementedError(snapshot['model_class_name'])
+
+        pharn.model = pharn.xpu.to_xpu(pharn.model)
+        pharn.model.load_state_dict(snapshot['model_state_dict'])
+
+    def run(pharn):
+        print('Preparing to predict {} on {}'.format(
+            pharn.model.__class__.__name__, pharn.xpu))
+        pharn.model.train(False)
+
+        # Hack in the restitching here to not have to deal with expensive IO
+        def _extract_part_grid(paths):
+            # hack to use filenames to extract upper left locations of tiles in
+            # the larger image.
+            rc_locs = [[int(x) for x in basename(p).split('.')[0].split('_')[-2:]]
+                       for p in paths]
+            return rc_locs
+
+        def stitch_tiles_avew(rc_locs, tiles):
+            """
+            Recombine parts back into an entire image
+
+            Example:
+                >>> rc_locs = [(0, 0), (0, 5), (0, 10)]
+                >>> tiles = [np.ones((1, 7, 3)) + i for i in range(len(rc_locs))]
+                >>> tiles = [np.ones((1, 7)) + i for i in range(len(rc_locs))]
+            """
+            shapes = [t.shape[0:2] for t in tiles]
+            n_channels = 1 if len(tiles[0].shape) == 2 else tiles[0].shape[2]
+            bboxes = np.array([
+                (r, c, r + h, c + w)
+                for ((r, c), (h, w)) in zip(rc_locs, shapes)
+            ])
+            stiched_wh = tuple(bboxes.T[2:4].max(axis=1))
+            stiched_shape = stiched_wh
+            if n_channels > 1:
+                stiched_shape = stiched_wh + (n_channels,)
+            sums = np.zeros(stiched_shape)
+            nums = np.zeros(stiched_wh)
+
+            # assume all shapes are the same
+            h, w = shapes[0]
+            weight = np.ones((h, w) )
+            # Weight borders less than center
+            # should really use receptive fields for this calculation
+            # but this should be fine.
+            weight[:h // 4]  = .25
+            weight[-h // 4:] = .25
+            weight[:w // 4]  = .25
+            weight[-w // 4:] = .25
+            weight3c = weight
+            if n_channels > 1:
+                weight3c = weight[:, :, None]
+
+            # Assume we are not in log-space here, so the weighted average
+            # formula does not need any exponentiation.
+            for bbox, tile in zip(bboxes, tiles):
+                r1, c1, r2, c2 = bbox
+                sums[r1:r2, c1:c2] += (tile * weight3c)
+                nums[r1:r2, c1:c2] += weight
+
+            if len(sums.shape) == 2:
+                stiched = sums / nums
+            else:
+                stiched = sums / nums[:, :, None]
+            return stiched
+
+        groupids = [basename(p).split('_part')[0]
+                    for p in pharn.dataset.inputs.dump_im_names]
+        grouped_indices = ub.group_items(range(len(groupids)), groupids)
+
+        output_dpath = join(pharn.test_dump_dpath, 'stitched')
+        ub.ensuredir(output_dpath)
+
+        for key, groupxs in tqdm.tqdm(grouped_indices.items(), desc='predict group proba'):
+
+            grouped_probs = ub.odict()
+            grouped_probs[''] = []
+            grouped_probs['1'] = []
+
+            for ix in tqdm.tqdm(groupxs, desc='pred'):
+
+                if pharn.dataset.with_gt:
+                    inputs_ = pharn.dataset[ix][0]
+                else:
+                    inputs_ = pharn.dataset[ix]
+                inputs_ = inputs_[None, ...]
+
+                if not isinstance(inputs_, (list, tuple)):
+                    inputs_ = [inputs_]
+
+                inputs_ = pharn.xpu.to_xpu_var(*inputs_)
+                outputs = pharn.model.forward(inputs_)
+
+                for ox in range(len(outputs)):
+                    suffix = '' if ox == 0 else str(ox)
+
+                    output_tensor = outputs[ox]
+                    log_prob_tensor = torch.nn.functional.log_softmax(output_tensor, dim=1)[0]
+                    prob_tensor = torch.exp(log_prob_tensor)
+                    probs = np.ascontiguousarray(prob_tensor.data.cpu().numpy().transpose(1, 2, 0))
+
+                    grouped_probs[suffix].append(probs)
+
+            rc_locs = _extract_part_grid(ub.take(pharn.dataset.inputs.dump_im_names, groupxs))
+            for suffix, tiles in grouped_probs.items():
+                # from clab.profiler import profile_onthefly
+                # profile_onthefly(stitch_tiles_ave)(rc_locs, tiles, weighted=True)
+                stitched = stitch_tiles_avew(rc_locs, tiles)
+
+                dpath = ub.ensuredir(join(output_dpath, 'probs' + suffix))
+                fpath = join(dpath, key + '.h5')
+                util.write_h5arr(fpath, stitched)
 
 
 def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
@@ -911,12 +902,8 @@ def test(train_data_path, test_data_path, output_file):
     test_data_path
     output_file
     """
-    import utool
-    utool.embed()
     workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
-
     task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
-
     test_fullres = task.load_fullres_inputs('.')
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
