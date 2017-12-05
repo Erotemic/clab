@@ -928,7 +928,7 @@ def train(train_data_path):
         file.write(pickle.dumps(solution))
 
 
-def test(train_data_path, test_data_path, output_file, soln_fpath):
+def test(train_data_path, test_data_path, output_file, soln_fpath=None):
     """
 
     train_data_path
