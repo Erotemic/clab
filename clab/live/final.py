@@ -814,14 +814,12 @@ def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
     arch_to_paths = {}
     for arch in arches:
         train_dpath = arch_to_train_dpath[arch]
+        epoch = _epochs[arch]
+        load_path = fit_harn2.get_snapshot(train_dpath, epoch=epoch)
 
         pharn = UrbanPredictHarness(dataset, xpu)
         dataset.center_inputs = pharn.load_normalize_center(train_dpath)
-
-        # test_dataset.center_inputs = pharn.load_normalize_center(train_dpath)
-        epoch = _epochs[arch]
         pharn.test_dump_dpath = ub.ensuredir((workdir, tag, arch, 'epoch{}'.format(epoch)))
-        load_path = fit_harn2.get_snapshot(train_dpath, epoch=epoch)
 
         stitched_dpath = join(pharn.test_dump_dpath, 'stitched')
 
