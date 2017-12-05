@@ -921,7 +921,7 @@ def test(train_data_path, test_data_path, output_file):
     test_data_path
     output_file
     """
-    workdir = ub.ensuredir(ub.truepath('~/work'))
+    workdir = ub.ensuredir(ub.truepath('~/data/script_work'))
 
     task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
 
