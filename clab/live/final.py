@@ -912,7 +912,8 @@ def make_submission_file(arch_to_paths, params, output_file, arches,
 
     text = '\n'.join(lines)
     print('output_file = {!r}'.format(output_file))
-    ub.writeto(output_file, text)
+    fpath = output_file + '.txt'
+    ub.writeto(fpath, text)
 
 
 def test(train_data_path, test_data_path, output_file):
