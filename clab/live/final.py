@@ -1,4 +1,4 @@
-from os.path import join, splitext, basename  # NOQA
+from os.path import join, splitext, exists, basename, relpath, dirname  # NOQA
 import glob
 import itertools as it
 import pickle
@@ -31,6 +31,80 @@ from clab.torch.transforms import (ImageCenterScale, DTMCenterScale, ZipTransfor
 from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 
 DEBUG = False
+
+
+def package_pretrained_submission():
+    """
+    Gather the models trained during phase 1 and output them in a format
+    useable by the phase 2 solution. Note: remember to put the output folder
+    into docker.
+    """
+    # model1 = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/test/input_26400-sotwptrx/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000000/stitched'
+
+    # model2 = '/home/local/KHQ/jon.crall/data/work/urban_mapper4/test/input_26400-fgetszbh/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000026/stitched'
+
+    # Localize the data
+
+    # epoch
+    # info_dpath = join(train_dpath, 'train_info.json')
+
+    # Both of these seem to have the same centering stats
+    # unet2_weights = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_52200-fqljkqlk/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000000.pt'
+
+    # dense_unet_weights = '/home/local/KHQ/jon.crall/remote/aretha/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000026.pt'
+
+    max_params = {'alpha': 0.8800, 'mask_thresh': 0.7870,
+                  'min_seed_size': 85.1641, 'min_size': 64.0634,
+                  'seed_thresh': 0.4320}
+
+    max_epochs = {
+        'unet2': 0,
+        'dense_unet': 26,
+    }
+
+    arch_to_train_dpath = {
+        'unet2': ub.truepath(
+            '~/data/work/urban_mapper2/arch/unet2/train/input_52200-fqljkqlk/'
+            'solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4'),
+        'dense_unet': ub.truepath(
+            '~/data/work/urban_mapper4/arch/dense_unet/train/input_25800-phpjjsqu/'
+            'solver_25800-phpjjsqu_dense_unet_mmavmuou_zeosddyf_a=1,c=RGB,n_ch=6,n_cl=4'),
+    }
+
+    arches = ['unet2', 'dense_unet']
+
+    def localize_model(train_dpath, epoch, local_path):
+        import shutil
+        local_snap_path = ub.ensuredir((local_path, 'torch_snapshots'))
+        orig_load_path = fit_harn2.get_snapshot(train_dpath, epoch=epoch)
+        orig_info_fpath = join(train_dpath, 'train_info.json')
+        local_info_fpath = join(local_path, 'train_info.json')
+        local_load_path = join(local_snap_path, basename(orig_load_path))
+
+        shutil.copy2(orig_info_fpath, local_info_fpath)
+        shutil.copy2(orig_load_path, local_load_path)
+
+    local_arch_to_train_dpath = {}
+
+    final_dpath = ub.ensuredir(ub.truepath('~/docker/final_model'))
+    for arch in arches:
+        local_path = ub.ensuredir((final_dpath, arch))
+        epoch = max_epochs[arch]
+        train_dpath = arch_to_train_dpath[arch]
+        localize_model(train_dpath, epoch, local_path)
+        rel_local_train_dpath = relpath(local_path, final_dpath)
+        local_arch_to_train_dpath[arch] = rel_local_train_dpath
+
+    solution = {
+        'max_params': max_params,
+        'max_epochs': max_epochs,
+        'arch_to_train_dpath': local_arch_to_train_dpath,
+        'arches': arches,
+    }
+    soln_fpath = join(final_dpath, 'trained_soln.pkl')
+    print('write trained model/param info to = {!r}'.format(soln_fpath))
+    with open(soln_fpath, 'wb') as file:
+        file.write(pickle.dumps(solution))
 
 
 class UrbanDataset(torch.utils.data.Dataset):
@@ -600,8 +674,8 @@ def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
     return arch_to_paths
 
 
-def make_submission_file(arch_to_paths, params, output_file, arches,
-                         ensemble_weights=None):
+def write_submission_file(arch_to_paths, params, output_file, arches,
+                          ensemble_weights=None):
     """
     TODO: take in multiple prediction paths for an enemble
 
@@ -748,7 +822,7 @@ def load_testing_dataset(test_data_path, workdir):
     test_part_inputs = prep.make_parts(test_fullres, scale=1, clear=0)
 
     if DEBUG:
-        test_dataset = UrbanDataset(test_part_inputs[:30], task)
+        test_dataset = UrbanDataset(test_part_inputs[:5], task)
     else:
         test_dataset = UrbanDataset(test_part_inputs, task)
 
@@ -838,7 +912,7 @@ def fit_networks(datasets, xpu):
             ignore_label=2
         )
         if DEBUG:
-            harn.config['max_iter'] = 4
+            harn.config['max_iter'] = 2
 
         def compute_loss(harn, outputs, labels):
 
@@ -938,16 +1012,28 @@ def test(train_data_path, test_data_path, output_file, soln_fpath=None):
     workdir = script_workdir()
     test_dataset = load_testing_dataset(test_data_path, workdir)
 
-    if soln_fpath is None:
-        # Check if we have a locally trained model
-        soln_fpath = join(workdir, 'trained_soln.pkl')
-        # TODO: if not default to the pretained one
-        # (that should exist in docker)
+    use_pretained = ub.argflag('--pretrained')
+
+    # if soln_fpath is None:
+    #     # Check if we have a locally trained model
+    #     soln_fpath = join(workdir, 'trained_soln.pkl')
+    #     # TODO: if not default to the pretained one
+    #     # (that should exist in docker)
+    #     use_pretained = False
+
+    if use_pretained:
+        # use pretrained
+        soln_fpath = ub.truepath('~/docker/final_model/trained_soln.pkl')
+        assert exists(soln_fpath)
 
     with open(soln_fpath, 'rb') as file:
         solution = pickle.load(file)
 
-    arch_to_train_dpath = solution['arch_to_train_dpath']
+    # load paths relative to the soln file
+    arch_to_train_dpath = ub.map_vals(
+        lambda p: join(dirname(soln_fpath), p),
+        solution['arch_to_train_dpath']
+    )
     max_epochs = solution['max_epochs']
     max_params = solution['max_params']
     arches = solution['arches']
@@ -963,8 +1049,8 @@ def test(train_data_path, test_data_path, output_file, soln_fpath=None):
                                          arch_to_train_dpath, workdir,
                                          max_epochs, 'eval')
 
-    make_submission_file(arch_to_paths, params, output_file, arches,
-                         ensemble_weights)
+    write_submission_file(arch_to_paths, params, output_file, arches,
+                          ensemble_weights)
 
 
 def main():
