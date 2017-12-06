@@ -1091,7 +1091,7 @@ def test(train_data_path, test_data_path, output_file):
 
     if vali_check:
         preload, objective =  _make_scorable_objective(arch_to_paths, arches,
-                                                       test_data_path)
+                                                       train_data_path)
         score = objective(**max_params)
         print('checked score = {!r}'.format(score))
 
