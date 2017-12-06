@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 # import numpy as np
 import collections
 import sys
-import tqdm
 import glob
 import numpy as np
 from os.path import join
@@ -21,17 +20,8 @@ from clab.torch import nnio
 from clab import util  # NOQA
 from clab import getLogger
 logger = getLogger(__name__)
-
-
-def progsafe_print(msg):
-    # If any tqdm progress iterator is active, then we must print via tqdm
-    if len(getattr(tqdm.tqdm, '_instances', [])):
-        tqdm.tqdm.write(msg)
-    else:
-        # otherwise use the logger
-        logger.info(msg)
-
-print = progsafe_print
+print = util.protect_print(logger.info)
+# print = logger.info
 
 
 def demo():
@@ -55,7 +45,17 @@ def demo():
         transform=transform,
     )
 
-    factor = 200
+    SSEG = 1
+    if SSEG:
+        datakw['image_size'] = (1, 200, 200)
+        def _gt_as_sseg_mask(gt):
+            # transform groundtruth into a random semantic segmentation mask
+            return (torch.rand(datakw['image_size'][1:]) * n_classes).long()
+        datakw['target_transform'] = _gt_as_sseg_mask
+        factor = 1
+    else:
+        factor = 200
+
     datasets = {
         'train': torchvision.datasets.FakeData(size=10 * factor, random_offset=0, **datakw),
         'vali': torchvision.datasets.FakeData(size=5 * factor, random_offset=110000, **datakw),
@@ -73,25 +73,39 @@ def demo():
             self.n_classes = n_classes
 
         def forward(self, inputs):
-            if isinstance(inputs, list):
+            if isinstance(inputs, (tuple, list)):
                 assert len(inputs) == 1
-            inputs = inputs[0]
+                inputs = inputs[0]
             return self.seq(inputs)
 
-    model = DummyModel(n_classes)
+    if SSEG:
+        from clab.torch.models import unet
+        from clab.torch import criterions
+        model = unet.UNet(in_channels=1, n_classes=n_classes, feature_scale=64)
+        hyper = hyperparams.HyperParams(
+            criterion_cls=criterions.CrossEntropyLoss2D,
+        )
+    else:
+        model = DummyModel(n_classes)
+        hyper = hyperparams.HyperParams(
+            criterion_cls=torch.nn.CrossEntropyLoss,
+        )
+
     xpu = xpu_device.XPU()
-    hyper = hyperparams.HyperParams(
-        criterion_cls=torch.nn.CrossEntropyLoss,
-    )
 
     # hack
     def compute_loss(harn, outputs, labels):
         # Compute the loss
-        output = outputs
-        target = labels[0].long()
-        pred = torch.nn.functional.log_softmax(output, dim=1)
-        loss = torch.nn.functional.nll_loss(pred, target)
-        # loss = harn.criterion(output, label)
+        if isinstance(outputs, list):
+            outputs = outputs[0]
+        if isinstance(labels, list):
+            target = labels[0]
+        if SSEG:
+            loss = harn.criterion(outputs, target)
+        else:
+            target = labels[0].long()
+            pred = torch.nn.functional.log_softmax(outputs, dim=1)
+            loss = torch.nn.functional.nll_loss(pred, target)
         return loss
 
     train_dpath = ub.ensure_app_cache_dir('clab/demo/fit_harness')

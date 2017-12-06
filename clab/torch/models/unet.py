@@ -6,8 +6,11 @@ import torch
 import torch.nn.functional as F
 from clab.torch import nninit
 from clab.torch.models.output_shape_for import OutputShapeFor
+from clab import util
 
 __all__ = ['UNet']
+
+print = util.protect_print(print)
 
 
 class UNetConv2(nn.Module):
@@ -32,6 +35,7 @@ class UNetConv2(nn.Module):
         else:
             self.conv1 = nn.Sequential(conv2d_1, nonlinearity(),)
             self.conv2 = nn.Sequential(conv2d_2, nonlinearity(),)
+
     def forward(self, inputs):
         outputs = self.conv1(inputs)
         outputs = self.conv2(outputs)
@@ -408,6 +412,9 @@ class UNet(nn.Module, mixin.NetMixin):
         postcrop = (postcrop_w, postcrop_h)
 
         self._cache[input_shape] = (prepad, postcrop)
+
+        import tqdm
+        print = tqdm.tqdm.write
         print('prepad = {!r}'.format(prepad))
         print('postcrop = {!r}'.format(postcrop))
         return prepad, postcrop
@@ -478,7 +485,8 @@ class UNet(nn.Module, mixin.NetMixin):
         """
         # Is there a way to miror so that we have enough input pixels?
         # so we can crop off extras after?
-        if isinstance(inputs, tuple):
+        if isinstance(inputs, (tuple, list)):
+            assert len(inputs) == 1
             inputs = inputs[0]
 
         mirrored = inputs

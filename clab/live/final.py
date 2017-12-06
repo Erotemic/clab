@@ -749,14 +749,6 @@ def write_submission_file(arch_to_paths, params, output_file, arches,
     ub.writeto(fpath, text)
 
 
-def script_workdir():
-    if DEBUG:
-        workdir = ub.ensuredir(ub.truepath('~/data/work_phase2_debug'))
-    else:
-        workdir = ub.ensuredir(ub.truepath('~/data/work_phase2'))
-    return workdir
-
-
 def load_training_datasets(train_data_path, workdir):
     """
     Loads a dataset with groundtruth and splits it into train / validation
@@ -941,8 +933,10 @@ def fit_networks(datasets, xpu):
         else:
             # Note on aretha we can do 140 epochs in 7 days, so
             # be careful with how long we take to train.
-            harn.config['max_iter'] = 60
-        harn.early_stop.patience = 5
+            # With a reduction of 16, we can take a few more epochs
+            # Unet2 take ~10 minutes to get through one
+            harn.config['max_iter'] = 432  # 3 days max
+        harn.early_stop.patience = 10
 
         def compute_loss(harn, outputs, labels):
 
@@ -1082,6 +1076,14 @@ def test(train_data_path, test_data_path, output_file, soln_fpath=None):
 
     write_submission_file(arch_to_paths, params, output_file, arches,
                           ensemble_weights)
+
+
+def script_workdir():
+    if DEBUG:
+        workdir = ub.ensuredir(ub.truepath('~/data/work_phase2_debug'))
+    else:
+        workdir = ub.ensuredir(ub.truepath('~/data/work_phase2'))
+    return workdir
 
 
 def main():

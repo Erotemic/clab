@@ -1,6 +1,7 @@
 import six
 import numpy as np
 import h5py
+import tqdm
 
 
 def isiterable(obj):
@@ -218,3 +219,16 @@ def compact_idstr(dict_):
 #     def __enter__(self):
 
 #         return self
+
+
+def protect_print(print):
+    # def protected_print(*args, **kw):
+    def protected_print(msg):
+        if len(getattr(tqdm.tqdm, '_instances', [])):
+            tqdm.tqdm.write(str(msg))
+        else:
+            # otherwise use the print / logger
+            # (ensure logger has custom logic to exclude logging at this exact
+            # place)
+            print(msg)
+    return protected_print

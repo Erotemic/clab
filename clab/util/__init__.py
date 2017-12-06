@@ -42,9 +42,9 @@ else:
     from clab.util.jsonutil import (JSONEncoder, NumpyAwareJSONEncoder,
                                     NumpyEncoder, json_numpy_obj_hook, read_json,
                                     walk_json, write_json,)
-    from clab.util.misc import (cc_locs, compact_idstr, isiterable, read_arr,
-                                read_h5arr, roundrobin, super2, write_arr,
-                                write_h5arr,)
+    from clab.util.misc import (cc_locs, compact_idstr, isiterable, protect_print,
+                                read_arr, read_h5arr, roundrobin, super2,
+                                write_arr, write_h5arr,)
     from clab.util.mplutil import (adjust_subplots, axes_extent,
                                    copy_figure_to_clipboard, extract_axes_extents,
                                    figure, pandas_plot_matrix,
