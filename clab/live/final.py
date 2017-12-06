@@ -359,10 +359,10 @@ class UrbanDataset(torch.utils.data.Dataset):
         # return class_weights
 
 
-def find_params(arch_to_paths, arches, train_data_path):
-    def bo_best(self):
-        return {'max_val': self.Y.max(),
-                'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
+def _make_scorable_objective(arch_to_paths, arches, train_data_path):
+    """
+    Makes objective evaluation function that caches loaded data
+    """
 
     @ub.memoize
     def memo_read_arr(fpath):
@@ -394,8 +394,6 @@ def find_params(arch_to_paths, arches, train_data_path):
             for arch in arches:
                 memo_read_arr(arch_to_paths[arch]['probs'][ix])
                 memo_read_arr(arch_to_paths[arch]['probs1'][ix])
-
-    preload()  # read datas into memory
 
     def seeded_objective(**params):
         # CONVERT PROBABILITIES TO INSTANCE PREDICTIONS
@@ -434,6 +432,16 @@ def find_params(arch_to_paths, arches, train_data_path):
             fscores.append(fscore)
         mean_fscore = np.mean(fscores)
         return mean_fscore
+    return preload, seeded_objective
+
+
+def optimize_postproc_params(arch_to_paths, arches, train_data_path):
+    def bo_best(self):
+        return {'max_val': self.Y.max(),
+                'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
+
+    preload, seeded_objective = _make_scorable_objective()
+    preload()  # read datas into memory
 
     seeded_bounds = {
         'mask_thresh': (.4, .9),
@@ -1005,7 +1013,7 @@ def train(train_data_path):
                                              _epochs, 'vali')
 
         # Find the right hyper-params
-        value, params = find_params(arch_to_paths, arches, train_data_path)
+        value, params = optimize_postproc_params(arch_to_paths, arches, train_data_path)
 
         if max_value is None or max_value < value:
             max_value = value
@@ -1037,7 +1045,7 @@ def test(train_data_path, test_data_path, output_file, soln_fpath=None):
     workdir = script_workdir()
     test_dataset = load_testing_dataset(test_data_path, workdir)
 
-    use_pretained = ub.argflag('--pretrained')
+    use_ots = ub.argflag('--use_ots')
 
     # if soln_fpath is None:
     #     # Check if we have a locally trained model
@@ -1046,7 +1054,7 @@ def test(train_data_path, test_data_path, output_file, soln_fpath=None):
     #     # (that should exist in docker)
     #     use_pretained = False
 
-    if use_pretained:
+    if use_ots:
         # use pretrained
         soln_fpath = ub.truepath('~/docker/final_model/trained_soln.pkl')
         assert exists(soln_fpath)
@@ -1065,14 +1073,19 @@ def test(train_data_path, test_data_path, output_file, soln_fpath=None):
 
     xpu = xpu_device.XPU.from_argv()
 
-    alpha = max_params.pop('alpha')
-    ensemble_weights = [alpha, 1 - alpha]
-
-    params = max_params
-
     arch_to_paths = stitched_predictions(test_dataset, arches, xpu,
                                          arch_to_train_dpath, workdir,
                                          max_epochs, 'eval')
+
+    if ub.argflag('--gt-check'):
+        preload, objective =  _make_scorable_objective(arch_to_paths, arches,
+                                                       test_data_path)
+        score = objective(**max_params)
+        print('checked score = {!r}'.format(score))
+
+    alpha = max_params.pop('alpha')
+    ensemble_weights = [alpha, 1 - alpha]
+    params = max_params
 
     write_submission_file(arch_to_paths, params, output_file, arches,
                           ensemble_weights)
@@ -1103,6 +1116,6 @@ if __name__ == '__main__':
     CommandLine:
         python -m clab.live.final train
 
-        python -m clab.live.final test --pretrained
+        python -m clab.live.final test --use_ots
     """
     main()
