@@ -349,7 +349,7 @@ class UrbanDataset(torch.utils.data.Dataset):
         # return class_weights
 
 
-def find_params(arch_to_paths, arches):
+def find_params(arch_to_paths, arches, train_data_path):
     def bo_best(self):
         return {'max_val': self.Y.max(),
                 'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
@@ -807,6 +807,7 @@ def load_training_datasets(train_data_path, workdir):
     datasets['vali'].center_inputs = datasets['train'].center_inputs
 
     datasets['train'].augment = True
+    return datasets
 
 
 def load_testing_dataset(test_data_path, workdir):
@@ -835,7 +836,7 @@ def load_testing_dataset(test_data_path, workdir):
 
 
 def fit_networks(datasets, xpu):
-    print('datasets = {!r}'.format(datasets))
+    print('datasets = {}'.format(datasets))
     n_classes = datasets['train'].n_classes
     n_channels = datasets['train'].n_channels
     class_weights = datasets['train'].class_weights()
@@ -959,6 +960,7 @@ def train(train_data_path):
     """
     workdir = script_workdir()
     datasets = load_training_datasets(train_data_path, workdir)
+    print('datasets = {!r}'.format(datasets))
 
     xpu = xpu_device.XPU.from_argv()
 
@@ -984,7 +986,7 @@ def train(train_data_path):
                                              _epochs, 'vali')
 
         # Find the right hyper-params
-        value, params = find_params(arch_to_paths, arches)
+        value, params = find_params(arch_to_paths, arches, train_data_path)
 
         if max_value is None or max_value < value:
             max_value = value
