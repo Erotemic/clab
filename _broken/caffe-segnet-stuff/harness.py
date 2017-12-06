@@ -141,7 +141,7 @@ class Harness(object):
 
             if harn.init_pretrained_fpath is not None:
                 if harn.train_init_id is None:
-                    harn.train_init_id = util.get_file_hash(harn.init_pretrained_fpath)[:harn.abbrev]
+                    harn.train_init_id = util.hash_file(harn.init_pretrained_fpath)[:harn.abbrev]
             else:
                 harn.train_init_id = None
 

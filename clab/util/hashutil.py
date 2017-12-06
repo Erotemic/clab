@@ -251,21 +251,21 @@ def _convert_hexstr_to_bigbase(hexstr, alphabet):
     return newbase_str
 
 
-def get_file_hash(fpath, blocksize=65536, hasher=None, stride=1):
+def hash_file(fpath, blocksize=65536, hasher=None, stride=1):
     r"""
     For better hashes use hasher=hashlib.sha256, and keep stride=1
 
     Args:
         fpath (str):  file path string
         blocksize (int): 2 ** 16. Affects speed of reading file
-        hasher (None):  defaults to sha1 for fast (but insecure) hashing
+        hasher (None):  defaults to sha1 for fast (but non-robust) hashing
         stride (int): strides > 1 skip data to hash, useful for faster
                       hashing, but less accurate, also makes hash dependant on
                       blocksize.
 
     References:
-        http://stackoverflow.com/questions/3431825/generating-a-md5-checksum-of-a-file
-        http://stackoverflow.com/questions/5001893/when-should-i-use-sha-1-and-when-should-i-use-sha-2
+        http://stackoverflow.com/questions/3431825/md5-checksum-of-a-file
+        http://stackoverflow.com/questions/5001893/when-to-use-sha-1-vs-sha-2
 
     Example:
         >>> from clab.util import *
@@ -273,19 +273,24 @@ def get_file_hash(fpath, blocksize=65536, hasher=None, stride=1):
         >>> from os.path import join
         >>> fpath = join(ub.ensure_app_cache_dir('ubelt'), 'tmp.txt')
         >>> ut.write_to(fpath, 'foobar')
-        >>> hashid = get_file_hash(fpath)
-        >>> print('hashid = {!r}'.format(hashid))
-        hashid = 'eggkpeyskpummajviqqbrmrcinzmuqubtp'
+        >>> hash_file(fpath)
+        oscjatwzheaqcvlpdowhzhowwikupotgwgqyrpnnvewhvxkxxjtivld
     """
     if hasher is None:
         hasher = hashlib.sha256()
-    with open(fpath, 'rb') as file_:
-        buf = file_.read(blocksize)
-        while len(buf) > 0:
-            hasher.update(buf)
-            if stride > 1:
-                file_.seek(blocksize * (stride - 1), 1)  # skip blocks
-            buf = file_.read(blocksize)
+    with open(fpath, 'rb') as file:
+        buf = file.read(blocksize)
+        if stride > 1:
+            # skip blocks when stride is greater than 1
+            while len(buf) > 0:
+                hasher.update(buf)
+                file.seek(blocksize * (stride - 1), 1)
+                buf = file.read(blocksize)
+        else:
+            # otherwise hash the entire file
+            while len(buf) > 0:
+                hasher.update(buf)
+                buf = file.read(blocksize)
         hexid = hasher.hexdigest()
         hashid = _convert_hexstr_to_bigbase(hexid, _ALPHABET_27)
         return hashid

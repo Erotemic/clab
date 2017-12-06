@@ -678,12 +678,22 @@ def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
 
         pharn = UrbanPredictHarness(dataset, xpu)
         dataset.center_inputs = pharn.load_normalize_center(train_dpath)
-        pharn.test_dump_dpath = ub.ensuredir((workdir, tag, arch, 'epoch{}'.format(epoch)))
+
+        pharn.test_dump_dpath = ub.ensuredir((workdir, tag,
+                                              dataset.inputs.input_id, arch,
+                                              'epoch{}'.format(epoch)))
 
         stitched_dpath = join(pharn.test_dump_dpath, 'stitched')
 
+        cfgstr = util.hash_data([
+            # depend on both the inputs and the exact model specs
+            dataset.inputs.input_id,
+            util.hash_file(load_path)
+        ])
+
         # predict the whole scene
-        cacher = ub.Cacher('prediction_stamp', cfgstr='', dpath=stitched_dpath)
+        cacher = ub.Cacher('prediction_stamp', cfgstr=cfgstr,
+                           dpath=stitched_dpath)
         if cacher.tryload() is None:
             # Only execute this if we haven't done so
             pharn.load_snapshot(load_path)

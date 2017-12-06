@@ -398,7 +398,7 @@ class Inputs(ub.NiceRepr):
                 # stride>1 is faster but might break
                 # stride=1 is the safest
                 hashes = [
-                    hashutil.get_file_hash(p, stride=32)
+                    hashutil.hash_file(p, stride=32)
                     for p in ub.ProgIter(self.gt_paths, label='hashing')
                     if 'aug' not in basename(p) and 'part' not in basename(p)
                 ]
