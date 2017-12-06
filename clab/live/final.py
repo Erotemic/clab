@@ -32,6 +32,8 @@ from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 
 DEBUG = False
 
+print = util.protect_print(print)
+
 
 def package_pretrained_submission():
     """
@@ -1087,7 +1089,7 @@ def test(train_data_path, test_data_path, output_file):
                                          arch_to_train_dpath, workdir,
                                          max_epochs, 'eval')
 
-    if ub.argflag('--vali-check'):
+    if vali_check:
         preload, objective =  _make_scorable_objective(arch_to_paths, arches,
                                                        test_data_path)
         score = objective(**max_params)
