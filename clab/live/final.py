@@ -665,6 +665,10 @@ class UrbanPredictHarness(object):
 
 def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
                          _epochs, tag):
+
+    dataset.inputs.input_id
+    print('dataset.inputs.input_id = {!r}'.format(dataset.inputs.input_id))
+
     # Predict probabilities for each model in the ensemble
     arch_to_paths = {}
     for arch in arches:
@@ -999,8 +1003,6 @@ def train(train_data_path):
 
     vali_dataset2.inputs.make_dumpsafe_names()
     vali_dataset2.with_gt = False
-    vali_dataset2.inputs.input_id
-    print('vali_dataset2.inputs.input_id = {!r}'.format(vali_dataset2.inputs.input_id))
 
     max_value = None
     max_params = None
