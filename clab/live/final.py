@@ -809,7 +809,7 @@ def load_training_datasets(train_data_path, workdir):
 
     train_dataset = UrbanDataset(train_part_inputs, task)
     vali_dataset = UrbanDataset(vali_part_inputs, task)
-    vali_dataset2 = UrbanDataset(vali_part_inputs, task)
+    vali_dataset2 = UrbanDataset(vali_part_inputs2, task)
 
     # Shrink epochs by a factor of 16 for more frequent progress
     train_dataset.epoch_shrink = 16
