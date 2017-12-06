@@ -1035,24 +1035,32 @@ def train(train_data_path):
         file.write(pickle.dumps(solution))
 
 
-def test(train_data_path, test_data_path, output_file, soln_fpath=None):
+def test(train_data_path, test_data_path, output_file):
     """
 
     train_data_path
     test_data_path
     output_file
     """
-    workdir = script_workdir()
-    test_dataset = load_testing_dataset(test_data_path, workdir)
-
     use_ots = ub.argflag('--use_ots')
+    vali_check = ub.argflag('--vali_check')
 
-    # if soln_fpath is None:
-    #     # Check if we have a locally trained model
-    #     soln_fpath = join(workdir, 'trained_soln.pkl')
-    #     # TODO: if not default to the pretained one
-    #     # (that should exist in docker)
-    #     use_pretained = False
+    workdir = script_workdir()
+
+    if vali_check:
+        # Check the the test script works on the validation dataset
+        _, vali_dataset2 = load_training_datasets(train_data_path, workdir)
+        test_dataset = vali_dataset2
+    else:
+        # Do the validation on the real test data
+        test_dataset = load_testing_dataset(test_data_path, workdir)
+
+    # Check if we have a locally trained model
+    soln_fpath = join(workdir, 'trained_soln.pkl')
+    if not exists(soln_fpath):
+        # use the pretrained off the shelf model if we dont have a trained
+        # model
+        use_ots = True
 
     if use_ots:
         # use pretrained
@@ -1077,7 +1085,7 @@ def test(train_data_path, test_data_path, output_file, soln_fpath=None):
                                          arch_to_train_dpath, workdir,
                                          max_epochs, 'eval')
 
-    if ub.argflag('--gt-check'):
+    if ub.argflag('--vali-check'):
         preload, objective =  _make_scorable_objective(arch_to_paths, arches,
                                                        test_data_path)
         score = objective(**max_params)
@@ -1116,6 +1124,6 @@ if __name__ == '__main__':
     CommandLine:
         python -m clab.live.final train
 
-        python -m clab.live.final test --use_ots
+        python -m clab.live.final test --use_ots --vali_check
     """
     main()
