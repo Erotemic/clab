@@ -226,7 +226,7 @@ class FitHarness(object):
 
         harn.loaders = ub.odict()
         harn.datasets = datasets
-        assert len(set(harn.datasets.keys()) & {'train', 'vali', 'test'}) == 3
+        assert set(harn.datasets.keys()).issubset({'train', 'vali', 'test'})
         for tag in ['train', 'vali', 'test']:
             dset = harn.datasets.get(tag, None)
             if dset:
