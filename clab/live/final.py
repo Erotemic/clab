@@ -504,7 +504,7 @@ def optimize_postproc_params(arch_to_paths, arches, train_data_path):
 class UrbanPredictHarness(object):
     def __init__(pharn, dataset, xpu):
         pharn.dataset = dataset
-        pharn.xpu = xpu  # xpu_device.XPU.from_argv()
+        pharn.xpu = xpu
         pharn.model = None
         pharn.test_dump_dpath = None
 
@@ -692,8 +692,7 @@ def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
         ])
 
         # predict the whole scene
-        cacher = ub.Cacher('prediction_stamp', cfgstr=cfgstr,
-                           dpath=stitched_dpath)
+        cacher = ub.Cacher('prediction_stamp', cfgstr=cfgstr, dpath=stitched_dpath)
         if cacher.tryload() is None:
             # Only execute this if we haven't done so
             pharn.load_snapshot(load_path)
