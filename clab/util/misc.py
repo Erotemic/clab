@@ -232,3 +232,44 @@ def protect_print(print):
             # place)
             print(msg)
     return protected_print
+
+
+def clean_tensorboard_protobufs(dpath):
+    """
+    Removes event logs that only contain conflicting information
+
+    dpath = '/home/local/KHQ/jon.crall/data/work_phase2/train/unet2/'
+    """
+
+    # from tensorflow.python.summary import event_accumulator
+    from tensorboard.backend.event_processing import event_accumulator
+    import glob
+    from os.path import join
+    from collections import defaultdict
+    import ubelt as ub
+
+    # Clean out iterno overrides
+    event_paths = sorted(glob.glob(join(dpath, 'events.out.tfevents*')))
+
+    bad_paths = set()
+    good_paths = set()
+    low_steps = defaultdict(lambda: float('inf'))
+    for p in reversed(event_paths):
+        ea = event_accumulator.EventAccumulator(p)
+        ea.Reload()
+        for key in ea.scalars.Keys():
+            events = ea.scalars.Items(key)
+            for e in reversed(sorted(events, key=lambda e: e.wall_time)):
+                if e.step < low_steps[key]:
+                    low_steps[key] = e.step
+                    good_paths.add(p)
+                else:
+                    # Can we individually remove scalars?
+                    bad_paths.add(p)
+                    # print('skip e = {}, {!r}'.format(key, e))
+
+    # these paths only have conflicting old information. Just kill them
+    onlybad_paths = bad_paths - good_paths
+    print('onlybad_paths = {!r}'.format(onlybad_paths))
+    for p in onlybad_paths:
+        ub.delete(p)
