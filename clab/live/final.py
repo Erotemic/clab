@@ -918,6 +918,8 @@ def fit_networks(datasets, xpu):
         )
         if DEBUG:
             harn.config['max_iter'] = 2
+        else:
+            harn.config['max_iter'] = 100
 
         def compute_loss(harn, outputs, labels):
 

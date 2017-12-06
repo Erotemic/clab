@@ -18,7 +18,6 @@ import itertools as it
 from clab.torch import metrics
 from clab.torch import xpu_device
 from clab.torch import nnio
-from clab.torch import im_loaders
 from clab import util  # NOQA
 from clab import getLogger
 logger = getLogger(__name__)
@@ -131,7 +130,7 @@ class EarlyStop(object):
         >>> early_stop.best_epochs()
         >>> print('Best epochs / loss: {}'.format(ub.repr2(list(early_stop.memory), nl=1, precision=6)))
     """
-    def __init__(early_stop, max_patience=20):
+    def __init__(early_stop, patience=5):
         # import sortedcontainers
         # store tuples of (loss, epoch)
         early_stop.memory = collections.deque(maxlen=3)
@@ -143,8 +142,8 @@ class EarlyStop(object):
         early_stop.best_epoch = None
         early_stop.best_loss = None
 
-        early_stop.max_patience = max_patience
-        early_stop.patience = early_stop.max_patience
+        early_stop.patience = patience
+        early_stop.n_bad_epochs = 0
 
     def update(early_stop, epoch, loss):
         early_stop.prev_epoch = epoch
@@ -164,18 +163,18 @@ class EarlyStop(object):
         if early_stop.best_loss is None or loss < early_stop.best_loss:
             early_stop.best_loss = loss
             early_stop.best_epoch = epoch
-            early_stop.patience = early_stop.max_patience
+            early_stop.n_bad_epochs = 0
         else:
-            early_stop.patience -= 1
+            early_stop.n_bad_epochs += 1
 
     def is_improved(early_stop):
         """
         returns True if the last update improved the validation loss
         """
-        return early_stop.patience == early_stop.max_patience
+        return early_stop.n_bad_epochs == 0
 
     def is_done(early_stop):
-        return early_stop.patience <= 0
+        return early_stop.n_bad_epochs >= early_stop.patience
 
     def best_epochs(early_stop):
         return [epoch for epoch, loss in early_stop.memory]
@@ -185,13 +184,13 @@ class EarlyStop(object):
             return 'vloss is unevaluated'
         # if early_stop.is_improved():
             # message = 'vloss: {:.4f} (new_best)'.format(early_stop.best_loss)
-        message = 'vloss: {:.4f} (patience={:2d}, best={:.4f})'.format(
-            early_stop.prev_loss, early_stop.patience,
+        message = 'vloss: {:.4f} (n_bad_epochs={:2d}, best={:.4f})'.format(
+            early_stop.prev_loss, early_stop.n_bad_epochs,
             early_stop.best_loss,
         )
-        if early_stop.patience >= int(early_stop.max_patience * .75):
+        if early_stop.n_bad_epochs <= int(early_stop.patience * .25):
             message = ub.color_text(message, 'green')
-        elif early_stop.patience <= int(early_stop.max_patience * .25):
+        elif early_stop.n_bad_epochs >= int(early_stop.patience * .75):
             message = ub.color_text(message, 'red')
         else:
             message = ub.color_text(message, 'yellow')
@@ -220,9 +219,8 @@ class FitHarness(object):
 
         data_kw = {'batch_size': batch_size}
         if harn.xpu.is_gpu():
-            # data_kw.update({'num_workers': 6, 'pin_memory': True})
-
-            data_kw.update({'num_workers': 0, 'pin_memory': False})
+            data_kw.update({'num_workers': 4, 'pin_memory': True})
+            # data_kw.update({'num_workers': 0, 'pin_memory': False})
 
         harn.loaders = ub.odict()
         harn.datasets = datasets
