@@ -679,7 +679,7 @@ def stitched_predictions(dataset, arches, xpu, arch_to_train_dpath, workdir,
         stitched_dpath = join(pharn.test_dump_dpath, 'stitched')
 
         # predict the whole scene
-        cacher = ub.Cacher('prediction_stamp', dpath=stitched_dpath)
+        cacher = ub.Cacher('prediction_stamp', cfgstr='', dpath=stitched_dpath)
         if cacher.tryload() is None:
             # Only execute this if we haven't done so
             pharn.load_snapshot(load_path)
@@ -999,6 +999,8 @@ def train(train_data_path):
 
     vali_dataset2.inputs.make_dumpsafe_names()
     vali_dataset2.with_gt = False
+    vali_dataset2.inputs.input_id
+    print('vali_dataset2.inputs.input_id = {!r}'.format(vali_dataset2.inputs.input_id))
 
     max_value = None
     max_params = None
