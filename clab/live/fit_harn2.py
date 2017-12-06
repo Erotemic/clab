@@ -221,7 +221,7 @@ class FitHarness(object):
 
         data_kw = {'batch_size': batch_size}
         if harn.xpu.is_gpu():
-            data_kw.update({'num_workers': batch_size * 2, 'pin_memory': True})
+            data_kw.update({'num_workers': 6, 'pin_memory': True})
             # data_kw.update({'num_workers': 0, 'pin_memory': False})
 
         harn.loaders = ub.odict()

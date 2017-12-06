@@ -795,21 +795,21 @@ def load_training_datasets(train_data_path, workdir):
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali1')))
     prep.part_config['overlap'] = 0 if DEBUG else .75
     prep.ignore_label = task.ignore_label
-    vali_part_inputs = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
+    vali_part_inputs2 = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
 
     if DEBUG:
-        vali_part_inputs2 = vali_part_inputs
+        vali_part_inputs = vali_part_inputs2
     else:
         # Make two versions of vali, one with 75% overlap for stiched
         # prediction and another with 0 overlap, for loss validation
         prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali2')))
-        prep.part_config['overlap'] = .75
+        prep.part_config['overlap'] = 0
         prep.ignore_label = task.ignore_label
-        vali_part_inputs2 = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
+        vali_part_inputs = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
 
     train_dataset = UrbanDataset(train_part_inputs, task)
     vali_dataset = UrbanDataset(vali_part_inputs, task)
-    vali_dataset2 = UrbanDataset(vali_part_inputs2, task)
+    vali_dataset2 = UrbanDataset(vali_part_inputs, task)
 
     # Shrink epochs by a factor of 16 for more frequent progress
     train_dataset.epoch_shrink = 16
