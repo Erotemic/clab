@@ -835,6 +835,7 @@ def load_testing_dataset(test_data_path, workdir):
 
 
 def fit_networks(datasets, xpu):
+    print('datasets = {!r}'.format(datasets))
     n_classes = datasets['train'].n_classes
     n_channels = datasets['train'].n_channels
     class_weights = datasets['train'].class_weights()
