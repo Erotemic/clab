@@ -119,6 +119,8 @@ def demo():
 class EarlyStop(object):
     """
 
+    TODO: Poisson based early stop
+
     Example:
         >>> early_stop = EarlyStop()
         >>> early_stop.update(1, .5)
@@ -130,7 +132,7 @@ class EarlyStop(object):
         >>> early_stop.best_epochs()
         >>> print('Best epochs / loss: {}'.format(ub.repr2(list(early_stop.memory), nl=1, precision=6)))
     """
-    def __init__(early_stop, patience=5):
+    def __init__(early_stop, patience=10):
         # import sortedcontainers
         # store tuples of (loss, epoch)
         early_stop.memory = collections.deque(maxlen=3)
@@ -224,10 +226,10 @@ class FitHarness(object):
 
         harn.loaders = ub.odict()
         harn.datasets = datasets
+        assert len(set(harn.datasets.keys()) & {'train', 'vali', 'test'}) == 3
         for tag in ['train', 'vali', 'test']:
             dset = harn.datasets.get(tag, None)
             if dset:
-                assert tag in {'train', 'vali', 'test'}
                 shuffle = tag == 'train'
                 data_kw_ = data_kw.copy()
                 if tag != 'train':

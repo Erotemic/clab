@@ -160,6 +160,8 @@ class UrbanDataset(torch.utils.data.Dataset):
         self.use_aux_diff = True
         self.use_dual_gt = True
 
+        self.epoch_shrink = False
+
     def _make_normalizer(self):
         transforms = []
         # hack: specific number for DTM
@@ -203,7 +205,10 @@ class UrbanDataset(torch.utils.data.Dataset):
         return  meta
 
     def __len__(self):
-        return len(self.inputs)
+        if self.epoch_shrink:
+            return len(self.inputs) // self.epoch_shrink
+        else:
+            return len(self.inputs)
 
     def from_tensor(self, im, gt=None):
         if len(im.shape) == 3:
@@ -225,6 +230,11 @@ class UrbanDataset(torch.utils.data.Dataset):
         return input_tuple, gt_tensor
 
     def load_inputs(self, index):
+        if self.epoch_shrink:
+            # Randomly subsample epochs
+            offset = int(self.rng.rand() * self.epoch_shrink)
+            index = (index * self.epoch_shrink) + offset
+
         im_fpath = self.inputs.im_paths[index]
 
         if self.inputs.gt_paths:
@@ -741,9 +751,9 @@ def write_submission_file(arch_to_paths, params, output_file, arches,
 
 def script_workdir():
     if DEBUG:
-        workdir = ub.ensuredir(ub.truepath('~/data/phase2_work'))
+        workdir = ub.ensuredir(ub.truepath('~/data/work_phase2_debug'))
     else:
-        workdir = ub.ensuredir(ub.truepath('~/data/phase2_work_debug'))
+        workdir = ub.ensuredir(ub.truepath('~/data/work_phase2'))
     return workdir
 
 
@@ -778,26 +788,35 @@ def load_training_datasets(train_data_path, workdir):
     vali_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, vali_idx))
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_train1')))
-    if DEBUG:
-        prep.part_config['overlap'] = 0
-    else:
-        prep.part_config['overlap'] = .75
+    prep.part_config['overlap'] = 0 if DEBUG else .75
     prep.ignore_label = task.ignore_label
     train_part_inputs = prep.make_parts(train_fullres_inputs, scale=1, clear=0)
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali1')))
-    if DEBUG:
-        prep.part_config['overlap'] = 0
-    else:
-        prep.part_config['overlap'] = .75
+    prep.part_config['overlap'] = 0 if DEBUG else .75
     prep.ignore_label = task.ignore_label
     vali_part_inputs = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
 
+    if DEBUG:
+        vali_part_inputs2 = vali_part_inputs
+    else:
+        # Make two versions of vali, one with 75% overlap for stiched
+        # prediction and another with 0 overlap, for loss validation
+        prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali2')))
+        prep.part_config['overlap'] = .75
+        prep.ignore_label = task.ignore_label
+        vali_part_inputs2 = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
+
     train_dataset = UrbanDataset(train_part_inputs, task)
     vali_dataset = UrbanDataset(vali_part_inputs, task)
+    vali_dataset2 = UrbanDataset(vali_part_inputs2, task)
+
+    # Shrink epochs by a factor of 16 for more frequent progress
+    train_dataset.epoch_shrink = 16
 
     print('* len(train_dataset) = {}'.format(len(train_dataset)))
     print('* len(vali_dataset) = {}'.format(len(vali_dataset)))
+    print('* len(vali_dataset2) = {}'.format(len(vali_dataset2)))
     datasets = {
         'train': train_dataset,
         'vali': vali_dataset,
@@ -805,9 +824,10 @@ def load_training_datasets(train_data_path, workdir):
 
     datasets['train'].center_inputs = datasets['train']._make_normalizer()
     datasets['vali'].center_inputs = datasets['train'].center_inputs
+    vali_dataset2.center_inputs = datasets['train'].center_inputs
 
     datasets['train'].augment = True
-    return datasets
+    return datasets, vali_dataset2
 
 
 def load_testing_dataset(test_data_path, workdir):
@@ -919,7 +939,10 @@ def fit_networks(datasets, xpu):
         if DEBUG:
             harn.config['max_iter'] = 2
         else:
-            harn.config['max_iter'] = 100
+            # Note on aretha we can do 140 epochs in 7 days, so
+            # be careful with how long we take to train.
+            harn.config['max_iter'] = 60
+        harn.early_stop.patience = 5
 
         def compute_loss(harn, outputs, labels):
 
@@ -961,7 +984,7 @@ def train(train_data_path):
     postprocessing parameters to the GLOBAL work directory.
     """
     workdir = script_workdir()
-    datasets = load_training_datasets(train_data_path, workdir)
+    datasets, vali_dataset2 = load_training_datasets(train_data_path, workdir)
     print('datasets = {!r}'.format(datasets))
 
     xpu = xpu_device.XPU.from_argv()
@@ -970,8 +993,8 @@ def train(train_data_path):
 
     arches = ['unet2', 'dense_unet']
 
-    datasets['vali'].inputs.make_dumpsafe_names()
-    datasets['vali'].with_gt = False
+    vali_dataset2.inputs.make_dumpsafe_names()
+    vali_dataset2.with_gt = False
 
     max_value = None
     max_params = None
@@ -983,7 +1006,7 @@ def train(train_data_path):
         _epochs = dict(zip(arches, epoch_combo))
 
         # Predict probabilities for each model in the ensemble
-        arch_to_paths = stitched_predictions(datasets['vali'], arches, xpu,
+        arch_to_paths = stitched_predictions(vali_dataset2, arches, xpu,
                                              arch_to_train_dpath, workdir,
                                              _epochs, 'vali')
 
