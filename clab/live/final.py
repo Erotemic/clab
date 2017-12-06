@@ -1050,8 +1050,8 @@ def test(train_data_path, test_data_path, output_file):
     if vali_check:
         # Check the the test script works on the validation dataset
         _, vali_dataset2 = load_training_datasets(train_data_path, workdir)
-        import utool
-        utool.embed()
+        vali_dataset2.inputs.make_dumpsafe_names()
+        vali_dataset2.with_gt = False
         test_dataset = vali_dataset2
     else:
         # Do the validation on the real test data
