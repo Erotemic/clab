@@ -114,14 +114,31 @@ def parse_requirements(fname='requirements.txt'):
     return []
 
 
+def conditional_requirements(pkgmods):
+    # ONLY require these if the packages aren't installed because python
+    # doesn't seem to recognize that if we already have them.
+    for pkgname, modname in pkgmods:
+        try:
+            __import__(modname)
+        except ImportError:
+            yield pkgname
+
+
 if __name__ == '__main__':
+
+    requirements = parse_requirements('requirements.txt')
+    requirements += list(conditional_requirements([
+        ('opencv_python', 'cv2'),
+        ('pytorch', 'torch'),
+    ]))
+
     setup(
         name='clab',
         version=parse_version('clab'),
         author='Jon Crall',
         description='',
         long_description=parse_description(),
-        install_requires=parse_requirements('requirements.txt'),
+        install_requires=requirements,
         extras_require={
             'all': parse_requirements('optional-requirements.txt')
         },
