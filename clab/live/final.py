@@ -30,9 +30,9 @@ from clab.torch import xpu_device
 from clab.torch.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
 from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 
-DEBUG = False
-
 print = util.protect_print(print)
+
+DEBUG = ub.argflag('--debug')
 
 
 def package_pretrained_submission():

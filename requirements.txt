@@ -11,5 +11,14 @@ pandas
 scikit-image
 tensorboard_logger
 parse
+sympy
+Pillow
+onnx
+matplotlib
+pydensecrf
+scipy
+six
+line_profiler
+# tensorboard
 # opencv_python # CAREFUL, dont clobber ones that we installed
 # pytorch # causing docker issues, comment out, ideally we will build this from source ourselves

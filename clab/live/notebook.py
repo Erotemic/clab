@@ -7,7 +7,7 @@ import ubelt as ub
 import os  # NOQA
 from os.path import join, expanduser, splitext, basename  # NOQA
 from clab import xpu_device
-from .util import imutil
+from clab.util import imutil
 from clab import models
 
 from clab.torch.sseg_train import get_task, SSegInputsWrapper
@@ -101,7 +101,7 @@ def dump_task_inference(task, inputs, load_path):
         #     'img': img,
         # })
 
-        from .torch import filters
+        from clab.torch import filters
 
         posterior = filters.crf_posterior(img, log_probs)
         # output = prob_tensor.data.cpu().numpy()[0]
