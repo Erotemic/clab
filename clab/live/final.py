@@ -442,7 +442,8 @@ def optimize_postproc_params(arch_to_paths, arches, train_data_path):
         return {'max_val': self.Y.max(),
                 'max_params': dict(zip(self.keys, self.X[self.Y.argmax()]))}
 
-    preload, seeded_objective = _make_scorable_objective()
+    preload, seeded_objective = _make_scorable_objective(arch_to_paths, arches,
+                                                         train_data_path)
     preload()  # read datas into memory
 
     seeded_bounds = {
