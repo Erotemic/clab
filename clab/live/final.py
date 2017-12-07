@@ -451,7 +451,7 @@ def optimize_postproc_params(arch_to_paths, arches, train_data_path):
         'seed_thresh': (.4, .9),
         'min_seed_size': (0, 100),
         'min_size': (0, 100),
-        'alpha': (0, 1.0),
+        'alpha': (0.0, 1.0),
     }
 
     seeded_bo = BayesianOptimization(seeded_objective, seeded_bounds)
@@ -469,7 +469,7 @@ def optimize_postproc_params(arch_to_paths, arches, train_data_path):
     ]
     for p in cand_params:
         p['alpha'] = .88
-    n_init = 20
+    n_init = 2 if DEBUG else 40
 
     seeded_bo.explore(pd.DataFrame(cand_params).to_dict(orient='list'))
 
@@ -481,7 +481,7 @@ def optimize_postproc_params(arch_to_paths, arches, train_data_path):
 
     gp_params = {"alpha": 1e-5, "n_restarts_optimizer": 2}
 
-    n_iter = n_init // 4
+    n_iter = 2 if DEBUG else 10
     for kappa in [10, 5, 1]:
         seeded_bo.maximize(n_iter=n_iter, acq='ucb', kappa=kappa, **gp_params)
 
@@ -492,6 +492,7 @@ def optimize_postproc_params(arch_to_paths, arches, train_data_path):
     max_value = best_res['max_val']
 
     # search for a good alpha
+    # TODO: improve bayes_opt package to handle this
     for alpha in tqdm.tqdm(np.linspace(0, 1, 50), desc='opt alpha'):
         params = max_params.copy()
         params['alpha'] = alpha
