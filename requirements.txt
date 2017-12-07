@@ -6,4 +6,5 @@ sortedcontainers
 tqdm
 h5py
 bayesian-optimization
+torchvision
 # pytorch # comment out, ideally we will build this from source ourselves

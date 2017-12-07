@@ -1129,6 +1129,10 @@ def main():
     test_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/testing')
     output_file = 'prediction'
 
+    train_data_path = ub.argval('--train_data_path', default=train_data_path)
+    test_data_path = ub.argval('--test_data_path', default=test_data_path)
+    output_file = ub.argval('--output_file', default=output_file)
+
     if sys.argv[1] == 'train':
         train(train_data_path)
 
@@ -1142,5 +1146,12 @@ if __name__ == '__main__':
         python -m clab.live.final train
 
         python -m clab.live.final test --use_ots --vali_check
+
+        # After setup, run docker via
+        nvidia-docker run -v ~/data:/data -it urban3d
+
+        # On Docker
+        python3 -m clab.live.final train --train_data_path=/data/UrbanMapper3D/training
+        python3 -m clab.live.final test --train_data_path=/data/UrbanMapper3D/training --test_data_path=/data/UrbanMapper3D/testing --output_file=outfile
     """
     main()
