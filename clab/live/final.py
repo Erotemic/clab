@@ -852,18 +852,15 @@ def load_testing_dataset(test_data_path, workdir):
     task = UrbanMapper3D(root=test_data_path, workdir=workdir, boundary=True)
     test_fullres = task.load_fullres_inputs('.')
 
-    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
     if DEBUG:
-        prep.part_config['overlap'] = 0
-    else:
-        prep.part_config['overlap'] = .75
+        test_fullres = test_fullres.take([0, 1, 2, 3, 4, 5])
+
+    prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
+    prep.part_config['overlap'] = 0 if DEBUG else .75
     prep.ignore_label = task.ignore_label
     test_part_inputs = prep.make_parts(test_fullres, scale=1, clear=0)
 
-    if DEBUG:
-        test_dataset = UrbanDataset(test_part_inputs[:5], task)
-    else:
-        test_dataset = UrbanDataset(test_part_inputs, task)
+    test_dataset = UrbanDataset(test_part_inputs, task)
 
     test_dataset.inputs.make_dumpsafe_names()
     test_dataset.with_gt = False
