@@ -17,6 +17,7 @@ matplotlib
 pydensecrf
 scipy
 six
+protobuf
 line_profiler
 # onnx
 # tensorboard

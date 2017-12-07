@@ -855,7 +855,10 @@ def load_testing_dataset(test_data_path, workdir):
     test_fullres = task.load_fullres_inputs('.')
 
     if DEBUG:
-        test_fullres = test_fullres.take([0, 1, 2, 3, 4, 5])
+        orig_fullres = test_fullres
+        subidx = [0, 1, 2, 3, 4, 5]
+        test_fullres = orig_fullres.take(subidx)
+        test_fullres.dump_im_names = list(ub.take(orig_fullres.dump_im_names, subidx))
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
     prep.part_config['overlap'] = 0 if DEBUG else .75
