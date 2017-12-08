@@ -806,7 +806,8 @@ def load_training_datasets(train_data_path, workdir):
     vali_fullres_inputs = fullres.take(vali_idx, with_dump=True)
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_train1')))
-    prep.part_config['overlap'] = 0 if DEBUG else .75
+    # prep.part_config['overlap'] = 0 if DEBUG else .75
+    prep.part_config['overlap'] = .75
     prep.ignore_label = task.ignore_label
     train_part_inputs = prep.make_parts(train_fullres_inputs, scale=1, clear=0)
 
