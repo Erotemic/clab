@@ -782,7 +782,7 @@ def load_training_datasets(train_data_path, workdir):
 
     fullres = task.load_fullres_inputs('.')
     if DEBUG:
-        fullres = ub.take(fullres.dump_im_names, range(10), with_dump=True)
+        fullres = fullres.take(range(10), with_dump=True)
 
     fullres = task.create_boundary_groundtruth(fullres)
     del fullres.paths['gti']
