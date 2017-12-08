@@ -404,7 +404,8 @@ class FitHarness(object):
         # train loop
         import tqdm
 
-        show_prog = True
+        show_prog = False
+
         harn.prog = tqdm.tqdm(desc='epoch', total=harn.config['max_iter'],
                                                 disable=not show_prog,
                               dynamic_ncols=True,
@@ -540,6 +541,8 @@ class FitHarness(object):
 
             # display_train training info
             if (bx + 1) % display_interval == 0:
+                import utool
+                utool.embed()
                 ave_metrics = iter_moving_metircs.average()
 
                 msg = harn.batch_msg({'loss': ave_metrics['loss']},
