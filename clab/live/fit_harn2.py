@@ -233,6 +233,9 @@ class FitHarness(object):
         else:
             harn.xpu = xpu_device.XPU(xpu)
 
+        # Allow for command line override
+        batch_size = int(ub.argval('--batch_size', default=batch_size))
+
         data_kw = {'batch_size': batch_size}
         if harn.xpu.is_gpu():
             num_workers = int(ub.argval('--num_workers', default=6))
@@ -250,7 +253,9 @@ class FitHarness(object):
                 shuffle = tag == 'train'
                 data_kw_ = data_kw.copy()
                 if tag != 'train':
-                    data_kw_['batch_size'] = max(batch_size // 4, 1)
+                    tag_batch_size = max(batch_size // 4, 1)
+                    tag_batch_size = int(ub.argval('--{}-batch_size'.format(tag), default=tag_batch_size))
+                    data_kw_['batch_size'] = tag_batch_size
                 loader = torch.utils.data.DataLoader(dset, shuffle=shuffle,
                                                      **data_kw_)
                 harn.loaders[tag] = loader
