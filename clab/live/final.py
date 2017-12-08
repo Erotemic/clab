@@ -794,6 +794,7 @@ def load_training_datasets(train_data_path, workdir):
     train_idx = idxs[0:-n_vali]
     vali_idx = idxs[-n_vali:]
 
+    print('DEBUG = {!r}'.format(DEBUG))
     if DEBUG:
         train_idx = train_idx[0:5]
         vali_idx = vali_idx[0:5]
