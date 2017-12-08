@@ -237,12 +237,18 @@ class Inputs(ub.NiceRepr):
             result = result.union(b)
         return result
 
-    def take(self, indicies):
+    def take(self, indicies, with_dump=False):
+
+        indicies = list(indicies)
+
         keys = sorted(self.paths.keys())
         new = Inputs.from_paths(**{
             key: list(ub.take(self.paths[key], indicies))
             for key in keys
         })
+        if with_dump:
+            if self.dump_im_names is not None:
+                new.dump_im_names = list(ub.take(self.dump_im_names, indicies))
         return new
 
     def __add__(self, other):

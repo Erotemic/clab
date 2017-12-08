@@ -781,6 +781,9 @@ def load_training_datasets(train_data_path, workdir):
     task = UrbanMapper3D(root=train_data_path, workdir=workdir, boundary=True)
 
     fullres = task.load_fullres_inputs('.')
+    if DEBUG:
+        fullres = ub.take(fullres.dump_im_names, range(10), with_dump=True)
+
     fullres = task.create_boundary_groundtruth(fullres)
     del fullres.paths['gti']
 
@@ -799,11 +802,8 @@ def load_training_datasets(train_data_path, workdir):
         train_idx = train_idx[0:5]
         vali_idx = vali_idx[0:5]
 
-    train_fullres_inputs = fullres.take(train_idx)
-    vali_fullres_inputs = fullres.take(vali_idx)
-    # take doesnt take the dump_im_names
-    train_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, train_idx))
-    vali_fullres_inputs.dump_im_names = list(ub.take(fullres.dump_im_names, vali_idx))
+    train_fullres_inputs = fullres.take(train_idx, with_dump=True)
+    vali_fullres_inputs = fullres.take(vali_idx, with_dump=True)
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_train1')))
     prep.part_config['overlap'] = 0 if DEBUG else .75
@@ -856,10 +856,8 @@ def load_testing_dataset(test_data_path, workdir):
     test_fullres = task.load_fullres_inputs('.')
 
     if DEBUG:
-        orig_fullres = test_fullres
         subidx = [0, 1, 2, 3, 4, 5]
-        test_fullres = orig_fullres.take(subidx)
-        test_fullres.dump_im_names = list(ub.take(orig_fullres.dump_im_names, subidx))
+        test_fullres = test_fullres.take(subidx, with_dump=True)
 
     prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_test')))
     prep.part_config['overlap'] = 0 if DEBUG else .75
