@@ -404,7 +404,7 @@ class FitHarness(object):
         # train loop
         import tqdm
 
-        show_prog = False
+        show_prog = not ub.argflag('--noprog')
 
         harn.prog = tqdm.tqdm(desc='epoch', total=harn.config['max_iter'],
                                                 disable=not show_prog,

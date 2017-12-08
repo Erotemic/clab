@@ -953,7 +953,7 @@ def fit_networks(datasets, xpu):
             ignore_label=2
         )
         if DEBUG:
-            harn.config['max_iter'] = 2
+            harn.config['max_iter'] = 30
         else:
             # Note on aretha we can do 140 epochs in 7 days, so
             # be careful with how long we take to train.
