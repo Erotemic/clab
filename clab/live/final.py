@@ -956,10 +956,14 @@ def fit_networks(datasets, xpu):
         if DEBUG:
             harn.config['max_iter'] = 30
         else:
+
             # Note on aretha we can do 140 epochs in 7 days, so
             # be careful with how long we take to train.
             # With a reduction of 16, we can take a few more epochs
             # Unet2 take ~10 minutes to get through one
+
+            # with num_workers=0, we have 374.00s/it = 6.23 m/it
+            # this comes down to 231 epochs per day
             harn.config['max_iter'] = 432  # 3 days max
         harn.early_stop.patience = 10
 
