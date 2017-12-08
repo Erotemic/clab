@@ -275,7 +275,7 @@ class WindowedMovingAve(MovingAve):
                 self.totals[k] = 0
             self.totals[k] += v
             self.history[k].append(v)
-            if len(self.history[k]) == self.window:
+            if len(self.history[k]) > self.window:
                 # Push out the oldest value
                 self.totals[k] -= self.history[k].popleft()
         return self
