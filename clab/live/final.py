@@ -1150,14 +1150,33 @@ def main():
                 --num_workers=<int>
                 --batch_size=<int>
             '''))
-        pass
+        sys.exit(1)
+
     train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
     test_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/testing')
     output_file = 'prediction'
 
+    # Conform to positional argument specs from challenge doc
+    if sys.argv[1] in ['train', 'test']:
+        if len(sys.argv) > 2 and exists(sys.argv[2]):
+            train_data_path = sys.argv[2]
+    if sys.argv[1] in ['test']:
+        if len(sys.argv) > 4 and exists(sys.argv[3]):
+            test_data_path = sys.argv[3]
+            output_file = sys.argv[4]
+
     train_data_path = ub.argval('--train_data_path', default=train_data_path)
     test_data_path = ub.argval('--test_data_path', default=test_data_path)
     output_file = ub.argval('--output_file', default=output_file)
+
+    workdir = script_workdir()
+
+    if sys.argv[1] in ['train', 'test']:
+        print('* train_data_path = {!r}'.format(train_data_path))
+    if sys.argv[1] in ['test']:
+        print('* test_data_path = {!r}'.format(test_data_path))
+        print('* output_file = {!r}'.format(output_file))
+    print(' * workdir = {!r}'.format(workdir))
 
     if sys.argv[1] == 'train':
         train(train_data_path)
@@ -1169,7 +1188,7 @@ def main():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.live.final train
+        python -m clab.live.final train --help
 
         python -m clab.live.final test --use_ots --vali_check
 
