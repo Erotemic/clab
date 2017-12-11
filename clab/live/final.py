@@ -824,6 +824,7 @@ def load_training_datasets(train_data_path, workdir):
         prep = preprocess.Preprocessor(ub.ensuredir((task.workdir, 'data_vali2')))
         prep.part_config['overlap'] = 0
         prep.ignore_label = task.ignore_label
+
         vali_part_inputs = prep.make_parts(vali_fullres_inputs, scale=1, clear=0)
 
     train_dataset = UrbanDataset(train_part_inputs, task)
@@ -964,7 +965,8 @@ def fit_networks(datasets, xpu):
 
             # with num_workers=0, we have 374.00s/it = 6.23 m/it
             # this comes down to 231 epochs per day
-            harn.config['max_iter'] = 432  # 3 days max
+            # harn.config['max_iter'] = 432  # 3 days max
+            harn.config['max_iter'] = 200  # ~1 day max (if multiprocessing works)
         harn.early_stop.patience = 10
 
         def compute_loss(harn, outputs, labels):
@@ -1127,10 +1129,28 @@ def script_workdir():
         workdir = ub.ensuredir(ub.truepath('~/data/work_phase2_debug'))
     else:
         workdir = ub.ensuredir(ub.truepath('~/data/work_phase2'))
+    workdir = ub.argval('--workdir', default=workdir)
     return workdir
 
 
 def main():
+    if ub.argflag(('--help', '-h')):
+        print(ub.codeblock(
+            '''
+            Usage:
+                python -m clab.live.final train --train_data_path=<path/to/UrbanMapper3D/training>
+                python -m clab.live.final test --train_data_path=<path/to/UrbanMapper3D/testing> --test_data_path=<path/to/UrbanMapper3D/testing> --output_file=<outfile>
+
+            Other Args / Flags:
+                --debug
+                --serial
+                --nopin
+                --noprog
+                --workdir=<path>
+                --num_workers=<int>
+                --batch_size=<int>
+            '''))
+        pass
     train_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/training')
     test_data_path = ub.truepath('~/remote/aretha/data/UrbanMapper3D/testing')
     output_file = 'prediction'
@@ -1154,10 +1174,14 @@ if __name__ == '__main__':
         python -m clab.live.final test --use_ots --vali_check
 
         # After setup, run docker via
-        nvidia-docker run -v ~/data:/data -it urban3d
+        nvidia-docker run -v ~/data:/data -v ~/data/root/ -it urban3d
 
         # On Docker
         python3 -m clab.live.final train --train_data_path=/data/UrbanMapper3D/training
+
         python3 -m clab.live.final test --train_data_path=/data/UrbanMapper3D/training --test_data_path=/data/UrbanMapper3D/testing --output_file=outfile
+        python3 -m clab.live.final test --train_data_path=/data/UrbanMapper3D/training --test_data_path=/data/UrbanMapper3D/testing --output_file=outfile --vali_check
+
+        test.sh /data/UrbanMapper3D/training /data/UrbanMapper3D/testing outfile
     """
     main()

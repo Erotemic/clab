@@ -403,7 +403,7 @@ def ensure_grayscale(img, colorspace_hint='BGR'):
         return convert_colorspace(img, 'gray', colorspace_hint)
 
 
-def convert_colorspace(img, dst_space, src_space='BGR', copy=False):
+def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
     r"""
     Converts colorspace of img.
     Convinience function around cv2.cvtColor
@@ -432,14 +432,17 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False):
     src_space = src_space.upper()
     if src_space == dst_space:
         img2 = img
-        if copy:
+        if dst is not None:
+            dst[...] = img[...]
+            img2 = dst
+        elif copy:
             img2 = img2.copy()
     else:
         code = _lookup_colorspace_code(dst_space, src_space)
         # Note the conversion to colorspaces like LAB and HSV in float form
         # do not go into the 0-1 range. Instead they go into
         # (0-100, -111-111hs, -111-111is) and (0-360, 0-1, 0-1) respectively
-        img2 = cv2.cvtColor(img, code)
+        img2 = cv2.cvtColor(img, code, dst=dst)
     return img2
 
 

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 import hashlib
+import warnings
 import six
 import uuid
 
@@ -145,6 +146,61 @@ def _update_hasher(hasher, data):
         hasher.update(binary_data)
 
 
+class HashableExtensions():
+    """
+    Helper class for managing non-builtin (e.g. numpy) hash types
+    """
+    def __init__(self):
+        self.extensions = []
+
+    def register(self, hash_type):
+        def _wrap(hash_func):
+            self.extensions.append((hash_type, hash_func))
+            return hash_func
+        return _wrap
+
+    def lookup(self, data):
+        for hash_type, hash_func in self.extensions:
+            if isinstance(data, hash_type):
+                return hash_func
+
+    def _register_numpy_extensions(self):
+        """
+        Numpy extensions are builtin
+        """
+        @self.register(np.ndarray)
+        def hash_numpy_array(data):
+            if data.dtype.kind == 'O':
+                msg = 'hashing ndarrays with dtype=object is unstable'
+                warnings.warn(msg, RuntimeWarning)
+                hashable = data.dumps()
+            else:
+                hashable = data.tobytes()
+            prefix = b'NDARR'
+            return hashable, prefix
+
+        @self.register((np.int64, np.int32))
+        def _hash_numpy_int(data):
+            return _covert_to_hashable(int(data))
+
+        @self.register((np.float64, np.float32))
+        def _hash_numpy_float(data):
+            a, b = float(data).as_integer_ratio()
+            hashable = (a.to_bytes(8, byteorder='big') +
+                        b.to_bytes(8, byteorder='big'))
+            prefix = b'FLT'
+            return hashable, prefix
+
+_HASHABLE_EXTENSIONS = HashableExtensions()
+
+
+try:
+    import numpy as np
+    _HASHABLE_EXTENSIONS._register_numpy_extensions()
+except ImportError:
+    pass
+
+
 def _covert_to_hashable(data):
     r"""
     Args:
@@ -167,14 +223,6 @@ def _covert_to_hashable(data):
     elif isinstance(data, six.binary_type):
         hashable = data
         prefix = b'TXT'
-    # elif util_type.HAVE_NUMPY and isinstance(data, np.ndarray):
-    #     if data.dtype.kind == 'O':
-    #         msg = '[ub] hashing ndarrays with dtype=object is unstable'
-    #         warnings.warn(msg, RuntimeWarning)
-    #         hashable = data.dumps()
-    #     else:
-    #         hashable = data.tobytes()
-    #     prefix = b'NDARR'
     elif isinstance(data, six.text_type):
         # convert unicode into bytes
         hashable = data.encode('utf-8')
@@ -190,16 +238,12 @@ def _covert_to_hashable(data):
     elif isinstance(data, float):
         hashable = repr(data).encode('utf8')
         prefix = b'FLT'
-    # elif util_type.HAVE_NUMPY and isinstance(data, np.int64):
-    #     return _covert_to_hashable(int(data))
-    # elif util_type.HAVE_NUMPY and isinstance(data, np.float64):
-    #     a, b = float(data).as_integer_ratio()
-    #     hashable = (a.to_bytes(8, byteorder='big') +
-    #                 b.to_bytes(8, byteorder='big'))
-    #     prefix = b'FLT'
     else:
-        raise TypeError('unknown hashable type=%r' % (type(data)))
-    # prefix = b''
+        hash_func = _HASHABLE_EXTENSIONS.lookup(data)
+        if hash_func is not None:
+            hashable, prefix = hash_func(data)
+        else:
+            raise TypeError('unknown hashable type=%r' % (type(data)))
     return prefix, hashable
 
 

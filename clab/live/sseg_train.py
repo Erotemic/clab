@@ -46,7 +46,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
     """
     def __init__(self, inputs, task, colorspace='RGB'):
-        from .torch.transforms import (RandomWarpAffine, RandomGamma,
+        from clab.torch.transforms import (RandomWarpAffine, RandomGamma,
                                              RandomBlur,)
         self.inputs = inputs
         self.task = task
@@ -81,8 +81,8 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         self.center_inputs = None
 
     def _make_normalizer(self):
-        from .torch.transforms import (ImageCenterScale, DTMCenterScale,
-                                             ZipTransforms)
+        from clab.torch.transforms import (ImageCenterScale, DTMCenterScale,
+                                           ZipTransforms)
         transforms = []
         nan_value = -32767.0  # hack: specific number for DTM
         if len(self.inputs):
@@ -129,8 +129,8 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
     def _original_urban_mapper_normalizer(self, imcenter=.5, imscale=1.0):
         nan_value = -32767.0  # hack: specific number for DTM
-        from .torch.transforms import (ImageCenterScale, DTMCenterScale,
-                                             ZipTransforms)
+        from clab.torch.transforms import (ImageCenterScale, DTMCenterScale,
+                                           ZipTransforms)
         assert self.colorspace == 'RGB'
         im_center = ImageCenterScale(imcenter, imscale)
         aux_center = DTMCenterScale(5.3757350869126723, nan_value=nan_value,
@@ -362,7 +362,7 @@ def task_datasets(task, vali_frac=0, colorspace='RGB'):
 def directory_structure(workdir, arch, datasets, pretrained=None,
                         train_hyper_id=None, suffix=''):
     """
-    from .torch.sseg_train import *
+    from clab.torch.sseg_train import *
     datasets = load_task_dataset('urban_mapper_3d')
     datasets['train']._make_normalizer()
     arch = 'foobar'
