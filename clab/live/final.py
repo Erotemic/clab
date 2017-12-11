@@ -1141,7 +1141,7 @@ def main():
                 python -m clab.live.final train --train_data_path=<path/to/UrbanMapper3D/training>
                 python -m clab.live.final test --train_data_path=<path/to/UrbanMapper3D/testing> --test_data_path=<path/to/UrbanMapper3D/testing> --output_file=<outfile>
 
-            Other Args / Flags:
+            Optional Args / Flags:
                 --debug
                 --serial
                 --nopin
