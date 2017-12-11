@@ -40,6 +40,8 @@ def package_pretrained_submission():
     Gather the models trained during phase 1 and output them in a format
     useable by the phase 2 solution. Note: remember to put the output folder
     into docker.
+
+    PREPARES DATA FOR DOCKER. THIS IS UNUSED IN THE DOCKERIZED VERSION
     """
     # model1 = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/test/input_26400-sotwptrx/solver_52200-fqljkqlk_unet2_ybypbjtw_smvuzfkv_a=1,c=RGB,n_ch=6,n_cl=4/_epoch_00000000/stitched'
 
@@ -88,7 +90,7 @@ def package_pretrained_submission():
 
     local_arch_to_train_dpath = {}
 
-    final_dpath = ub.ensuredir(ub.truepath('~/docker/final_model'))
+    final_dpath = ub.ensuredir(ub.truepath('~/erotemic_urban3d_phase2/final_model'))
     for arch in arches:
         local_path = ub.ensuredir((final_dpath, arch))
         epoch = max_epochs[arch]
@@ -1089,8 +1091,8 @@ def test(train_data_path, test_data_path, output_file):
 
     if use_ots:
         # use pretrained
-        soln_fpath = ub.truepath('~/docker/final_model/trained_soln.pkl')
-        assert exists(soln_fpath)
+        soln_fpath = ub.truepath('~/erotemic_urban3d_phase2/final_model/trained_soln.pkl')
+        assert exists(soln_fpath), 'pretrained model not in expected location'
 
     with open(soln_fpath, 'rb') as file:
         solution = pickle.load(file)

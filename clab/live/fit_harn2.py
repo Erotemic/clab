@@ -238,7 +238,7 @@ class FitHarness(object):
 
         data_kw = {'batch_size': batch_size}
         if harn.xpu.is_gpu():
-            num_workers = int(ub.argval('--num_workers', default=6))
+            num_workers = int(ub.argval('--num_workers', default=0))
             num_workers = 0 if ub.argflag('--serial') else num_workers
             pin_memory = False if ub.argflag('--nopin') else True
             data_kw.update({'num_workers': num_workers, 'pin_memory': pin_memory})
