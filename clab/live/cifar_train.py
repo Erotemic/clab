@@ -1,8 +1,11 @@
 import numpy as np
 import ubelt as ub
+import torch
 import torchvision
 import pandas as pd
 from torchvision.datasets import cifar
+from clab.torch import xpu_device
+from clab.torch.transforms import (ImageCenterScale, ZipTransforms)
 from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 from clab import util
 
@@ -82,7 +85,7 @@ def mutex_clf_gt_info(gt_labels, task):
     return gtstats
 
 
-class InMemoryInputs(object):
+class InMemoryInputs(ub.NiceRepr):
     """
     Change inputs.Inputs to OnDiskInputs
     """
@@ -91,6 +94,7 @@ class InMemoryInputs(object):
         inputs.im = None
         inputs.gt = None
         inputs.colorspace = None
+        inputs.input_id = None
 
     def __nice__(inputs):
         n = len(inputs)
@@ -133,68 +137,26 @@ class InMemoryInputs(object):
         new_inputs.colorspace = inputs.colorspace
         return new_inputs
 
-    def prepare_images(self, force=False):
-        """
-        If not already done, loads paths to images into memory and constructs a
-        unique id for that set of im/gt images.
-
-        It the paths are already set, then only the input-id is constructed.
-        """
-        if self.n_input is not None and not force:
+    def prepare_id(self, force=False):
+        if self.input_id is not None and not force:
             return
 
-        self.prepare_image_paths()
-        print('Preparing {} images'.format(self.tag))
+        depends = []
+        depends.append(self.im)
+        depends.append(self.gt)
 
-        if self.aux_paths:
-            # new way
-            depends = sorted(self.paths.items())
-        else:
-            depends = []
-            depends.append(self.im_paths)
-            depends.append(self.gt_paths)
-            if self.gt_paths:
-                # HACK: We will assume image data depends only on the filename
-                # HACK: be respectful of gt label changes (ignore aug)
-                # stride>1 is faster but might break
-                # stride=1 is the safest
-                hashes = [
-                    util.hash_file(p, stride=32)
-                    for p in ub.ProgIter(self.gt_paths, label='hashing')
-                    if 'aug' not in basename(p) and 'part' not in basename(p)
-                ]
-                label_hashid = util.hash_data(hashes)
-                depends.append(label_hashid)
-        n_im = None if self.im_paths is None else len(self.im_paths)
-        n_gt = None if self.gt_paths is None else len(self.gt_paths)
-        self.n_input = n_im or n_gt
-
-        hashid = hashutil.hash_data(depends)[:self.abbrev]
-        self.input_id = '{}-{}'.format(self.n_input, hashid)
-
-        print(' * n_images = {}'.format(n_im))
-        print(' * n_groundtruth = {}'.format(n_gt))
+    def _set_id_from_dependency(self, depends):
+        """
+        Allow for arbitrary representation of dependencies
+        (user must ensure that it is consistent)
+        """
+        print('Preparing id for {} images'.format(self.tag))
+        abbrev = 8
+        hashid = util.hash_data(depends)[:abbrev]
+        n_input = len(self)
+        self.input_id = '{}-{}'.format(n_input, hashid)
+        print(' * n_input = {}'.format(n_input))
         print(' * input_id = {}'.format(self.input_id))
-
-
-def cifar_training_datasets():
-    root = ub.ensure_app_cache_dir('clab')
-    train_dset = cifar.CIFAR100(root=root, download=True, train=True)
-    bchw = (train_dset.train_data).astype(np.float32) / 255.0
-    labels = np.array(train_dset.train_labels)
-    inputs = InMemoryInputs.from_bhwc_rgb(bchw, labels=labels)
-    # inputs.convert_colorspace('lab')
-
-    vali_frac = .1
-    n_vali = int(len(inputs) * vali_frac)
-    input_idxs = np.arange(len(inputs))
-    rng = np.random.RandomState(0)
-    rng.shuffle(input_idxs)
-    train_idxs = input_idxs[:-n_vali]
-    vali_idxs = input_idxs[-n_vali:]
-
-    train_inputs = inputs.take(train_idxs, tag='train')
-    vali_inputs = inputs.take(vali_idxs, tag='vali')
 
 
 class CIFAR_Wrapper(cifar.CIFAR10):
@@ -202,15 +164,16 @@ class CIFAR_Wrapper(cifar.CIFAR10):
         self.inputs = inputs
         self.task = task
 
+        self.colorspace = 'RGB'
+
         self.rng = np.random.RandomState(432432)
 
         inputs_base = ub.ensuredir((workdir, 'inputs'))
         inputs.base_dpath = inputs_base
         if len(inputs):
-            inputs.prepare_images(force=True)
-            inputs.prepare_input()
+            inputs.prepare_id()
             self.input_id = inputs.input_id
-            self.with_gt = self.inputs.gt_paths
+            self.with_gt = self.inputs.gt is not None
         else:
             self.input_id = ''
 
@@ -220,58 +183,21 @@ class CIFAR_Wrapper(cifar.CIFAR10):
             RandomBlur(rng=self.rng),
         ])
         self.rand_aff = RandomWarpAffine(self.rng)
-
-        if self.inputs.aux_paths:
-            self.aux_keys = sorted(self.inputs.aux_paths.keys())
-        else:
-            self.aux_keys = []
-
         self.center_inputs = None
 
-    def _make_normalizer(self):
-        from .torch.transforms import (ImageCenterScale, DTMCenterScale,
-                                             ZipTransforms)
-        transforms = []
-        nan_value = -32767.0  # hack: specific number for DTM
+    def _make_normalizer(self, mode='dependant'):
         if len(self.inputs):
-            self.center_stats = self.inputs.prepare_center_stats(
-                self.task, nan_value=nan_value, colorspace=self.colorspace)
-            # self.center_stats['image'].pop('detail')
-            # if self.aux_keys:
-            #     self.center_stats['aux'].pop('detail')
+            if mode == 'dependant':
+                # dependent centering per channel (for RGB)
+                im_mean = self.inputs.im.mean()
+                im_scale = self.inputs.im.std()
+            elif mode == 'independent':
+                # Independent centering per channel (for LAB)
+                im_mean = self.inputs.im.mean(axis=(0, 1, 2))
+                im_scale = self.inputs.im.std(axis=(0, 1, 2))
 
-            if self.colorspace == 'LAB':
-                # Do per-channel mean / std centering independently for LAB images
-                channel_stats = self.center_stats['image']['simple']['channel']
-                im_mean = channel_stats['mean']
-                im_scale = channel_stats['std']
-            elif self.colorspace == 'RGB':
-                # Normalize across channels for RGB
-                scalar_stats = self.center_stats['image']['simple']['image']
-                im_mean = scalar_stats['mean']
-                im_scale = scalar_stats['std']
-                # self.im_center = ub.identity
-            else:
-                raise Exception()
+            center_inputs = ImageCenterScale(im_mean, im_scale)
 
-            im_center = ImageCenterScale(im_mean, im_scale)
-            transforms.append(im_center)
-
-            # im_scale = np.ceil(channel_stats['max']) - np.floor(channel_stats['min'])
-
-            if self.aux_keys:
-                # Note: Internal stats are not gaurenteed to make sense outside
-                # the DTM domain.
-                internal_aux_stats = self.center_stats['aux']['internal']
-                mean_deviation = internal_aux_stats['image']['mean_absdev_from_median']['mean']
-                # zero the median on a per-chip basis, but use
-                # the global internal_std to normalize extent
-                # aux_std =
-                aux_center = DTMCenterScale(mean_deviation,
-                                            nan_value=nan_value, fill='median')
-                transforms.append(aux_center)
-
-        center_inputs = ZipTransforms(transforms)
         self.center_inputs = center_inputs
         return center_inputs
 
@@ -279,61 +205,27 @@ class CIFAR_Wrapper(cifar.CIFAR10):
         return len(self.inputs)
 
     def load_inputs(self, index):
-        im_fpath = self.inputs.im_paths[index]
-        if self.inputs.gt_paths:
-            gt_fpath = self.inputs.gt_paths[index]
-            gt = self.loader(gt_fpath, colorspace=None)
+        im = self.inputs.im[index]
+
+        if self.inputs.gt is not None:
+            gt = self.inputs.gt[index]
         else:
             gt = None
-
-        # Load in RGB for now, we will convert right before we center the data
-        im = self.loader(im_fpath, colorspace='RGB')
-
-        aux_channels = []
-        if self.aux_keys:
-            aux_paths = [self.inputs.aux_paths[k][index]
-                         for k in self.aux_keys]
-            aux_channel = np.dstack([
-                self.loader(p, colorspace=None)
-                for p in aux_paths
-            ])
-            aux_channels = [aux_channel]
 
         if self.augment:
             # Image augmentation must be done in RGB
             # Augment intensity independently
             im = self.im_augment(im)
             # Augment geometry consistently
-            im, aux_channels, gt = self.rand_aff.sseg_warp(
-                im, aux_channels, gt)
+            params = self.rand_aff.random_params()
+            im = self.rand_aff.warp(im, params, interp='cubic')
 
-        im = util.convert_colorspace(im, src_space='RGB',
+        im = util.convert_colorspace(im, src_space=self.inputs.colorspace,
                                      dst_space=self.colorspace)
 
         # Do centering of inputs
-        input_tuple = [im] + aux_channels
-        input_tuple = self.center_inputs(input_tuple)
-
-        return input_tuple, gt
-
-    def from_tensor(self, im, gt=None):
-        if len(im.shape) == 3:
-            im = im.cpu().numpy().transpose(2, 0, 1)
-        else:
-            im = im.cpu().numpy().transpose(0, 2, 3, 1)
-        if gt is not None:
-            gt = gt.cpu().numpy()
+        im = self.center_inputs(im)
         return im, gt
-
-    def to_tensor(self, input_tuple, gt):
-        # NHWC -> NCHW
-        input_tuple = [im_loaders.image_to_float_tensor(data)
-                       for data in input_tuple]
-        if gt is None:
-            gt_tensor = None
-        else:
-            gt_tensor = im_loaders.label_to_long_tensor(gt)
-        return input_tuple, gt_tensor
 
     def __getitem__(self, index):
         """
@@ -346,32 +238,28 @@ class CIFAR_Wrapper(cifar.CIFAR10):
             >>> self.center_inputs = self._make_normalizer()
             >>> im, gt = self[0]
         """
-        input_tuple, gt = self.load_inputs(index)
-        input_tuple, gt_tensor = self.to_tensor(input_tuple, gt)
-
-        data_tensor = torch.cat(input_tuple, dim=0)
+        from clab.torch import im_loaders
+        im, gt = self.load_inputs(index)
+        input_tensor = im_loaders.numpy_image_to_float_tensor(im)
 
         if self.with_gt:
             # print('gotitem: ' + str(data_tensor.shape))
             # print('gt_tensor: ' + str(gt_tensor.shape))
-            return data_tensor, gt_tensor
+            return input_tensor, gt
         else:
-            return data_tensor
+            return input_tensor
 
     @property
     def n_channels(self):
-        if self.aux_keys:
-            return 3 + len(self.aux_keys)
-        else:
-            return 3
+        return 3
 
     @property
     def n_classes(self):
         return int(self.task.labels.max() + 1)
 
     @property
-    def ignore_label(self):
-        return self.task.ignore_label
+    def ignore_labels(self):
+        return self.task.ignore_labels
 
     def class_weights(self):
         """
@@ -379,23 +267,104 @@ class CIFAR_Wrapper(cifar.CIFAR10):
             >>> self = load_task_dataset('urban_mapper_3d')['train']
             >>> self.class_weights()
         """
-        # Handle class weights
-        print('prep class weights')
-        gtstats = self.inputs.prepare_gtstats(self.task)
-        gtstats = self.inputs.gtstats
-        # Take class weights (ensure they are in the same order as labels)
-        mfweight_dict = gtstats['mf_weight'].to_dict()
-        class_weights = np.array(list(ub.take(mfweight_dict, self.task.classnames)))
-        class_weights[self.task.ignore_labels] = 0
-        # HACK
-        # class_weights[0] = 1.0
-        # class_weights[1] = 0.7
-        print('class_weights = {!r}'.format(class_weights))
-        print('class_names   = {!r}'.format(self.task.classnames))
+        # # Handle class weights
+        # print('prep class weights')
+        # gtstats = self.inputs.prepare_gtstats(self.task)
+        # gtstats = self.inputs.gtstats
+        # # Take class weights (ensure they are in the same order as labels)
+        # mfweight_dict = gtstats['mf_weight'].to_dict()
+        # class_weights = np.array(list(ub.take(mfweight_dict, self.task.classnames)))
+        # class_weights[self.task.ignore_labels] = 0
+        # # HACK
+        # # class_weights[0] = 1.0
+        # # class_weights[1] = 0.7
+        # print('class_weights = {!r}'.format(class_weights))
+        # print('class_names   = {!r}'.format(self.task.classnames))
+        class_weights = np.ones(self.n_classes)
         return class_weights
 
-def train():
-    import ubelt as ub
+
+def cifar_training_datasets():
+    """
+    """
     root = ub.ensure_app_cache_dir('clab')
     train_dset = cifar.CIFAR100(root=root, download=True, train=True)
-    test_dest = cifar.CIFAR100(root=root, download=True, train=False)
+    bchw = (train_dset.train_data).astype(np.float32) / 255.0
+    labels = np.array(train_dset.train_labels)
+    inputs = InMemoryInputs.from_bhwc_rgb(bchw, labels=labels)
+    # inputs.convert_colorspace('lab')
+
+    vali_frac = .1
+    n_vali = int(len(inputs) * vali_frac)
+    input_idxs = util.random_indices(len(inputs), seed=0)
+    train_idxs = sorted(input_idxs[:-n_vali])
+    vali_idxs = sorted(input_idxs[-n_vali:])
+
+    train_inputs = inputs.take(train_idxs, tag='train')
+    vali_inputs = inputs.take(vali_idxs, tag='vali')
+    # The dataset name and indices should fully specifiy dependencies
+    train_inputs._set_id_from_dependency(['cifar100-train', train_idxs])
+    vali_inputs._set_id_from_dependency(['cifar100-train', vali_idxs])
+
+    workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
+
+    task = CIFAR100_Task()
+
+    train_dset = CIFAR_Wrapper(train_inputs, task, workdir)
+    vali_dset = CIFAR_Wrapper(vali_inputs, task, workdir)
+
+    datasets = {
+        'train': train_dset,
+        'vali': vali_dset,
+    }
+    return datasets
+
+
+def train():
+    datasets = cifar_training_datasets()
+    datasets['train'].augment = True
+
+    datasets['train'].center_inputs = datasets['train']._make_normalizer('dependant')
+    datasets['vali'].center_inputs = datasets['train'].center_inputs
+
+    from clab.torch import hyperparams
+    from clab.torch import fit_harness
+
+    hyper = hyperparams.HyperParams(
+        criterion=(torch.nn.CrossEntropyLoss, {
+            # 'ignore_label': ignore_label,
+            # TODO: weight should be a FloatTensor
+            # 'weight': class_weights,
+        }),
+        optimizer=(torch.optim.SGD, {
+            # 'weight_decay': .0006,
+            'weight_decay': .0005,
+            'momentum': 0.9,
+            'nesterov': True,
+        }),
+        scheduler=('Exponential', {
+            'gamma': 0.99,
+            'base_lr': 0.001,
+            'stepsize': 2,
+        }),
+        other={
+            'augment': datasets['train'].augment,
+            'colorspace': datasets['train'].colorspace,
+            'n_classes': datasets['train'].n_classes,
+        }
+    )
+
+    # model = torchvision.models.resnet50(num_classes=datasets['train'].n_classes)
+    model = torchvision.models.DenseNet(num_classes=datasets['train'].n_classes, block_config=[4, 4])
+    xpu = xpu_device.XPU.from_argv()
+
+    train_dpath = ub.ensuredir('train_cifar')
+
+    batch_size = 32
+    harn = fit_harness.FitHarness(
+        model=model, hyper=hyper, datasets=datasets, xpu=xpu,
+        train_dpath=train_dpath, dry=False,
+        batch_size=batch_size,
+    )
+
+    harn.run()

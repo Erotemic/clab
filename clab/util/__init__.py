@@ -28,7 +28,7 @@ else:
                                      shortest_unique_prefixes,
                                      shortest_unique_suffixes,)
     from clab.util.gpu_util import (find_unused_gpu, gpu_info, have_gpu, num_gpus,)
-    from clab.util.hashutil import (hash_data, hash_file,)
+    from clab.util.hashutil import (HashableExtensions, hash_data, hash_file,)
     from clab.util.imutil import (CV2_INTERPOLATION_TYPES, InternalRunningStats,
                                   RunningStats, absdev, adjust_gamma,
                                   atleast_3channels, convert_colorspace,
@@ -43,9 +43,9 @@ else:
                                     NumpyEncoder, json_numpy_obj_hook, read_json,
                                     walk_json, write_json,)
     from clab.util.misc import (cc_locs, clean_tensorboard_protobufs,
-                                compact_idstr, isiterable, protect_print, read_arr,
-                                read_h5arr, roundrobin, super2, write_arr,
-                                write_h5arr,)
+                                compact_idstr, isiterable, protect_print,
+                                random_indices, read_arr, read_h5arr, roundrobin,
+                                super2, write_arr, write_h5arr,)
     from clab.util.mplutil import (adjust_subplots, axes_extent,
                                    copy_figure_to_clipboard, extract_axes_extents,
                                    figure, pandas_plot_matrix,

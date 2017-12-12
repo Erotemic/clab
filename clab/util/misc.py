@@ -273,3 +273,10 @@ def clean_tensorboard_protobufs(dpath):
     print('onlybad_paths = {!r}'.format(onlybad_paths))
     for p in onlybad_paths:
         ub.delete(p)
+
+
+def random_indices(num, seed=0):
+    input_idxs = np.arange(num)
+    rng = np.random.RandomState(0)
+    rng.shuffle(input_idxs)
+    return input_idxs

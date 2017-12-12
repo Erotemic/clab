@@ -165,22 +165,22 @@ class FitHarness(object):
         print(msg)
 
     def log_value(harn, key, value, n_iter):
-        if False:
-            print('{}={} @ {}'.format(key, value, n_iter))
-        if tensorboard_logger:
-            tensorboard_logger.log_value(key, value, n_iter)
+        # if False:
+        #     print('{}={} @ {}'.format(key, value, n_iter))
+        if harn.tlogger:
+            harn.tlogger.log_value(key, value, n_iter)
 
     def log_histogram(harn, key, value, n_iter):
-        if False:
-            print('{}={} @ {}'.format(key, value, n_iter))
-        if tensorboard_logger:
-            tensorboard_logger.log_histogram(key, value, n_iter)
+        # if False:
+        #     print('{}={} @ {}'.format(key, value, n_iter))
+        if harn.tlogger:
+            harn.tlogger.log_histogram(key, value, n_iter)
 
     def log_images(harn, key, value, n_iter):
-        if False:
-            print('{}={} @ {}'.format(key, value, n_iter))
-        if tensorboard_logger:
-            tensorboard_logger.log_images(key, value, n_iter)
+        # if False:
+        #     print('{}={} @ {}'.format(key, value, n_iter))
+        if harn.tlogger:
+            harn.tlogger.log_images(key, value, n_iter)
 
     def initialize_training(harn):
         harn.xpu.set_as_default()
@@ -189,7 +189,8 @@ class FitHarness(object):
             train_base = os.path.dirname(harn.train_dpath)
             harn.log('dont forget to start: tensorboard --logdir ' + train_base)
             harn.log('Initializing tensorboard')
-            tensorboard_logger.configure(harn.train_dpath, flush_secs=2)
+            harn.tlogger = tensorboard_logger.Logger(harn.train_dpath,
+                                                     flush_secs=2)
 
         if harn.dry:
             harn.log('Dry run of training harness. xpu={}'.format(harn.xpu))
