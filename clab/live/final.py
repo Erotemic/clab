@@ -968,8 +968,8 @@ def fit_networks(datasets, xpu):
             # with num_workers=0, we have 374.00s/it = 6.23 m/it
             # this comes down to 231 epochs per day
             # harn.config['max_iter'] = 432  # 3 days max
-            harn.config['max_iter'] = 200  # ~1 day max (if multiprocessing works)
-        harn.early_stop.patience = 10
+            harn.config['max_iter'] = 300  # ~1 day max (if multiprocessing works)
+        harn.early_stop.patience = 20
 
         def compute_loss(harn, outputs, labels):
 
