@@ -876,6 +876,12 @@ def load_testing_dataset(test_data_path, workdir):
 
 
 def fit_networks(datasets, xpu):
+
+    seed = 243083276
+    torch.cuda.manual_seed(seed)
+    if xpu.is_gpu():
+        torch.cuda.manual_seed(seed)
+
     print('datasets = {}'.format(datasets))
     n_classes = datasets['train'].n_classes
     n_channels = datasets['train'].n_channels
