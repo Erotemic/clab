@@ -945,6 +945,7 @@ def fit_networks(datasets, xpu):
             batch_size = 6
             model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
                                     n_classes=n_classes)
+        model.init_he_normal()
 
         dry = 0
         harn = fit_harn2.FitHarness(
