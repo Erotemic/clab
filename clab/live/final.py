@@ -876,7 +876,8 @@ def load_testing_dataset(test_data_path, workdir):
 
 
 def fit_networks(datasets, xpu):
-    seed = int(ub.argval('--seed', default=243083276))
+    # shouldnt matter with he_init, xavier was likely the problem
+    seed = int(ub.argval('--seed', default=243083278))
     if seed:
         torch.cuda.manual_seed(seed)
         if xpu.is_gpu():
