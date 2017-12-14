@@ -5,7 +5,10 @@ import torchvision
 import pandas as pd
 from torchvision.datasets import cifar
 from clab.torch import xpu_device
-from clab.torch.transforms import (ImageCenterScale, ZipTransforms)
+from clab.torch import nninit
+from clab.torch import hyperparams
+from clab.torch import fit_harness
+from clab.torch.transforms import (ImageCenterScale,)
 from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 from clab import util
 
@@ -159,7 +162,7 @@ class InMemoryInputs(ub.NiceRepr):
         print(' * input_id = {}'.format(self.input_id))
 
 
-class CIFAR_Wrapper(cifar.CIFAR10):
+class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
     def __init__(self, inputs, task, workdir):
         self.inputs = inputs
         self.task = task
@@ -321,50 +324,85 @@ def cifar_training_datasets():
 
 
 def train():
+    """
+    Example:
+        >>> train()
+    """
     datasets = cifar_training_datasets()
     datasets['train'].augment = True
 
     datasets['train'].center_inputs = datasets['train']._make_normalizer('dependant')
     datasets['vali'].center_inputs = datasets['train'].center_inputs
 
-    from clab.torch import hyperparams
-    from clab.torch import fit_harness
+    criterion = torch.nn.CrossEntropyLoss()
+
+    # from clab.torch.models.densenet_efficient import DenseNetEfficient
+    import clab.torch.models.densenet
 
     hyper = hyperparams.HyperParams(
-        criterion=(torch.nn.CrossEntropyLoss, {
-            # 'ignore_label': ignore_label,
-            # TODO: weight should be a FloatTensor
-            # 'weight': class_weights,
+        # criterion=(torch.nn.CrossEntropyLoss, {
+        #     # 'ignore_label': ignore_label,
+        #     # TODO: weight should be a FloatTensor
+        #     # 'weight': class_weights,
+        # }),
+
+        model=(clab.torch.models.densenet.DenseNet, {
+            'cifar': True,
+            'num_classes': datasets['train'].n_classes,
         }),
         optimizer=(torch.optim.SGD, {
             # 'weight_decay': .0006,
             'weight_decay': .0005,
             'momentum': 0.9,
             'nesterov': True,
+            'lr': 0.001,
         }),
-        scheduler=('Exponential', {
-            'gamma': 0.99,
-            'base_lr': 0.001,
-            'stepsize': 2,
+        scheduler=('ReduceLROnPlateau', {
+            # 'gamma': 0.99,
+            # 'base_lr': 0.001,
+            # 'stepsize': 2,
         }),
+        # Specify anything else that is special about your hyperparams here
+        # Especially if you make a custom_batch_runner
         other={
             'augment': datasets['train'].augment,
             'colorspace': datasets['train'].colorspace,
             'n_classes': datasets['train'].n_classes,
-        }
+            'criterion': 'cross_entropy',
+        },
+        init_method='he',
     )
 
-    # model = torchvision.models.resnet50(num_classes=datasets['train'].n_classes)
-    model = torchvision.models.DenseNet(num_classes=datasets['train'].n_classes, block_config=[4, 4])
     xpu = xpu_device.XPU.from_argv()
 
-    train_dpath = ub.ensuredir('train_cifar')
+    # TODO: need something to auto-generate a cachable directory structure
+    # train_dpath = ub.ensuredir('train_cifar_dense')
 
     batch_size = 32
     harn = fit_harness.FitHarness(
-        model=model, hyper=hyper, datasets=datasets, xpu=xpu,
-        train_dpath=train_dpath, dry=False,
-        batch_size=batch_size,
+        hyper=hyper, datasets=datasets, xpu=xpu, batch_size=batch_size,
     )
 
+    @harn.set_batch_runner
+    def batch_runner(harn, inputs, labels):
+        # Forward pass and compute the loss
+        output = harn.model(*inputs)
+        # Compute the loss
+        label = labels[0]
+        # loss = harn.criterion(output, label)
+        loss = criterion(output, label)
+        return [output], loss
+
+    workdir = ub.ensuredir('train_cifar_work')
+    harn.setup_dpath(workdir)
+
     harn.run()
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.live.cifar_train train
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

@@ -1,6 +1,6 @@
 import torch  # NOQA
 import pandas as pd
-import numpy as np
+# import numpy as np
 import collections
 import ubelt as ub
 from clab.metrics import (confusion_matrix, jaccard_score_from_confusion,
@@ -233,7 +233,7 @@ class CumMovingAve(MovingAve):
     def update(self, other):
         self.n += 1
         for k, v in other.items():
-            if np.isnan(v):
+            if pd.isnull(v):
                 v = 0
             if k not in self.totals:
                 self.totals[k] = 0
@@ -268,7 +268,7 @@ class WindowedMovingAve(MovingAve):
 
     def update(self, other):
         for k, v in other.items():
-            if np.isnan(v):
+            if pd.isnull(v):
                 v = 0
             if k not in self.totals:
                 self.history[k] = collections.deque()
@@ -310,7 +310,7 @@ class ExpMovingAve(MovingAve):
     def update(self, other):
         alpha = self.alpha
         for k, v in other.items():
-            if np.isnan(v):
+            if pd.isnull(v):
                 v = 0
             if k not in self.values:
                 self.values[k] = v

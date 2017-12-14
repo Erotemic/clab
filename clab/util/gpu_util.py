@@ -32,7 +32,7 @@ def find_unused_gpu(min_memory=0):
     """
     Finds GPU with the lowest memory usage by parsing output of nvidia-smi
 
-    python -c "from clab.util import gpu_util; print(gpu_util.find_unused_gpu())"
+    python -c "from clab.util import gpu_util; print(gpu_util.find_unused_gpu(300))"
     """
     gpus = gpu_info()
     if gpus is None:

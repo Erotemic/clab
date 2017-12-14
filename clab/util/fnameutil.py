@@ -10,7 +10,7 @@ from collections import deque
 import pygtrie
 
 
-def shortest_unique_prefixes(items, sep=None, allow_simple=True):
+def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, allow_end=False):
     """
     The shortest unique prefix algorithm.
 
@@ -20,6 +20,9 @@ def shortest_unique_prefixes(items, sep=None, allow_simple=True):
             as a single symbol. Makes the algo much faster.
         allow_simple (bool): if True tries to construct a simple feasible
             solution before resorting to the optimal trie algorithm.
+        min_length (int): minimum length each prefix can be
+        allow_end (bool): if True allows for string terminators to be
+            considered in the prefix
 
     Returns:
         list of str: a prefix for each item that uniquely identifies it
@@ -101,9 +104,11 @@ def shortest_unique_prefixes(items, sep=None, allow_simple=True):
     for item in items:
         freq = None
         for prefix, freq in trie.prefixes(item):
-            if freq == 1:
+            if freq == 1 and len(prefix) >= min_length:
                 break
-        assert freq == 1, 'item={} has no unique prefix'.format(item)
+        if not allow_end:
+            assert freq == 1, 'item={} has no unique prefix. freq={}'.format(item, freq)
+        # print('items = {!r}'.format(items))
         unique.append(prefix)
     return unique
 

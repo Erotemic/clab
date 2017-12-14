@@ -41,7 +41,7 @@ class XPU(ub.NiceRepr):
 
     @classmethod
     def available(XPU, min_memory=6000):
-        gpu_num = gpu_util.find_unused_gpu(min_memory=6000)
+        gpu_num = gpu_util.find_unused_gpu(min_memory=min_memory)
         xpu = XPU(gpu_num)
         return xpu
 
@@ -61,6 +61,10 @@ class XPU(ub.NiceRepr):
         return xpu
 
     def to_xpu(xpu, data):
+        """
+        Args:
+            data (torch.Tensor): raw data
+        """
         # if False:
         #     harn.data = torch.nn.DataParallel(harn.data, device_ids=[3, 2]).cuda()
         if xpu.is_gpu():
@@ -68,12 +72,18 @@ class XPU(ub.NiceRepr):
         else:
             return data.cpu()
 
-    def to_xpu_var(xpu, *args):
-        """ Puts data on the GPU if available """
+    def to_xpu_var(xpu, *args, **kw):
+        """
+        Puts data on this XPU device
+
+        Args:
+            *args: list of tensors to put data
+            **kwargs: Mainly used for volatile, forwarded to `torch.autograd.Variable`.
+        """
         if xpu.is_gpu():
-            args = [torch.autograd.Variable(item.cuda(xpu.gpu_num)) for item in args]
+            args = [torch.autograd.Variable(item.cuda(xpu.gpu_num), **kw) for item in args]
         else:
-            args = [torch.autograd.Variable(item.cpu()) for item in args]
+            args = [torch.autograd.Variable(item.cpu(), **kw) for item in args]
         return args
 
     def set_as_default(xpu):

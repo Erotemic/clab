@@ -498,14 +498,7 @@ class UNet(nn.Module, mixin.NetMixin):
         return cropped
 
     def trainable_layers(self):
-        queue = [self]
-        while queue:
-            item = queue.pop(0)
-            # TODO: need to put all trainable layer types here
-            if isinstance(item, nn.Conv2d):
-                yield item
-            for child in item.children():
-                queue.append(child)
+        yield from nninit.trainable_layers(self)
 
     def init_he_normal(self):
         # down_blocks = [self.down1, self.down2, self.down3, self.down4, self.down5]

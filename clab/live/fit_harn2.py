@@ -330,7 +330,6 @@ class FitHarness(object):
             harn.log('Initializing tensorboard')
             harn.tlogger = tensorboard_logger.Logger(harn.train_dpath,
                                                      flush_secs=2)
-            # tensorboard_logger.configure(harn.train_dpath, flush_secs=2)
 
         if harn.dry:
             harn.log('Dry run of training harness. xpu={}'.format(harn.xpu))

@@ -1,3 +1,4 @@
+import ubelt as ub
 import numpy as np
 import skimage
 import six
@@ -121,10 +122,13 @@ class DTMCenterScale(object):
             setattr(key, value)
 
 
-class ImageCenterScale():
+class ImageCenterScale(ub.NiceRepr):
     def __init__(self, im_mean, im_scale):
         self.im_mean = im_mean
         self.im_scale = im_scale
+
+    def __nice__(self):
+        return '{:g} {:g}'.format(self.im_mean, self.im_scale)
 
     def __call__(self, data):
         return (data - self.im_mean) / self.im_scale

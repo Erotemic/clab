@@ -222,10 +222,13 @@ def compact_idstr(dict_):
 
 
 def protect_print(print):
+    import sys
     # def protected_print(*args, **kw):
     def protected_print(msg):
         if len(getattr(tqdm.tqdm, '_instances', [])):
-            tqdm.tqdm.write(str(msg))
+            # Specify file in case we are capturing stdout
+            for line in str(msg).split('\n'):
+                tqdm.tqdm.write(line, file=sys.stdout)
         else:
             # otherwise use the print / logger
             # (ensure logger has custom logic to exclude logging at this exact
@@ -280,3 +283,33 @@ def random_indices(num, seed=0):
     rng = np.random.RandomState(0)
     rng.shuffle(input_idxs)
     return input_idxs
+
+
+def ensure_rng(seed):
+    """
+    Creates a random number generator.
+
+    Args:
+        seed: if None, then the rng is unseeded. Otherwise the seed can be an
+            integer or a RandomState class
+    """
+    if seed is None:
+        rng = np.random.RandomState()
+    elif isinstance(seed, np.random.RandomState):
+        rng = seed
+    else:
+        rng = np.random.RandomState(seed)
+    return rng
+
+
+def make_idstr(d):
+    """
+    Make full-length-key id-string
+    """
+    import ubelt as ub
+    if len(d) == 0:
+        return ''
+    if not isinstance(d, ub.odict):
+        d = ub.odict(sorted(d.items()))
+    return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0,
+                    si=True)

@@ -148,21 +148,56 @@ def _update_hasher(hasher, data):
 
 class HashableExtensions():
     """
-    Helper class for managing non-builtin (e.g. numpy) hash types
+    Singleton helper class for managing non-builtin (e.g. numpy) hash types
     """
     def __init__(self):
-        self.extensions = []
+        # self.extensions = []
+        self.keyed_extensions = {}
 
-    def register(self, hash_type):
+    def register(self, hash_types):
+        # ensure iterable
+        if not isinstance(hash_types, (list, tuple)):
+            hash_types = [hash_types]
         def _wrap(hash_func):
-            self.extensions.append((hash_type, hash_func))
+            for hash_type in hash_types:
+                key = (hash_type.__module__, hash_type.__name__)
+                self.keyed_extensions[key] = (hash_type, hash_func)
+                # self.extensions.append((hash_type, hash_func))
             return hash_func
         return _wrap
 
     def lookup(self, data):
-        for hash_type, hash_func in self.extensions:
-            if isinstance(data, hash_type):
-                return hash_func
+        """
+        Example:
+            >>> self = HashableExtensions()
+            >>> self._register_numpy_extensions()
+            >>> self._register_builtin_class_extensions()
+
+            >>> data = np.array([1, 2, 3])
+            >>> self.lookup(data[0])
+
+            >>> class Foo(object):
+            >>>     def __init__(f):
+            >>>         f.attr = 1
+            >>> data = Foo()
+            >>> self.lookup(data)
+
+            >>> data = uuid.uuid4()
+            >>> self.lookup(data)
+        """
+        # First try fast O(1) lookup
+        query_hash_type = data.__class__
+        key = (query_hash_type.__module__, query_hash_type.__name__)
+        try:
+            hash_type, hash_func = self.keyed_extensions[key]
+        except KeyError:
+            raise TypeError('No registered hash func for hashable type=%r' % (
+                    query_hash_type))
+        return hash_func
+        # Old O(n) way of doing things
+        # for hash_type, hash_func in self.extensions:
+        #     if isinstance(data, hash_type):
+        #         return hash_func
 
     def _register_numpy_extensions(self):
         """
@@ -191,6 +226,23 @@ class HashableExtensions():
             prefix = b'FLT'
             return hashable, prefix
 
+        @self.register(np.random.RandomState)
+        def _hash_numpy_random_state(data):
+            hashable = _covert_to_hashable(data.get_state())
+            prefix = b'RNG'
+            return hashable, prefix
+
+    def _register_builtin_class_extensions(self):
+        """
+        Register hashing extensions for a selection of classes included in
+        python stdlib.
+        """
+        @self.register(uuid.UUID)
+        def _hash_uuid(data):
+            hashable = data.bytes
+            prefix = b'UUID'
+            return hashable, prefix
+
 _HASHABLE_EXTENSIONS = HashableExtensions()
 
 
@@ -199,6 +251,8 @@ try:
     _HASHABLE_EXTENSIONS._register_numpy_extensions()
 except ImportError:
     pass
+
+_HASHABLE_EXTENSIONS._register_builtin_class_extensions()
 
 
 def _covert_to_hashable(data):
@@ -210,6 +264,8 @@ def _covert_to_hashable(data):
         tuple(bytes, bytes): prefix, hashable:
             indicates the
 
+    Raises:
+        TypeError : if data has no registered hash methods
 
     Example:
         >>> import ubelt as ub
@@ -217,6 +273,7 @@ def _covert_to_hashable(data):
         >>> assert _covert_to_hashable(1) == (b'', b'\x00\x00\x00\x01')
         >>> assert _covert_to_hashable(1.0) == (b'', b'1.0')
     """
+    # HANDLE MOST COMMON TYPES FIRST
     if data is None:
         hashable = b''
         prefix = b'NONE'
@@ -227,9 +284,6 @@ def _covert_to_hashable(data):
         # convert unicode into bytes
         hashable = data.encode('utf-8')
         prefix = b'TXT'
-    elif isinstance(data, uuid.UUID):
-        hashable = data.bytes
-        prefix = b'UUID'
     elif isinstance(data, int):
         # warnings.warn('Hashing ints is slow, numpy is prefered')
         hashable = _int_to_bytes(data)
@@ -238,12 +292,13 @@ def _covert_to_hashable(data):
     elif isinstance(data, float):
         hashable = repr(data).encode('utf8')
         prefix = b'FLT'
+    # elif isinstance(data, uuid.UUID):
+    #     hashable = data.bytes
+    #     prefix = b'UUID'
     else:
+        # Then dynamically look up any other type
         hash_func = _HASHABLE_EXTENSIONS.lookup(data)
-        if hash_func is not None:
-            hashable, prefix = hash_func(data)
-        else:
-            raise TypeError('unknown hashable type=%r' % (type(data)))
+        hashable, prefix = hash_func(data)
     return prefix, hashable
 
 

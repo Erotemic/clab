@@ -669,7 +669,6 @@ def urban_fit():
         snapshot = xpu_device.XPU(None).load(pretrained)
         model_state_dict = snapshot['model_state_dict']
         model.load_partial_state(model_state_dict)
-        # model.shock_outward()
     elif arch == 'unet2':
         from clab.live import unet2
         model = unet2.UNet2(n_alt_classes=3, in_channels=n_channels,

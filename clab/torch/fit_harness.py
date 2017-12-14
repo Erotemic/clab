@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
 # import numpy as np
+import sys
+import tqdm
 import glob
-import numpy as np
 from os.path import join
 import os
 import ubelt as ub
@@ -14,12 +15,11 @@ import torchvision  # NOQA
 import itertools as it
 from clab.torch import metrics
 from clab.torch import xpu_device
-from clab.torch import nnio
-from clab.torch import im_loaders
+from clab.torch import early_stop
 from clab import util  # NOQA
 from clab import getLogger
 logger = getLogger(__name__)
-print = logger.info
+print = util.protect_print(logger.info)
 
 
 def mnist_demo():
@@ -41,62 +41,88 @@ def mnist_demo():
     datasets = {
         'train': torchvision.datasets.MNIST(root, transform=transform,
                                             train=True, download=True),
-        'test': torchvision.datasets.MNIST(root, transform=transform,
+        'vali': torchvision.datasets.MNIST(root, transform=transform,
                                            train=False, download=True),
     }
 
+    # take a subset of data
+    factor = 1
+    datasets['train'].train_data = datasets['train'].train_data[::factor]
+    datasets['train'].train_labels = datasets['train'].train_labels[::factor]
+
+    factor = 1
+    datasets['vali'].test_data = datasets['vali'].test_data[::factor]
+    datasets['vali'].test_labels = datasets['vali'].test_labels[::factor]
+
+    # Give the training dataset an input_id
+    datasets['train'].input_id = 'mnist'
+
     batch_size = 128
     n_classes = 10
-    xpu = xpu_device.XPU.from_argv(min_memory=4000)
-    model = models.MnistNet(n_channels=1, n_classes=n_classes)
+    xpu = xpu_device.XPU.from_argv(min_memory=300)
+    # model = models.MnistNet(n_channels=1, n_classes=n_classes)
 
     hyper = hyperparams.HyperParams(
+        model=(models.MnistNet, dict(n_channels=1, n_classes=n_classes)),
         optimizer=torch.optim.Adam,
+        scheduler='ReduceLROnPlateau',
         criterion=torch.nn.CrossEntropyLoss,
+        # stopping=('EarlyStopping', dict(patience=10)),  # TODO
+        # initializer='he',
         other={
             'n_classes': n_classes,
             # 'n_channels': n_channels,
         }
     )
 
-    train_dpath = os.path.expanduser('~/data/work/mnist/harness/mnist-net')
+    # train_dpath = os.path.expanduser('~/data/work/mnist/harness/mnist-net')
+    workdir = os.path.expanduser('~/data/work/mnist/')
+
     harn = FitHarness(
-        model=model, datasets=datasets, batch_size=batch_size,
-        train_dpath=train_dpath, xpu=xpu, hyper=hyper,
+        datasets=datasets, batch_size=batch_size,
+        xpu=xpu, hyper=hyper,
     )
 
-    labels = np.arange(n_classes)
+    # all_labels = np.arange(n_classes)
+    # @harn.add_metric_hook
+    # def custom_metrics(harn, output, labels):
+    #     # ignore_label = datasets['train'].ignore_label
+    #     # labels = datasets['train'].task.labels
+    #     label = labels[0]
+    #     metrics_dict = metrics._clf_metrics(output, label, labels=all_labels)
+    #     return metrics_dict
 
-    def custom_metrics(harn, output, label):
-        # ignore_label = datasets['train'].ignore_label
-        # labels = datasets['train'].task.labels
-        metrics_dict = metrics._clf_metrics(output, label, labels=labels)
-        return metrics_dict
-    harn.add_metric_hook(custom_metrics)
+    train_dpath = harn.setup_dpath(workdir)
+    print('train_dpath = {!r}'.format(train_dpath))
 
-    if False:
-        import plottool as pt
-        pt.qtensure()
-        ims, gts = next(iter(harn.loaders['train']))
-        pic = im_loaders.rgb_tensor_to_imgs(ims, norm=False)[0]
-        pt.clf()
-        pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True)
-
-        with pt.RenderingContext() as render:
-            tensor_data = datasets['train'][0][0][None, :]
-            pic = im_loaders.rgb_tensor_to_imgs(tensor_data, norm=False)[0]
-            pt.figure(fnum=1, doclf=True)
-            pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True,
-                      fnum=1)
-        render.image
+    if ub.argflag('--reset'):
+        ub.delete(train_dpath)
 
     harn.run()
 
+    # if False:
+    #     import plottool as pt
+    #     pt.qtensure()
+    #     ims, gts = next(iter(harn.loaders['train']))
+    #     pic = im_loaders.rgb_tensor_to_imgs(ims, norm=False)[0]
+    #     pt.clf()
+    #     pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True)
+
+    #     with pt.RenderingContext() as render:
+    #         tensor_data = datasets['train'][0][0][None, :]
+    #         pic = im_loaders.rgb_tensor_to_imgs(tensor_data, norm=False)[0]
+    #         pt.figure(fnum=1, doclf=True)
+    #         pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True,
+    #                   fnum=1)
+    #     render.image
+
 
 class FitHarness(object):
-    def __init__(harn, model, datasets, batch_size=4,
-                 criterion_cls='cross_entropy', hyper=None, xpu=None,
-                 train_dpath=None, dry=False):
+    def __init__(harn, datasets, batch_size=4, hyper=None, xpu=None,
+                 train_dpath='./train', dry=False):
+
+        harn.datasets = None
+        harn.loaders = None
 
         harn.dry = dry
         if harn.dry:
@@ -106,45 +132,36 @@ class FitHarness(object):
 
         harn.dry = dry
         harn.train_dpath = train_dpath
-        harn.snapshot_dpath = ub.ensuredir((harn.train_dpath, 'torch_snapshots'))
 
         if harn.dry:
             harn.xpu = xpu_device.XPU(None)
         else:
             harn.xpu = xpu_device.XPU(xpu)
 
-        data_kw = {'batch_size': batch_size}
-        if harn.xpu.is_gpu():
-            data_kw.update({'num_workers': 6, 'pin_memory': True})
-
-        harn.loaders = {}
-        harn.datasets = datasets
-        for tag, dset in datasets.items():
-            assert tag in {'train', 'vali', 'test'}
-            shuffle = tag == 'train'
-            data_kw_ = data_kw.copy()
-            if tag != 'train':
-                data_kw_['batch_size'] = max(batch_size // 4, 1)
-            loader = torch.utils.data.DataLoader(dset, shuffle=shuffle,
-                                                 **data_kw_)
-            harn.loaders[tag] = loader
-
-        harn.model = model
+        harn._setup_loaders(datasets, batch_size)
 
         harn.hyper = hyper
 
-        harn.lr_scheduler = hyper.scheduler_cls(**hyper.scheduler_params)
-        harn.criterion_cls = hyper.criterion_cls
-        harn.optimizer_cls = hyper.optimizer_cls
+        harn.main_prog = None
 
-        harn.criterion_params = hyper.criterion_params
-        harn.optimizer_params = hyper.optimizer_params
-
+        harn._tensorboard_hooks = []
         harn._metric_hooks = []
         harn._run_metrics = None
+        harn._custom_run_batch = None
 
         harn._epoch_callbacks = []
         harn._iter_callbacks = []
+
+        harn.model = None
+        # harn.initializer should be a hyperparam
+        harn.optimizer = None
+        harn.scheduler = None
+        # should this be a hyperparam? YES
+        harn.stopping = early_stop.EarlyStop(patience=30)
+
+        # this is optional and is designed for default solvers
+        # can be overriden by a custom_run_batch
+        harn.criterion = None
 
         harn.intervals = {
             'display_train': 1,
@@ -157,32 +174,44 @@ class FitHarness(object):
             'snapshot': 1,
         }
         harn.config = {
+            'show_prog': True,
             'max_iter': 1000,
         }
         harn.epoch = 0
 
-    def log(harn, msg):
-        print(msg)
+    def setup_dpath(harn, workdir='.'):
+        from clab.torch import folder_structure
+        structure = folder_structure.DirectoryStructure(
+            workdir=workdir, hyper=harn.hyper, datasets=harn.datasets,
+        )
+        dpath = structure.setup_dpath()
+        harn.train_dpath = dpath
+        return dpath
 
-    def log_value(harn, key, value, n_iter):
-        # if False:
-        #     print('{}={} @ {}'.format(key, value, n_iter))
-        if harn.tlogger:
-            harn.tlogger.log_value(key, value, n_iter)
+    def _setup_loaders(harn, datasets, batch_size):
+        data_kw = {'batch_size': batch_size}
+        if harn.xpu.is_gpu():
+            data_kw.update({'num_workers': 6, 'pin_memory': True})
 
-    def log_histogram(harn, key, value, n_iter):
-        # if False:
-        #     print('{}={} @ {}'.format(key, value, n_iter))
-        if harn.tlogger:
-            harn.tlogger.log_histogram(key, value, n_iter)
+        tags = ['train', 'vali', 'test']
 
-    def log_images(harn, key, value, n_iter):
-        # if False:
-        #     print('{}={} @ {}'.format(key, value, n_iter))
-        if harn.tlogger:
-            harn.tlogger.log_images(key, value, n_iter)
+        harn.loaders = ub.odict()
+        harn.datasets = datasets
+        for tag in tags:
+            if tag not in datasets:
+                continue
+            dset = datasets[tag]
+            shuffle = tag == 'train'
+            data_kw_ = data_kw.copy()
+            if tag != 'train':
+                data_kw_['batch_size'] = max(batch_size // 4, 1)
+            loader = torch.utils.data.DataLoader(dset, shuffle=shuffle,
+                                                 **data_kw_)
+            harn.loaders[tag] = loader
 
     def initialize_training(harn):
+        # TODO: Initialize the classes and then have a different function move
+        # everything to GPU
         harn.xpu.set_as_default()
 
         if tensorboard_logger:
@@ -198,46 +227,108 @@ class FitHarness(object):
         else:
             prev_states = harn.prev_snapshots()
 
-            model_name = harn.model.__class__.__name__
-            harn.log('There are {} existing snapshots'.format(len(prev_states)))
+            model_name = harn.hyper.model_cls.__name__
+
+            if harn.hyper.criterion_cls:
+                harn.log('Criterion: {}'.format(harn.hyper.criterion_cls.__name__))
+            else:
+                harn.log('Criterion: Custom')
+
+            harn.log('Optimizer: {}'.format(harn.hyper.optimizer_cls.__name__))
+
+            if harn.hyper.scheduler_cls:
+                harn.log('Scheduler: {}'.format(harn.hyper.scheduler_cls.__name__))
+            else:
+                harn.log('No Scheduler')
 
             harn.log('Fitting {} model on {}'.format(model_name, harn.xpu))
+
+            harn.model = harn.hyper.make_model()
+
+            if harn.hyper.init_method == 'he':
+                # TODO: add init_method as a hyperparam?
+                from clab.torch import nninit
+                nninit.init_he_normal(harn.model)
+            else:
+                raise KeyError(harn.hyper.init_method)
+
+            harn.log('There are {} existing snapshots'.format(len(prev_states)))
             harn.xpu.to_xpu(harn.model)
 
-            weight = harn.criterion_params.get('weight', None)
-            if weight is not None:
-                harn.log('Casting weights')
-                weight = torch.FloatTensor(harn.criterion_params['weight'])
-                weight = harn.xpu.to_xpu(weight)
-                harn.criterion_params['weight'] = weight
+            # more than one criterion?
+            if harn.hyper.criterion_cls:
 
-            harn.log('Criterion: {}'.format(harn.criterion_cls.__name__))
-            harn.criterion = harn.criterion_cls(**harn.criterion_params)
+                weight = harn.hyper.criterion_params.get('weight', None)
+                if weight is not None:
+                    harn.log('Casting weights')
+                    weight = torch.FloatTensor(harn.hyper.criterion_params['weight'])
+                    weight = harn.xpu.to_xpu(weight)
+                    harn.hyper.criterion_params['weight'] = weight
 
-            harn.log('Optimizer: {}'.format(harn.optimizer_cls.__name__))
-            if harn.lr_scheduler:
-                lr = harn.lr_scheduler(harn.epoch)
-                harn.optimizer = harn.optimizer_cls(
-                    harn.model.parameters(), lr=lr, **harn.optimizer_params)
+                harn.criterion = harn.hyper.criterion_cls(
+                    **harn.hyper.criterion_params)
             else:
-                harn.optimizer = harn.optimizer_cls(
-                    harn.model.parameters(), **harn.optimizer_params)
+                pass
+
+            harn.optimizer = harn.hyper.make_optimizer(harn.model.parameters())
+
+            if harn.hyper.scheduler_cls:
+                harn.scheduler = harn.hyper.make_scheduler(harn.optimizer)
 
             if prev_states:
                 harn.load_snapshot(prev_states[-1])
 
+                for i, group in enumerate(harn.optimizer.param_groups):
+                    if 'initial_lr' not in group:
+                        raise KeyError("param 'initial_lr' is not specified "
+                                       "in param_groups[{}] when resuming an optimizer".format(i))
+
+            else:
+                for group in harn.optimizer.param_groups:
+                    group.setdefault('initial_lr', group['lr'])
+
+    def update_prog_description(harn):
+        if harn.scheduler is None:
+            lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
+            lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
+        else:
+            if hasattr(harn.scheduler, 'get_lr'):
+                lrs = set(harn.scheduler.get_lr())
+            else:
+                # workaround for ReduceLROnPlateau
+                lrs = set(map(lambda group: group['lr'], harn.scheduler.optimizer.param_groups))
+            lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
+        desc = 'epoch lr:{} │ {}'.format(lr_str, harn.stopping.message())
+        harn.main_prog.set_description(desc)
+        harn.main_prog.refresh()
+
     def run(harn):
+        """
+        Main training loop
+        """
         harn.log('Begin training')
 
         harn.initialize_training()
 
-        # train loop
-        prog = ub.ProgIter(label='epoch', length=harn.config['max_iter'],
-                           start=harn.epoch, verbose=3)
+        if harn._check_termination():
+            return
 
-        if harn.lr_scheduler:
-            lr = harn.lr_scheduler(harn.epoch, harn.optimizer)
-            prog.set_extra(' lr:{} │'.format(lr))
+        harn.main_prog = tqdm.tqdm(desc='epoch', total=harn.config['max_iter'],
+                                   disable=not harn.config['show_prog'],
+                                   leave=True, dynamic_ncols=True, position=1,
+                                   initial=harn.epoch)
+        harn.update_prog_description()
+
+        train_loader = harn.loaders['train']
+        vali_loader  = harn.loaders.get('vali', None)
+        test_loader  = harn.loaders.get('test', None)
+
+        if vali_loader is None:
+            if harn.scheduler is not None:
+                if harn.stopping:
+                    raise ValueError('need a validataion dataset to use early stopping')
+                if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+                    raise ValueError('need a validataion dataset to use ReduceLROnPlateau')
 
         # Keep track of moving metric averages across epochs
         harn._run_metrics = {
@@ -245,37 +336,57 @@ class FitHarness(object):
             for tag, loader in harn.loaders.items()
         }
 
-        with prog:
+        try:
             for harn.epoch in it.count(harn.epoch):
-                # check for termination
-                if harn.epoch > harn.config['max_iter']:
-                    harn.log('Maximum harn.epoch reached, terminating ...')
-                    break
 
-                # change learning rate (modified optimizer inplace)
-                if harn.lr_scheduler:
-                    lr = harn.lr_scheduler(harn.epoch, harn.optimizer)
-                    prog.set_extra(' lr:{} │'.format(lr))
+                # Run training epoch
+                harn.run_epoch(train_loader, tag='train', learn=True)
 
-                harn.run_epoch(harn.loaders['train'], tag='train', learn=True)
+                # Run validation epoch
+                if vali_loader:
+                    if (harn.epoch + 1) % harn.intervals['vali'] == 0:
+                        vali_metrics = harn.run_epoch(
+                            vali_loader, tag='vali', learn=False)
+                        harn.stopping.update(harn.epoch, vali_metrics['loss'])
 
-                # validation and testing (dont peek)
-                for tag in ['vali', 'test']:
-                    if (harn.epoch + 1) % harn.intervals[tag] == 0:
-                        loader = harn.loaders.get(tag, None)
-                        if loader:
-                            harn.run_epoch(loader, tag=tag, learn=False)
+                    harn.update_prog_description()
+
+                # Run test epoch
+                if test_loader:
+                    if (harn.epoch + 1) % harn.intervals['test'] == 0:
+                        harn.run_epoch(test_loader, tag='test', learn=False)
 
                 if (harn.epoch + 1) % harn.intervals['snapshot'] == 0:
                     harn.save_snapshot()
 
-                prog.step(1)
+                harn.main_prog.update(1)
+
+                # check for termination
+                if harn._check_termination():
+                    raise StopIteration()
+
+                # change learning rate (modified optimizer inplace)
+                if harn.scheduler is None:
+                    pass
+                elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+                    harn.scheduler.step(vali_metrics['loss'])
+                else:
+                    harn.scheduler.step()
+
+                harn.update_prog_description()
+        except StopIteration:
+            pass
+        except Exception as ex:
+            harn.log('An {} error occurred in the train loop'.format(type(ex)))
+            harn._close_prog()
+            raise
+        harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.stopping.memory), nl=1)))
 
     def run_epoch(harn, loader, tag, learn=False):
         # Use exponentially weighted or windowed moving averages across epochs
-        run_metrics = harn._run_metrics[tag]
+        iter_moving_metircs = harn._run_metrics[tag]
         # Use simple moving average within an epoch
-        batch_metrics = metrics.CumMovingAve()
+        epoch_moving_metrics = metrics.CumMovingAve()
 
         # train batch
         if not harn.dry:
@@ -285,58 +396,73 @@ class FitHarness(object):
 
         display_interval = harn.intervals['display_' + tag]
 
-        prog = ub.ProgIter(label=tag, length=len(loader), verbose=1,
-                           clearline=True)
-        with prog:
-            for bx, input_batch in enumerate(loader):
-                iter_idx = (harn.epoch * len(loader) + bx)
+        msg = harn.batch_msg({'loss': -1}, loader.batch_size)
+        desc = tag + ' ' + msg
+        position = (list(harn.loaders.keys()).index(tag) +
+                    harn.main_prog.pos + 1)
+        prog = tqdm.tqdm(desc=desc, total=len(loader),
+                         disable=not harn.config['show_prog'],
+                         position=position, leave=True, dynamic_ncols=True)
 
-                input_batch = harn.xpu.to_xpu_var(*input_batch)
+        for bx, (inputs, labels) in enumerate(loader):
+            iter_idx = (harn.epoch * len(loader) + bx)
 
-                # Core learning / backprop
-                *inputs, label = input_batch
-                output, loss = harn.run_batch(inputs, label, learn=learn)
+            # The dataset should return a inputs/target 2-tuple of lists.
+            # In most cases each list will be length 1, unless there are
+            # multiple input branches or multiple output branches.
+            if not isinstance(inputs, (list, tuple)):
+                inputs = [inputs]
+            if not isinstance(labels, (list, tuple)):
+                labels = [labels]
 
-                # Measure train accuracy and other informative metrics
-                cur_metrics = harn._call_metric_hooks(output, label, loss)
+            inputs = harn.xpu.to_xpu_var(*inputs, volatile=not learn)
+            labels = harn.xpu.to_xpu_var(*labels, volatile=not learn)
 
-                if 1:
-                    harn._tensorboard_extra(inputs, output, label, tag,
-                                            iter_idx, loader)
+            # Core learning / backprop
+            outputs, loss = harn.run_batch(inputs, labels, learn=learn)
 
-                # Accumulate measures
-                batch_metrics.update(cur_metrics)
-                run_metrics.update(cur_metrics)
+            # Measure train accuracy and other informative metrics
+            cur_metrics = harn._call_metric_hooks(outputs, labels, loss)
 
-                # display_train training info
-                if (bx + 1) % display_interval == 0:
-                    ave_metrics = run_metrics.average()
+            # Accumulate measures
+            epoch_moving_metrics.update(cur_metrics)
+            iter_moving_metircs.update(cur_metrics)
 
-                    msg = harn.batch_msg({'loss': ave_metrics['loss']},
-                                         loader.batch_size)
-                    prog.set_extra(msg)
+            # display_train training info
+            if (bx + 1) % display_interval == 0:
+                ave_metrics = iter_moving_metircs.average()
 
-                    for key, value in ave_metrics.items():
-                        # harn.log_value(tag + ' ' + key, value, iter_idx)
-                        # TODO: use this one:
-                        harn.log_value(tag + ' iter ' + key, value, iter_idx)
+                msg = harn.batch_msg({'loss': ave_metrics['loss']},
+                                     loader.batch_size)
+                prog.set_description(tag + ' ' + msg)
 
-                    prog.step(harn.intervals['display_' + tag])
+                for key, value in ave_metrics.items():
+                    harn.log_value(tag + ' iter ' + key, value, iter_idx)
+
+                prog.update(harn.intervals['display_' + tag])
+
+            # Custom tensorboard output
+            for _hook in harn._tensorboard_hooks:
+                _hook(harn, tag, inputs, outputs, labels, bx, loader)
+
+        prog.close()
 
         # Record a true average for the entire batch
-        final_metrics = batch_metrics.average()
-        for key, value in final_metrics.items():
+        epoch_metrics = epoch_moving_metrics.average()
+
+        for key, value in epoch_metrics.items():
             harn.log_value(tag + ' epoch ' + key, value, harn.epoch)
 
-    def run_batch(harn, inputs, label, learn=False):
+        return epoch_metrics
+
+    def run_batch(harn, inputs, labels, learn=False):
         """
         Batch with weight updates
 
         https://github.com/meetshah1995/pytorch-semseg/blob/master/train.py
         """
         if harn.dry:
-            # output_shape = label.shape  # TODO: make sure this works
-            # TODO: make general
+            # TODO: make general if model has output_size_for
             # output_shape = (label.shape[0],) + tuple(harn.single_output_shape)
             # output_shape = (label.shape[0], 3, label.shape[1], label.shape[2])
             # output = Variable(torch.rand(*output_shape))
@@ -344,11 +470,11 @@ class FitHarness(object):
             loss = Variable(torch.rand(1))
             return output, loss
 
-        # Forward prop through the model
-        output = harn.model(*inputs)
-
-        # Compute the loss
-        loss = harn.criterion(output, label)
+        # Run custom forward pass with loss computation, fallback to default
+        if harn._custom_run_batch is None:
+            outputs, loss = harn._default_run_batch(harn, inputs, labels)
+        else:
+            outputs, loss = harn._custom_run_batch(harn, inputs, labels)
 
         # Backprop and learn
         if learn:
@@ -356,94 +482,38 @@ class FitHarness(object):
             loss.backward()
             harn.optimizer.step()
 
-        return output, loss
+        return outputs, loss
 
-    def _tensorboard_inputs(harn, inputs, iter_idx, tag):
+    def _default_run_batch(harn, harn_, inputs, labels):
+        # What happens when there are multiple criterions?
+        # How does hyperparam deal with that?
+
+        # Forward prop through the model
+        outputs = harn.model(*inputs)
+
+        # Compute the loss
+        # TODO: how do we support multiple losses for deep supervision?
+        # AND: overwrite this
+        if len(labels) == 1:
+            labels = labels[0]
+
+        try:
+            loss = harn.criterion(outputs, labels)
+        except Exception:
+            print('may need to make a custom batch runner with set_batch_runner')
+            raise
+        return outputs, loss
+
+    def set_batch_runner(harn, func):
         """
-            >>> tensor = torch.rand(4, 3, 42, 420)
-            >>> inputs = [tensor]
+        Define custom logic to do a forward pass with loss computation.
+
+        Args:
+            func : accepts 3 args (harn, inputs, labels). The inputs and labels
+            will be lists of Variables
         """
-        # print("LOG IMAGES")
-        if False:
-            # todo: add dataset / task hook for extracting images
-            pass
-        else:
-            # default_convert = im_loaders.rgb_tensor_to_imgs
-            def default_convert(tensor):
-                if len(tensor.shape) == 4:
-                    arr = tensor.data.cpu().numpy().transpose(0, 2, 3, 1)
-                    aux = []
-                    if arr.shape[3] == 1:
-                        ims = arr[:, :, :, 0]
-                    elif arr.shape[3] == 3:
-                        ims = arr
-                    else:
-                        ims = arr[:, :, :, 0:3]
-                        aux = [arr[:, :, :, c] for c in range(3, arr.shape[3])]
-                    imaux = [ims] + aux
-                    return imaux
-                elif len(tensor.shape) == 3:
-                    return [tensor.data.cpu().numpy()]
-                else:
-                    raise NotImplementedError(str(tensor.shape))
-
-        # def single_image_render(im):
-        #     import plottool as pt
-        #     with pt.RenderingContext() as render:
-        #         pt.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
-        #         if len(im.shape) == 3:
-        #             im = im[:, :, ::-1]
-        #         print(im.shape)
-        #         print(im.dtype)
-        #         pt.imshow(im, norm=True, cmap='viridis', data_colorbar=True,
-        #                   ax=pt.gca())
-        #     out_im = render.image[:, :, ::-1]
-        #     return out_im
-
-        for i, input_tensor in enumerate(inputs):
-            # print('\n\n')
-            if len(input_tensor.shape) == 4:
-                # print('input_tensor.shape = {!r}'.format(input_tensor.shape))
-                imaux = default_convert(input_tensor[0:2])
-                for c, images in enumerate(imaux):
-                    extent = (images.max() - images.min())
-                    images = (images - images.min()) / max(extent, 1e-6)
-                    # print('images.shape = {!r}'.format(images.shape))
-                    # images = [single_image_render(im) for im in images]
-                    # for im in images:
-                    #     print('im.shape = {!r}'.format(im.shape))
-                    #     print('im.dtype = {!r}'.format(im.dtype))
-                    #     print(im.max())
-                    #     print(im.min())
-                    harn.log_images(tag + '-c{c}-in{i}-iter{x}'.format(i=i, c=c, x=iter_idx), images, iter_idx)
-            else:
-                print('\nSKIPPING INPUT VISUALIZE\n')
-
-    def _tensorboard_extra(harn, inputs, output, label, tag, iter_idx, loader):
-        # https://github.com/yunjey/pytorch-tutorial/blob/master/tutorials/04-utils/tensorboard/main.py#L83-L105
-        # print("\nTENSORBOARD EXTRAS\n")
-        # loader.dataset
-        # print('\n\ninputs.shape = {!r}'.format(inputs[0].shape))
-
-        if iter_idx == 0:
-            harn._tensorboard_inputs(inputs, iter_idx, tag)
-
-        if iter_idx % 1000 == 0:
-            true = label.data.cpu().numpy().ravel()
-            n_classes = harn.hyper.other['n_classes']
-            counts = np.bincount(true, minlength=n_classes)
-            bins = list(range(n_classes + 1))
-            harn.log_histogram(tag + '-true-', (bins, counts), iter_idx)
-
-        if iter_idx % 1000 == 0:
-            if not harn.dry:
-                n_classes = harn.hyper.other['n_classes']
-                preds = output.max(dim=1)[1].data.cpu().numpy().ravel()
-                counts = np.bincount(preds, minlength=n_classes)
-                bins = list(range(n_classes + 1))
-                harn.log_histogram(tag + '-pred-', (bins, counts), iter_idx)
-                # import torch.nn.functional as F
-                # probs = torch.exp(F.log_softmax(output, dim=1))
+        harn._custom_run_batch = func
+        return func
 
     def add_metric_hook(harn, hook):
         """
@@ -479,14 +549,23 @@ class FitHarness(object):
         msg = ' │ ' .join([bs] + metric_parts) + ' │'
         return msg
 
+    @property
+    def snapshot_dpath(harn):
+        return join(harn.train_dpath, 'torch_snapshots')
+
     def prev_snapshots(harn):
+        ub.ensuredir(harn.snapshot_dpath)
         prev_states = sorted(glob.glob(join(harn.snapshot_dpath, '_epoch_*.pt')))
         return prev_states
 
     def load_snapshot(harn, load_path):
-        snapshot = torch.load(load_path, map_location=nnio.device_mapping(harn.xpu.num))
+        """
+        Sets the harness to its state just after an epoch finished
+        """
+        snapshot = harn.xpu.load(load_path)
         harn.log('Loading previous state: {}'.format(load_path))
-        harn.epoch = snapshot['epoch']
+        # the snapshot holds the previous epoch, so add one to move to current
+        harn.epoch = snapshot['epoch'] + 1
         harn.model.load_state_dict(snapshot['model_state_dict'])
         if 'optimizer_state_dict' in snapshot:
             harn.optimizer.load_state_dict(snapshot['optimizer_state_dict'])
@@ -494,6 +573,7 @@ class FitHarness(object):
 
     def save_snapshot(harn):
         # save snapshot
+        ub.ensuredir(harn.snapshot_dpath)
         save_path = join(harn.snapshot_dpath, '_epoch_{:08d}.pt'.format(harn.epoch))
         if harn.dry:
             harn.log('Would save snapshot to {}'.format(save_path))
@@ -513,7 +593,137 @@ class FitHarness(object):
                 'optimizer_state_dict': harn.optimizer.state_dict(),
             }
             torch.save(snapshot, save_path)
-            harn.log('Snapshot saved to {}'.format(save_path))
+            # harn.log('Snapshot saved to {}'.format(save_path))
+
+    def log(harn, msg):
+        # if harn.main_prog:
+        #     harn.main_prog.write(str(msg), file=sys.stdout)
+        # else:
+        print(msg)
+        # for line in msg.split('\n'):
+        #     print(line)
+        # print('line = {!r}'.format(line))
+
+    def log_value(harn, key, value, n_iter):
+        # if False:
+        #     print('{}={} @ {}'.format(key, value, n_iter))
+        if harn.tlogger:
+            harn.tlogger.log_value(key, value, n_iter)
+
+    def log_histogram(harn, key, value, n_iter):
+        # if False:
+        #     print('{}={} @ {}'.format(key, value, n_iter))
+        if harn.tlogger:
+            harn.tlogger.log_histogram(key, value, n_iter)
+
+    def log_images(harn, key, value, n_iter):
+        # if False:
+        #     print('{}={} @ {}'.format(key, value, n_iter))
+        if harn.tlogger:
+            harn.tlogger.log_images(key, value, n_iter)
+
+    def _check_termination(harn):
+        if harn.epoch >= harn.config['max_iter']:
+            harn._close_prog()
+            harn.log('Maximum harn.epoch reached, terminating ...')
+            return True
+        if harn.stopping.is_done():
+            harn._close_prog()
+            harn.log('Validation set is not improving, terminating ...')
+            return True
+        return False
+
+    def _close_prog(harn):
+        harn.main_prog.close()
+        harn.main_prog = None
+        sys.stdout.write('\n\n\n\n')  # fixes progress bar formatting
+
+    # def _tensorboard_inputs(harn, inputs, iter_idx, tag):
+    #     """
+    #         >>> tensor = torch.rand(4, 3, 42, 420)
+    #         >>> inputs = [tensor]
+    #     """
+    #     # print("LOG IMAGES")
+    #     if False:
+    #         # todo: add dataset / task hook for extracting images
+    #         pass
+    #     else:
+    #         # default_convert = im_loaders.rgb_tensor_to_imgs
+    #         def default_convert(tensor):
+    #             if len(tensor.shape) == 4:
+    #                 arr = tensor.data.cpu().numpy().transpose(0, 2, 3, 1)
+    #                 aux = []
+    #                 if arr.shape[3] == 1:
+    #                     ims = arr[:, :, :, 0]
+    #                 elif arr.shape[3] == 3:
+    #                     ims = arr
+    #                 else:
+    #                     ims = arr[:, :, :, 0:3]
+    #                     aux = [arr[:, :, :, c] for c in range(3, arr.shape[3])]
+    #                 imaux = [ims] + aux
+    #                 return imaux
+    #             elif len(tensor.shape) == 3:
+    #                 return [tensor.data.cpu().numpy()]
+    #             else:
+    #                 raise NotImplementedError(str(tensor.shape))
+
+    #     # def single_image_render(im):
+    #     #     import plottool as pt
+    #     #     with pt.RenderingContext() as render:
+    #     #         pt.figure(fnum=1, pnum=(1, 1, 1), doclf=True)
+    #     #         if len(im.shape) == 3:
+    #     #             im = im[:, :, ::-1]
+    #     #         print(im.shape)
+    #     #         print(im.dtype)
+    #     #         pt.imshow(im, norm=True, cmap='viridis', data_colorbar=True,
+    #     #                   ax=pt.gca())
+    #     #     out_im = render.image[:, :, ::-1]
+    #     #     return out_im
+
+    #     for i, input_tensor in enumerate(inputs):
+    #         # print('\n\n')
+    #         if len(input_tensor.shape) == 4:
+    #             # print('input_tensor.shape = {!r}'.format(input_tensor.shape))
+    #             imaux = default_convert(input_tensor[0:2])
+    #             for c, images in enumerate(imaux):
+    #                 extent = (images.max() - images.min())
+    #                 images = (images - images.min()) / max(extent, 1e-6)
+    #                 # print('images.shape = {!r}'.format(images.shape))
+    #                 # images = [single_image_render(im) for im in images]
+    #                 # for im in images:
+    #                 #     print('im.shape = {!r}'.format(im.shape))
+    #                 #     print('im.dtype = {!r}'.format(im.dtype))
+    #                 #     print(im.max())
+    #                 #     print(im.min())
+    #                 harn.log_images(tag + '-c{c}-in{i}-iter{x}'.format(i=i, c=c, x=iter_idx), images, iter_idx)
+    #         else:
+    #             print('\nSKIPPING INPUT VISUALIZE\n')
+
+    # def _tensorboard_extra(harn, inputs, output, label, tag, iter_idx, loader):
+    #     # https://github.com/yunjey/pytorch-tutorial/blob/master/tutorials/04-utils/tensorboard/main.py#L83-L105
+    #     # print("\nTENSORBOARD EXTRAS\n")
+    #     # loader.dataset
+    #     # print('\n\ninputs.shape = {!r}'.format(inputs[0].shape))
+
+    #     if iter_idx == 0:
+    #         harn._tensorboard_inputs(inputs, iter_idx, tag)
+
+    #     if iter_idx % 1000 == 0:
+    #         true = label.data.cpu().numpy().ravel()
+    #         n_classes = harn.hyper.other['n_classes']
+    #         counts = np.bincount(true, minlength=n_classes)
+    #         bins = list(range(n_classes + 1))
+    #         harn.log_histogram(tag + '-true-', (bins, counts), iter_idx)
+
+    #     if iter_idx % 1000 == 0:
+    #         if not harn.dry:
+    #             n_classes = harn.hyper.other['n_classes']
+    #             preds = output.max(dim=1)[1].data.cpu().numpy().ravel()
+    #             counts = np.bincount(preds, minlength=n_classes)
+    #             bins = list(range(n_classes + 1))
+    #             harn.log_histogram(tag + '-pred-', (bins, counts), iter_idx)
+    #             # import torch.nn.functional as F
+    #             # probs = torch.exp(F.log_softmax(output, dim=1))
 
 
 def get_snapshot(train_dpath, epoch='recent'):
