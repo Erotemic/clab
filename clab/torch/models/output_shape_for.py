@@ -329,6 +329,21 @@ class OutputShapeFor(object):
         return input_shape
 
     @staticmethod
+    @compute_type(nn.Dropout)
+    def dropout1d(module, input_shape):
+        return input_shape
+
+    @staticmethod
+    @compute_type(nn.Dropout2d)
+    def dropout2d(module, input_shape):
+        return input_shape
+
+    @staticmethod
+    @compute_type(nn.Dropout3d)
+    def dropout3d(module, input_shape):
+        return input_shape
+
+    @staticmethod
     @compute_type(nn.ReLU)
     def relu(module, input_shape):
         return input_shape

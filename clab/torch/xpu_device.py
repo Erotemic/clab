@@ -48,9 +48,11 @@ class XPU(ub.NiceRepr):
     @classmethod
     def from_argv(XPU, **kwargs):
         """
-        Respect command line gpu argument
+        Respect command line gpu and cpu argument
         """
         gpu_num = ub.argval('--gpu', default=None)
+        if ub.argflag('--cpu'):
+            gpu_num = None
         if gpu_num is None:
             xpu = XPU.available(**kwargs)
         else:

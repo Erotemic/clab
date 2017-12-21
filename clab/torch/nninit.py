@@ -2,6 +2,8 @@
 References:
     https://github.com/alykhantejani/nninit
 """
+from os.path import dirname
+import ubelt as ub
 from os.path import exists
 from os.path import join
 import numpy as np
@@ -14,46 +16,79 @@ class _BaseInitializer(object):
     """
     """
     def __call__(self, model):
-        self.init(model)
+        self.forward(model)
 
-    def init(self, model):
+    def forward(self, model):
         """
         Abstract function that does the initailization
         """
         raise NotImplementedError('implement me')
 
-    def get_state(self):
-        state = self.__dict__.copy()
-        state['__class__.__name__'] = self.__class__.__name__
-        state['__class__.__module__'] = self.__class__.__module__
-        return state
+    def history(self):
+        """
+        Initializer methods have histories which are short for algorithms and
+        can be quite long for pretrained models
+        """
+        return None
+
+    def get_initkw(self):
+        """
+        Initializer methods have histories which are short for algorithms and
+        can be quite long for pretrained models
+        """
+        initkw = self.__dict__.copy()
+        # info = {}
+        # info['__name__'] = self.__class__.__name__
+        # info['__module__'] = self.__class__.__module__
+        # info['__initkw__'] = initkw
+        return initkw
 
 
 class Pretrained(_BaseInitializer):
     """
     Attributes:
         fpath (str): location of the pretrained weights file
+        initializer (_BaseInitializer): backup initializer if the weights can
+            only be partially applied
     """
     def __init__(self, fpath, initializer='HeNormal', shock_partial=False):
         self.fpath = fpath
+
+        if isinstance(initializer, str):
+            from clab.torch import nninit
+            initializer = getattr(nninit, initializer)()
+
         self.initializer = initializer
         self.shock_partial = shock_partial
 
-    def init(self, model):
+    def forward(self, model):
         model_state_dict = torch.load(self.fpath)
         load_partial_state(model, model_state_dict,
                            initializer=self.initializer,
                            shock_partial=self.shock_partial)
 
-    def get_state(self):
-        # if available return the history of the model as well
-        info = super().get_state()
-        info['initializer'] = info['initializer'].get_state()
-        info_fpath = join(self.fpath, '..', 'train_info.json')
+    def history(self):
+        """
+        if available return the history of the model as well
+        """
+        info_dpath = dirname(dirname(ub.truepath(self.fpath)))
+        info_fpath = join(info_dpath, 'train_info.json')
         if exists(info_fpath):
-            raise NotImplementedError('please fix me')
-            info['train_info'] = util.load_json(info_fpath)
-        return info
+            return util.read_json(info_fpath)
+        else:
+            return '__UNKNOWN__'
+
+
+class NoOp(_BaseInitializer):
+    """
+    Example:
+        >>> from clab.torch.nninit import *
+        >>> self = NoOp()
+        >>> #info = self.history()
+        >>> #assert info['__name__'] == 'NoOp'
+    """
+    def forward(self, model):
+        return
 
 
 class HeNormal(_BaseInitializer):
@@ -61,22 +96,38 @@ class HeNormal(_BaseInitializer):
     Example:
         >>> from clab.torch.nninit import *
         >>> self = HeNormal()
-        >>> state = self.get_state()
-        >>> assert state['__class__.__name__'] == 'HeNormal'
+        >>> #info = self.history()
+        >>> #assert info['__name__'] == 'HeNormal'
     """
     def __init__(self, gain=.01):
         self.gain = gain
 
-    def init(self, model):
+    def forward(self, model):
         apply_initializer(model, he_normal, self.__dict__)
 
 
-def apply_initializer(model, func, funckw):
-    for item in trainable_layers(model):
-        if isinstance(item, torch.nn.Conv2d):
-            func(item.weight, **funckw)
-        if getattr(item, 'bias', None) is not None:
-            item.bias.data.fill_(0)
+def apply_initializer(input, func, funckw):
+    """
+    Args:
+        input: can be a model, layer, or tensor
+    """
+    if isinstance(input, (Variable, torch.Tensor)):
+        data = input
+    elif isinstance(input, torch.nn.Conv2d):
+        data = input
+        func(data.weight, **funckw)
+    elif getattr(input, 'bias', None) is not None:
+        data = input
+        data.bias.data.fill_(0)
+    else:
+        # input is a torch module
+        model = input
+        for item in trainable_layers(model):
+            apply_initializer(item, func, funckw)
+            # if isinstance(item, torch.nn.Conv2d):
+            #     func(item.weight, **funckw)
+            # if getattr(item, 'bias', None) is not None:
+            #     item.bias.data.fill_(0)
 
 
 def uniform(tensor, a=0, b=1):
@@ -254,7 +305,7 @@ def he_normal(tensor, gain=1):
     else:
         fan_in, _ = _calculate_fan_in_and_fan_out(tensor)
         std = gain * np.sqrt(1.0 / fan_in)
-        return tensor.normal_(initializer0, std)
+        return tensor.normal_(0, std)
 
 
 def orthogonal(tensor, gain=1):

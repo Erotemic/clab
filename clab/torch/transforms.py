@@ -226,13 +226,18 @@ class RandomWarpAffine(object):
 
 
 class RandomBlur(object):
-    def __init__(self, k_pdf=(1, 2), freq=.5, rng=None):
+    """
+    TODO: use imgaug or something similar.
+
+    k_pdf should be a class that samples from a distribution
+    """
+    def __init__(self, k_pdf=(2, 4), freq=.5, rng=None):
         self.rng = rng
         self.freq = freq
         self.k_pdf = k_pdf
 
     def __call__(self, data):
-        if self.rng.rand() > self.freq:
+        if self.rng.rand() < self.freq:
             k = self.rng.randint(*self.k_pdf)
             data = cv2.blur(data, (k, k))
         return data
@@ -247,7 +252,7 @@ class RandomGamma(object):
         self.freq = freq
 
     def __call__(self, data):
-        if self.rng.rand() > self.freq:
+        if self.rng.rand() < self.freq:
             mn, mx = self.gamma_pdf
             gamma = self.rng.rand() * (mx - mn) + mn
 

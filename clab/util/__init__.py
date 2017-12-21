@@ -43,9 +43,10 @@ else:
                                     NumpyEncoder, json_numpy_obj_hook, read_json,
                                     walk_json, write_json,)
     from clab.util.misc import (cc_locs, clean_tensorboard_protobufs,
-                                compact_idstr, isiterable, protect_print,
-                                random_indices, read_arr, read_h5arr, roundrobin,
-                                super2, write_arr, write_h5arr,)
+                                compact_idstr, ensure_rng, isiterable, make_idstr,
+                                make_short_idstr, protect_print, random_indices,
+                                read_arr, read_h5arr, roundrobin, super2,
+                                write_arr, write_h5arr,)
     from clab.util.mplutil import (adjust_subplots, axes_extent,
                                    copy_figure_to_clipboard, extract_axes_extents,
                                    figure, pandas_plot_matrix,

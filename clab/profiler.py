@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from six.moves import range, cStringIO
 import six
 import operator
+import atexit
 import sys
 import ubelt as ub
 
@@ -15,6 +16,21 @@ else:
         return func
     profile = __dummy_profile__
     IS_PROFILING = False
+
+
+@atexit.register
+def dump_global_profile_report():
+    # if we are profiling, then dump out info at the end of the program
+    if IS_PROFILING:
+        self = KernprofParser(profile)
+        # print('----')
+        # print('RAW')
+        # print('----')
+        # self.print_report()
+        # print('----')
+        # print('DUMPING')
+        # print('----')
+        self.dump_text()
 
 
 def dynamic_profile(func):
@@ -126,7 +142,10 @@ class KernprofParser(object):
 
         import re
         time_line = get_match_text(re.search('Pystone time: [0-9.]* s', block, flags=re.MULTILINE | re.DOTALL))
-        time_str = get_match_text(re.search('[0-9.]+', time_line, flags=re.MULTILINE | re.DOTALL))
+        if time_line is None:
+            time_str = None
+        else:
+            time_str = get_match_text(re.search('[0-9.]+', time_line, flags=re.MULTILINE | re.DOTALL))
         if time_str is not None:
             return float(time_str)
         else:

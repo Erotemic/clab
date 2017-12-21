@@ -35,7 +35,7 @@ Notes:
 
     TRAIN
     └── input_{train_input_id}
-        └── solver_{train_id}
+        └── fit_{train_id}
             ├── solver.prototext
             ├── fit_{arch}_model.prototext
             ├── snapshots

@@ -21,16 +21,29 @@ import numpy as np
 from scipy.sparse import coo_matrix
 
 
-def confusion_matrix(y_true, y_pred, labels=None, sample_weight=None):
+def confusion_matrix(y_true, y_pred, n_labels=None, labels=None, sample_weight=None):
     """
     faster version of sklearn confusion matrix that avoids the
     expensive checks and label rectification
 
     Runs in about 0.7ms
+
+    Returns:
+        ndarray: matrix where rows represent real and cols represent pred
+
+    Example:
+        >>> y_true = np.array([0, 0, 0, 0, 1, 1, 1, 0,  0, 1])
+        >>> y_pred = np.array([0, 0, 0, 0, 0, 0, 0, 1,  1, 1])
+        >>> confusion_matrix(y_true, y_pred, 2)
+        array([[4, 2],
+               [3, 1]])
+        >>> confusion_matrix(y_true, y_pred, 2).ravel()
+        array([4, 2, 3, 1])
     """
     if sample_weight is None:
         sample_weight = [1] * len(y_true)
-    n_labels = len(labels)
+    if n_labels is None:
+        n_labels = len(labels)
     CM = coo_matrix((sample_weight, (y_true, y_pred)),
                     shape=(n_labels, n_labels),
                     dtype=np.int64).toarray()

@@ -18,6 +18,7 @@ from clab.torch import xpu_device
 from clab.torch import early_stop
 from clab import util  # NOQA
 from clab import getLogger
+import time
 logger = getLogger(__name__)
 print = util.protect_print(logger.info)
 
@@ -61,12 +62,16 @@ def mnist_demo():
     n_classes = 10
     xpu = xpu_device.XPU.from_argv(min_memory=300)
     # model = models.MnistNet(n_channels=1, n_classes=n_classes)
+    from clab.torch import nninit
 
     hyper = hyperparams.HyperParams(
         model=(models.MnistNet, dict(n_channels=1, n_classes=n_classes)),
         optimizer=torch.optim.Adam,
         scheduler='ReduceLROnPlateau',
         criterion=torch.nn.CrossEntropyLoss,
+        initializer=(nninit.HeNormal, {}),
+        # initializer=(nninit.Pretrained, dict(fpath=ub.truepath('~/data/work/mnist/arch/MnistNet/train/input_mnist/solver_mnist_MnistNet,ufbg,Pretrained,dwlk,Adam,apce,ReduceLROnPlateau,zagw,CrossEntropyLoss,ceip_n=10/torch_snapshots/_epoch_00000095.pt'))),
+        # initializer=(nninit.Pretrained, dict(fpath=ub.truepath('~/data/work/mnist/arch/MnistNet/train/input_mnist/solver_mnist_MnistNet,ufbg,HeNormal,akyu,Adam,apce,ReduceLROnPlateau,zagw,CrossEntropyLoss,ceip_n=10/torch_snapshots/_epoch_00000001.pt'))),
         # stopping=('EarlyStopping', dict(patience=10)),  # TODO
         # initializer='he',
         other={
@@ -244,13 +249,9 @@ class FitHarness(object):
             harn.log('Fitting {} model on {}'.format(model_name, harn.xpu))
 
             harn.model = harn.hyper.make_model()
+            harn.initializer = harn.hyper.make_initializer()
 
-            if harn.hyper.init_method == 'he':
-                # TODO: add init_method as a hyperparam?
-                from clab.torch import nninit
-                nninit.init_he_normal(harn.model)
-            else:
-                raise KeyError(harn.hyper.init_method)
+            harn.initializer(harn.model)
 
             harn.log('There are {} existing snapshots'.format(len(prev_states)))
             harn.xpu.to_xpu(harn.model)
@@ -287,6 +288,8 @@ class FitHarness(object):
                 for group in harn.optimizer.param_groups:
                     group.setdefault('initial_lr', group['lr'])
 
+            harn.log('New snapshots will save harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
+
     def update_prog_description(harn):
         if harn.scheduler is None:
             lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
@@ -300,6 +303,8 @@ class FitHarness(object):
             lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
         desc = 'epoch lr:{} │ {}'.format(lr_str, harn.stopping.message())
         harn.main_prog.set_description(desc)
+        harn.main_prog.set_postfix(
+            {'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
         harn.main_prog.refresh()
 
     def run(harn):
@@ -403,6 +408,7 @@ class FitHarness(object):
         prog = tqdm.tqdm(desc=desc, total=len(loader),
                          disable=not harn.config['show_prog'],
                          position=position, leave=True, dynamic_ncols=True)
+        prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
         for bx, (inputs, labels) in enumerate(loader):
             iter_idx = (harn.epoch * len(loader) + bx)
@@ -440,6 +446,7 @@ class FitHarness(object):
                     harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
                 prog.update(harn.intervals['display_' + tag])
+                prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
             # Custom tensorboard output
             for _hook in harn._tensorboard_hooks:

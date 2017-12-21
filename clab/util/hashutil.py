@@ -185,6 +185,8 @@ class HashableExtensions():
             >>> data = uuid.uuid4()
             >>> self.lookup(data)
         """
+        # Maybe try using functools.singledispatch instead?
+
         # First try fast O(1) lookup
         query_hash_type = data.__class__
         key = (query_hash_type.__module__, query_hash_type.__name__)

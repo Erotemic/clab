@@ -1,4 +1,5 @@
 import six
+import ubelt as ub
 import numpy as np
 import h5py
 import tqdm
@@ -306,10 +307,53 @@ def make_idstr(d):
     """
     Make full-length-key id-string
     """
-    import ubelt as ub
+    if d is None:
+        return ''
     if len(d) == 0:
         return ''
     if not isinstance(d, ub.odict):
         d = ub.odict(sorted(d.items()))
-    return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0,
-                    si=True)
+    return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True)
+
+
+def make_short_idstr(params):
+    """
+    Make id-string where they keys are shortened
+
+    Args:
+        params (dict):
+
+    Returns:
+        str:
+
+    CommandLine:
+        python -m clab.util.misc make_short_idstr
+
+    Example:
+        >>> from clab.util.misc import *  # NOQA
+        >>> params = {'input_shape': (None, 3, 212, 212),
+        >>>           'a': 'b',
+        >>>           'center': {'im_mean': .5, 'std': 1},
+        >>>           'alphabet': 'abc'}
+        >>> print(make_short_idstr(params))
+    """
+    if params is None:
+        return ''
+    elif len(params) == 0:
+        return ''
+    from clab import util
+    short_keys = util.shortest_unique_prefixes(list(params.keys()),
+                                               allow_simple=False,
+                                               allow_end=True,
+                                               min_length=1)
+    def shortval(v):
+        if isinstance(v, bool):
+            return int(v)
+        return v
+    d = dict(zip(short_keys, map(shortval, params.values())))
+    def make_idstr(d):
+        # Note: we are not using sort=True, because repr2 sorts sets and dicts
+        # by default.
+        return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True)
+    short_idstr = make_idstr(d)
+    return short_idstr

@@ -9,54 +9,56 @@ class DirectoryStructure(object):
         self.workdir = workdir
         self.hyper = hyper
 
-    def train_info(self):
+    def train_info(self, short=False, hashed=False):
         # TODO: if pretrained is another clab model, then we should read that
         # train_info if it exists and append it to a running list of train_info
-        arch = self.hyper.model_cls.__name__
-        arch_id = self.hyper.model_id()
+        hyper = self.hyper
 
-        arch_hashid = self.hyper.model_id(brief=True)
+        arch = hyper.model_cls.__name__
+        # arch_id = hyper.model_id()
 
-        train_hyper_id = self.hyper.hyper_id()
-        train_hyper_hashid = util.hash_data(train_hyper_id)[:8]
+        # arch_hashid = hyper.model_id(brief=True)
 
         arch_dpath = join(self.workdir, 'arch', arch)
         train_base = join(arch_dpath, 'train')
 
         input_id = self.datasets['train'].input_id
 
-        other_id = self.hyper.other_id()
+        train_hyper_id_long = hyper.hyper_id()
+        train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
+        train_hyper_hashid = util.hash_data(train_hyper_id_long)[:8]
+        other_id = hyper.other_id()
 
-        train_id = '{}_{}_{}_{}_{}'.format(
-            input_id, arch_hashid, self.hyper.init_method, train_hyper_hashid,
-            other_id)
+        train_id = '{}_{}_{}'.format(
+            input_id, train_hyper_id_brief, other_id)
 
         train_dpath = join(
             train_base,
-            'input_' + input_id, 'solver_{}'.format(train_id)
+            'input_' + input_id, 'fit_{}'.format(train_id)
         )
         # TODO: needs MASSIVE cleanup and organization
 
+        # make temporary initializer so we can infer the history
+        temp_initializer = hyper.make_initializer()
+        init_history = temp_initializer.history()
+
         train_info =  {
             'workdir': self.workdir,
-            'arch': arch,
-            'arch_hashid': arch_hashid,
-            'arch_id': arch_id,
-            # 'archkw': archkw,
+            'train_id': train_id,
+            'train_dpath': train_dpath,
             'input_id': input_id,
             'other_id': other_id,
-            'train_hyper_id': train_hyper_id,
+            'hyper': hyper.get_initkw(),
+            'train_hyper_id_long': train_hyper_id_long,
+            'train_hyper_id_brief': train_hyper_id_brief,
             'train_hyper_hashid': train_hyper_hashid,
-            'init_method': self.hyper.init_method,
-            'train_id': train_id,
-            # TODO: keep init method history
-            'init_method_history': [],
-            'train_dpath': train_dpath,
+            'init_history': init_history,
+            'init_history_hashid': util.hash_data(util.make_idstr(init_history)),
         }
         return train_info
 
-    def setup_dpath(self):
-        train_info = self.train_info()
+    def setup_dpath(self, short=False, hashed=False):
+        train_info = self.train_info(short, hashed)
 
         train_dpath = ub.ensuredir(train_info['train_dpath'])
         train_info_fpath = join(train_dpath, 'train_info.json')
@@ -65,10 +67,11 @@ class DirectoryStructure(object):
 
         print('+=========')
         # print('hyper_strid = {!r}'.format(params.hyper_id()))
-        print('train_init_id = {!r}'.format(train_info['input_id']))
-        print('arch = {!r}'.format(train_info['arch_id']))
-        print('train_hyper_hashid = {!r}'.format(train_info['train_hyper_hashid']))
-        print('train_hyper_id = {!r}'.format(train_info['train_hyper_id']))
+        # print('train_init_id = {!r}'.format(train_info['input_id']))
+        # print('arch = {!r}'.format(train_info['arch_id']))
+        # print('train_hyper_hashid = {!r}'.format(train_info['train_hyper_hashid']))
+        print('hyper = {}'.format(ub.repr2(train_info['hyper'], nl=3)))
+        print('train_hyper_id_brief = {!r}'.format(train_info['train_hyper_id_brief']))
         print('train_id = {!r}'.format(train_info['train_id']))
         print('+=========')
         train_dpath = ub.ensuredir(train_info['train_dpath'])
@@ -100,7 +103,7 @@ class DirectoryStructure(object):
 
 #     train_dpath = ub.ensuredir((
 #         train_base,
-#         'input_' + datasets['train'].input_id, 'solver_{}'.format(train_id)
+#         'input_' + datasets['train'].input_id, 'fit_{}'.format(train_id)
 #     ))
 
 #     train_info =  {

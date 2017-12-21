@@ -68,17 +68,78 @@ def random_affine_args(zoom_pdf=None,
         >>> print(result)
         np.array([[ 1.00934827, -0.        ,  1.6946192 ],
                   [ 0.        ,  1.0418724 ,  2.58357645]])
+
+    Ignore:
+        from clab.augment.augment_common import *
+        import plottool as pt
+        pt.qtensure()
+
+        rng = np.random.RandomState(0)
+
+        augkw = dict(zoom_pdf=(1 / 1.1, 1.1),
+                     tx_pdf=(-1, 1),
+                     ty_pdf=(-1, 1),
+                     shear_pdf=(-np.pi / 32, np.pi / 32),
+                     theta_pdf=(-np.pi, np.pi),
+                     flip_lr_prob=.5,
+                     flip_ud_prob=.5,
+                     enable_stretch=True,
+                     default_distribution='uniform')
+
+        # augkw['zoom_pdf'] = None
+        # augkw['shear_pdf'] = None
+        # augkw['theta_pdf'] = None
+        # augkw['tx_pdf'] = None
+        # augkw['ty_pdf'] = None
+
+        dx, dy = np.array([.5, -1]) * 100
+
+        params = random_affine_args(**augkw)
+        sx, sy, theta, shear, tx, ty = params
+
+        print('sx, xy = {}, {}'.format(sx, sy))
+        print('theta, shear = {}, {}'.format(theta, shear))
+        print('tx, ty = {}, {}'.format(tx, ty))
+
+        matrix = np.array(affine_around_mat2x3(cx, cy, *params) + [[0, 0, 1]])
+        skaff = skimage.transform.AffineTransform(matrix=matrix)
+
+        img = util.imread(ut.grab_test_imgpath('lena.png'))
+        cx, cy = img.shape[1] / 2, img.shape[0] / 2
+        img2 = skimage.transform.warp(
+            img, skaff, output_shape=img.shape, order=3, mode='constant',
+        )
+
+        # dx_, dy_ = skaff.inverse([dx, dy])[0]
+        vel_matrix = np.array(affine_mat2x3(*params) + [[0, 0, 1]])
+        dx_, dy_ = np.linalg.inv(vel_matrix).dot([dx, dy, 1])[0:2]
+
+        pt.imshow(img, pnum=(1, 2, 1), fnum=1)
+        pt.plt.gca().arrow(*(cx, cy, dx, dy), width=5, length_includes_head=0)
+
+        pt.imshow(img2, pnum=(1, 2, 2), fnum=1)
+        pt.plt.gca().arrow(*(cx, cy, dx_, dy_), width=5, length_includes_head=0)
+
+
     """
     if zoom_pdf is None:
         sx = sy = 1.0
     else:
-        log_zoom_range = [np.log(z) for z in zoom_pdf]
-
         if enable_stretch:
-            sx = sy = np.exp(rng.uniform(*log_zoom_range))
+            sx = sy = rng.uniform(*zoom_pdf)
         else:
-            sx = np.exp(rng.uniform(*log_zoom_range))
-            sy = np.exp(rng.uniform(*log_zoom_range))
+            sx = rng.uniform(*zoom_pdf)
+            sy = rng.uniform(*zoom_pdf)
+
+        if False:
+            # why did I do this?
+            log_zoom_range = [np.log(z) for z in zoom_pdf]
+
+            if enable_stretch:
+                sx = sy = np.exp(rng.uniform(*log_zoom_range))
+            else:
+                sx = np.exp(rng.uniform(*log_zoom_range))
+                sy = np.exp(rng.uniform(*log_zoom_range))
 
     def param_distribution(param_pdf, rng=rng):
         if param_pdf is None:
@@ -127,10 +188,12 @@ def random_affine_args(zoom_pdf=None,
     # flip left-right some fraction of the time
     if bernoulli_event(flip_lr_prob):
         # shear 180 degrees + rotate 180 == lr-flip
+        # print('FLIP LR')
         theta += np.pi
         shear += np.pi
 
     if bernoulli_event(flip_ud_prob):
+        # print('FLIP UD')
         # shear 180 degrees == ud-flip
         shear += np.pi
 
@@ -244,14 +307,24 @@ def affine_around_mat2x3(x, y, sx=1.0, sy=1.0, theta=0.0, shear=0.0, tx=0.0,
     """
     x2 = x if x2 is None else x2
     y2 = y if y2 is None else y2
-    # Make auxially varables to reduce the number of sin/cosine calls
-    cos_theta = math.cos(theta)
-    sin_theta = math.sin(theta)
-    cos_shear_p_theta = math.cos(shear + theta)
-    sin_shear_p_theta = math.sin(shear + theta)
-    tx_ = -sx * x * cos_theta + sy * y * sin_shear_p_theta + tx + x2
-    ty_ = -sx * x * sin_theta - sy * y * cos_shear_p_theta + ty + y2
-    # Sympy compiled expression
-    Aff = [[sx * cos_theta, -sy * sin_shear_p_theta, tx_],
-           [sx * sin_theta,  sy * cos_shear_p_theta, ty_]]
-    return Aff
+    if math == 'skimage':
+        import skimage.transform
+        T1 = skimage.transform.AffineTransform(translation=(-x, -y))
+        A = skimage.transform.AffineTransform(scale=(sx, sy), rotation=theta,
+                                               shear=shear,
+                                               translation=(tx, ty))
+        T2 = skimage.transform.AffineTransform(translation=(x2, y2))
+        M = T1 + A + T2
+        return M.params[0:2].tolist()
+    else:
+        # Make auxially varables to reduce the number of sin/cosine calls
+        cos_theta = math.cos(theta)
+        sin_theta = math.sin(theta)
+        cos_shear_p_theta = math.cos(shear + theta)
+        sin_shear_p_theta = math.sin(shear + theta)
+        tx_ = -sx * x * cos_theta + sy * y * sin_shear_p_theta + tx + x2
+        ty_ = -sx * x * sin_theta - sy * y * cos_shear_p_theta + ty + y2
+        # Sympy compiled expression
+        Aff = [[sx * cos_theta, -sy * sin_shear_p_theta, tx_],
+               [sx * sin_theta,  sy * cos_shear_p_theta, ty_]]
+        return Aff
