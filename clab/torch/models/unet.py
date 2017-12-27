@@ -7,6 +7,9 @@ import torch.nn.functional as F
 from clab.torch import nninit
 from clab.torch.models.output_shape_for import OutputShapeFor
 from clab import util
+from clab import getLogger
+logger = getLogger(__name__)
+print = util.protect_print(logger.info)
 
 __all__ = ['UNet']
 

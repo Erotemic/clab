@@ -23,6 +23,17 @@ logger = getLogger(__name__)
 print = util.protect_print(logger.info)
 
 
+def number_of_parameters(model, trainable=True):
+    """ TODO: move somewhere else """
+    import numpy as np
+    if trainable:
+        model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    else:
+        model_parameters = model.parameters()
+    n_params = sum([np.prod(p.size()) for p in model_parameters])
+    return n_params
+
+
 def mnist_demo():
     """
     CommandLine:
@@ -34,6 +45,8 @@ def mnist_demo():
     from clab.torch import models
     from clab.torch import hyperparams
     root = os.path.expanduser('~/data/mnist/')
+
+    dry = ub.argflag('--dry')
 
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
@@ -85,7 +98,7 @@ def mnist_demo():
 
     harn = FitHarness(
         datasets=datasets, batch_size=batch_size,
-        xpu=xpu, hyper=hyper,
+        xpu=xpu, hyper=hyper, dry=dry,
     )
 
     # all_labels = np.arange(n_classes)
@@ -97,7 +110,7 @@ def mnist_demo():
     #     metrics_dict = metrics._clf_metrics(output, label, labels=all_labels)
     #     return metrics_dict
 
-    train_dpath = harn.setup_dpath(workdir)
+    train_dpath = harn.setup_dpath(workdir, hashed=True)
     print('train_dpath = {!r}'.format(train_dpath))
 
     if ub.argflag('--reset'):
@@ -161,7 +174,8 @@ class FitHarness(object):
         # harn.initializer should be a hyperparam
         harn.optimizer = None
         harn.scheduler = None
-        # should this be a hyperparam? YES
+        # should this be a hyperparam? YES, maybe it doesn't change the
+        # directory output, but it should be configuarble.
         harn.stopping = early_stop.EarlyStop(patience=30)
 
         # this is optional and is designed for default solvers
@@ -184,12 +198,12 @@ class FitHarness(object):
         }
         harn.epoch = 0
 
-    def setup_dpath(harn, workdir='.'):
+    def setup_dpath(harn, workdir='.', **kwargs):
         from clab.torch import folder_structure
         structure = folder_structure.DirectoryStructure(
             workdir=workdir, hyper=harn.hyper, datasets=harn.datasets,
         )
-        dpath = structure.setup_dpath()
+        dpath = structure.setup_dpath(**kwargs)
         harn.train_dpath = dpath
         return dpath
 
@@ -253,21 +267,26 @@ class FitHarness(object):
 
             harn.initializer(harn.model)
 
+            n_params = number_of_parameters(harn.model)
+            print('Model has {!r} parameters'.format(n_params))
+
             harn.log('There are {} existing snapshots'.format(len(prev_states)))
             harn.xpu.to_xpu(harn.model)
 
             # more than one criterion?
             if harn.hyper.criterion_cls:
 
-                weight = harn.hyper.criterion_params.get('weight', None)
-                if weight is not None:
-                    harn.log('Casting weights')
-                    weight = torch.FloatTensor(harn.hyper.criterion_params['weight'])
-                    weight = harn.xpu.to_xpu(weight)
-                    harn.hyper.criterion_params['weight'] = weight
+                # weight = harn.hyper.criterion_params.get('weight', None)
+                # if weight is not None:
+                #     harn.log('Casting weights')
+                #     weight = torch.FloatTensor(harn.hyper.criterion_params['weight'])
+                #     weight = harn.xpu.to_xpu(weight)
+                #     harn.hyper.criterion_params['weight'] = weight
 
                 harn.criterion = harn.hyper.criterion_cls(
                     **harn.hyper.criterion_params)
+
+                harn.criterion = harn.xpu.to_xpu(harn.criterion)
             else:
                 pass
 
@@ -285,22 +304,29 @@ class FitHarness(object):
                                        "in param_groups[{}] when resuming an optimizer".format(i))
 
             else:
-                for group in harn.optimizer.param_groups:
-                    group.setdefault('initial_lr', group['lr'])
+                if not harn.dry:
+                    for group in harn.optimizer.param_groups:
+                        group.setdefault('initial_lr', group['lr'])
 
             harn.log('New snapshots will save harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
 
-    def update_prog_description(harn):
+    def current_lrs(harn):
         if harn.scheduler is None:
-            lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
-            lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
-        else:
-            if hasattr(harn.scheduler, 'get_lr'):
-                lrs = set(harn.scheduler.get_lr())
+            if harn.optimizer is None:
+                assert harn.dry
+                lrs = [.01]
             else:
-                # workaround for ReduceLROnPlateau
-                lrs = set(map(lambda group: group['lr'], harn.scheduler.optimizer.param_groups))
-            lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
+                lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
+        elif hasattr(harn.scheduler, 'get_lr'):
+            lrs = set(harn.scheduler.get_lr())
+        else:
+            # workaround for ReduceLROnPlateau
+            lrs = set(map(lambda group: group['lr'], harn.scheduler.optimizer.param_groups))
+        return lrs
+
+    def update_prog_description(harn):
+        lrs = harn.current_lrs()
+        lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
         desc = 'epoch lr:{} │ {}'.format(lr_str, harn.stopping.message())
         harn.main_prog.set_description(desc)
         harn.main_prog.set_postfix(
@@ -328,8 +354,8 @@ class FitHarness(object):
         vali_loader  = harn.loaders.get('vali', None)
         test_loader  = harn.loaders.get('test', None)
 
-        if vali_loader is None:
-            if harn.scheduler is not None:
+        if not vali_loader:
+            if not harn.scheduler:
                 if harn.stopping:
                     raise ValueError('need a validataion dataset to use early stopping')
                 if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
@@ -348,8 +374,9 @@ class FitHarness(object):
                 harn.run_epoch(train_loader, tag='train', learn=True)
 
                 # Run validation epoch
+                vali_metrics = None
                 if vali_loader:
-                    if (harn.epoch + 1) % harn.intervals['vali'] == 0:
+                    if harn.check_interval('vali', harn.epoch):
                         vali_metrics = harn.run_epoch(
                             vali_loader, tag='vali', learn=False)
                         harn.stopping.update(harn.epoch, vali_metrics['loss'])
@@ -358,10 +385,10 @@ class FitHarness(object):
 
                 # Run test epoch
                 if test_loader:
-                    if (harn.epoch + 1) % harn.intervals['test'] == 0:
+                    if harn.check_interval('test', harn.epoch):
                         harn.run_epoch(test_loader, tag='test', learn=False)
 
-                if (harn.epoch + 1) % harn.intervals['snapshot'] == 0:
+                if harn.check_interval('snapshot', harn.epoch):
                     harn.save_snapshot()
 
                 harn.main_prog.update(1)
@@ -374,6 +401,8 @@ class FitHarness(object):
                 if harn.scheduler is None:
                     pass
                 elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+                    assert vali_metrics is not None, (
+                        'must validate for ReduceLROnPlateau schedule')
                     harn.scheduler.step(vali_metrics['loss'])
                 else:
                     harn.scheduler.step()
@@ -388,6 +417,9 @@ class FitHarness(object):
         harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.stopping.memory), nl=1)))
 
     def run_epoch(harn, loader, tag, learn=False):
+        """
+        Evaluate the model on test / train / or validation data
+        """
         # Use exponentially weighted or windowed moving averages across epochs
         iter_moving_metircs = harn._run_metrics[tag]
         # Use simple moving average within an epoch
@@ -398,8 +430,6 @@ class FitHarness(object):
             # Flag if model is training (influences batch-norm / dropout)
             if harn.model.training != learn or learn:
                 harn.model.train(learn)
-
-        display_interval = harn.intervals['display_' + tag]
 
         msg = harn.batch_msg({'loss': -1}, loader.batch_size)
         desc = tag + ' ' + msg
@@ -421,8 +451,13 @@ class FitHarness(object):
             if not isinstance(labels, (list, tuple)):
                 labels = [labels]
 
-            inputs = harn.xpu.to_xpu_var(*inputs, volatile=not learn)
-            labels = harn.xpu.to_xpu_var(*labels, volatile=not learn)
+            if tuple(map(int, torch.__version__.split('.')[0:2])) < (0, 4):
+                inputs = harn.xpu.to_xpu_var(*inputs, volatile=not learn)
+                labels = harn.xpu.to_xpu_var(*labels, volatile=not learn)
+            else:
+                with torch.no_grad():
+                    inputs = harn.xpu.to_xpu_var(*inputs)
+                    labels = harn.xpu.to_xpu_var(*labels)
 
             # Core learning / backprop
             outputs, loss = harn.run_batch(inputs, labels, learn=learn)
@@ -435,7 +470,7 @@ class FitHarness(object):
             iter_moving_metircs.update(cur_metrics)
 
             # display_train training info
-            if (bx + 1) % display_interval == 0:
+            if harn.check_interval('display_' + tag, bx):
                 ave_metrics = iter_moving_metircs.average()
 
                 msg = harn.batch_msg({'loss': ave_metrics['loss']},
@@ -474,7 +509,8 @@ class FitHarness(object):
             # output_shape = (label.shape[0], 3, label.shape[1], label.shape[2])
             # output = Variable(torch.rand(*output_shape))
             output = None
-            loss = Variable(torch.rand(1))
+            base = float(sum(harn.current_lrs()))
+            loss = Variable(base + torch.randn(1) * base)
             return output, loss
 
         # Run custom forward pass with loss computation, fallback to default
@@ -510,6 +546,12 @@ class FitHarness(object):
             print('may need to make a custom batch runner with set_batch_runner')
             raise
         return outputs, loss
+
+    def check_interval(harn, tag, idx):
+        """
+        check if its time to do something that happens every few iterations
+        """
+        return (idx + 1) % harn.intervals[tag] == 0
 
     def set_batch_runner(harn, func):
         """
@@ -583,7 +625,9 @@ class FitHarness(object):
         ub.ensuredir(harn.snapshot_dpath)
         save_path = join(harn.snapshot_dpath, '_epoch_{:08d}.pt'.format(harn.epoch))
         if harn.dry:
+            # harn.log('VERY VERY VERY VERY VERY LONG MESSAGE ' * 5)
             harn.log('Would save snapshot to {}'.format(save_path))
+            pass
         else:
             train = harn.datasets['train']
             if hasattr(train, 'dataset_metadata'):

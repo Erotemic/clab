@@ -587,14 +587,15 @@ def imwrite(fpath, image, **kw):
         return cv2.imwrite(fpath, image)
 
 
-def wide_strides_1d(start, margin, stop, step, keepbound=True):
+def wide_strides_1d(margin, stop, step=None, start=0, keepbound=False,
+                    check=True):
     """
     Helper for `image_slices`. Generates slices in a single dimension.
 
     Args:
         start (int): starting point (in most cases set this to 0)
 
-        margin (int): the length of the slice
+        margin (int): the length of the slice (window)
 
         stop (int): the length of the image dimension
 
@@ -605,26 +606,55 @@ def wide_strides_1d(start, margin, stop, step, keepbound=True):
             needed. Such a slice will not obey the overlap constraints.
             (Defaults to False)
 
+        check (bool): if True an error will be raised if the window does not
+            cover the entire extent from start to stop, even if keepbound is
+            True.
+
     Yields:
         slice : slice in one dimension of size (margin)
 
     Example:
-        >>> import sys
         >>> from clab.util.imutil import *
-        >>> start = 0
-        >>> stop = 2000
-        >>> margin = 360
-        >>> step = 360
+        >>> stop, margin, step = 2000, 360, 360
         >>> keepbound = True
-        >>> strides = list(wide_strides_1d(start, margin, stop, step, keepbound))
+        >>> strides = list(wide_strides_1d(margin, stop, step, keepbound))
         >>> assert all([(s.stop - s.start) == margin for s in strides])
+
+    Example:
+        >>> stop, margin, step = 200, 46, 7
+        >>> keepbound = True
+        >>> strides = list(wide_strides_1d(margin, stop, step, keepbound=False, check=True))
+        >>> starts = np.array([s.start for s in strides])
+        >>> stops = np.array([s.stop for s in strides])
+        >>> widths = stops - starts
+        >>> assert np.all(np.diff(starts) == step)
+        >>> assert np.all(widths == margin)
+
+    Example:
+        >>> import pytest
+        >>> stop, margin, step = 200, 36, 7
+        >>> with pytest.raises(ValueError):
+        ...     list(wide_strides_1d(margin, stop, step))
     """
+    if step is None:
+        step = margin
+
+    if check:
+        # see how far off the end we would fall if we didnt check bounds
+        perfect_final_pos = (stop - start - margin)
+        overshoot = perfect_final_pos % step
+        if overshoot > 0:
+            raise ValueError(
+                ('margin={} and step={} overshoot endpoint={} '
+                 'by {} units when starting from={}').format(
+                     margin, step, stop, overshoot, start))
     pos = start
     # probably could be more efficient with numpy here
     while True:
-        yield slice(pos, pos + margin)
+        endpos = pos + margin
+        yield slice(pos, endpos)
         # Stop once we reached the end
-        if pos + margin == stop:
+        if endpos == stop:
             break
         pos += step
         if pos + margin > stop:
@@ -638,7 +668,8 @@ def wide_strides_1d(start, margin, stop, step, keepbound=True):
 
 def image_slices(img_shape, target_shape, overlap=0, keepbound=False):
     """
-    Generates slices to break a large image into smaller pieces.
+    Generates "sliding window" slices to break a large image into smaller
+    pieces.
 
     Args:
         img_shape (tuple): height and width of the image
@@ -657,7 +688,6 @@ def image_slices(img_shape, target_shape, overlap=0, keepbound=False):
         tuple(slice, slice): row and column slices used for numpy indexing
 
     Example:
-        >>> import sys
         >>> from clab.util.imutil import *
         >>> img_shape = (2000, 2000)
         >>> target_shape = (360, 480)
@@ -672,8 +702,9 @@ def image_slices(img_shape, target_shape, overlap=0, keepbound=False):
     sy = int(ph - ph * overlap)
     sx = int(pw - pw * overlap)
     orig_h, orig_w = img_shape
-    for rslice in wide_strides_1d(0, ph, orig_h, sy, keepbound):
-        for cslice in wide_strides_1d(0, pw, orig_w, sx, keepbound):
+    kw = dict(keepbound=keepbound, check=False, start=0)
+    for rslice in wide_strides_1d(ph, orig_h, sy, **kw):
+        for cslice in wide_strides_1d(pw, orig_w, sx, **kw):
             yield rslice, cslice
 
 

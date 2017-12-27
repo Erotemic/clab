@@ -3,13 +3,15 @@ References:
     https://github.com/alykhantejani/nninit
 """
 from os.path import dirname
+import torch.nn as nn
 import ubelt as ub
 from os.path import exists
 from os.path import join
 import numpy as np
 from clab import util
-import torch
 from torch.autograd import Variable
+import math
+import torch
 
 
 class _BaseInitializer(object):
@@ -63,6 +65,8 @@ class Pretrained(_BaseInitializer):
 
     def forward(self, model):
         model_state_dict = torch.load(self.fpath)
+        if 'model_state_dict' in model_state_dict:
+            model_state_dict = model_state_dict['model_state_dict']
         load_partial_state(model, model_state_dict,
                            initializer=self.initializer,
                            shock_partial=self.shock_partial)
@@ -104,6 +108,81 @@ class HeNormal(_BaseInitializer):
 
     def forward(self, model):
         apply_initializer(model, he_normal, self.__dict__)
+
+
+def kaiming_normal(tensor, nonlinearity='leaky_relu', param=0, mode='fan_in'):
+    """
+    similar to pytorch version 0.4, but exposes different params
+    """
+    if isinstance(tensor, Variable):
+        kaiming_normal(tensor.data, nonlinearity=nonlinearity, param=param, mode=mode)
+        return tensor
+
+    fan = nn.init._calculate_correct_fan(tensor, mode)
+    gain = nn.init.calculate_gain(nonlinearity=nonlinearity, param=param)
+    std = gain / math.sqrt(fan)
+    return tensor.normal_(0, std)
+
+
+def kaiming_uniform(tensor, nonlinearity='leaky_relu', param=0, mode='fan_in'):
+    if isinstance(tensor, Variable):
+        kaiming_uniform(tensor, nonlinearity, param, mode)
+        return tensor
+
+    fan = nn.init._calculate_correct_fan(tensor, mode)
+    gain = nn.init.calculate_gain(nonlinearity, param)
+    std = gain / math.sqrt(fan)
+    bound = math.sqrt(3.0) * std  # Calculate uniform bounds from standard deviation
+    return tensor.uniform_(-bound, bound)
+
+
+class KaimingUniform(_BaseInitializer):
+    """
+    Same as HeNormal, but uses pytorch implementation
+
+    Example:
+        >>> from clab.torch.nninit import *
+        >>> self = KaimingNormal()
+    """
+    def __init__(self, nonlinearity='leaky_relu', param=0, mode='fan_in'):
+        self.nonlinearity = nonlinearity
+        self.param = param
+        self.mode = mode
+
+    def forward(self, model):
+        apply_initializer(model, kaiming_uniform, self.__dict__)
+
+
+class KaimingNormal(_BaseInitializer):
+    """
+    Same as HeNormal, but uses pytorch implementation
+
+    Example:
+        >>> from clab.torch.nninit import *
+        >>> self = KaimingNormal()
+    """
+    def __init__(self, nonlinearity='leaky_relu', param=0, mode='fan_in'):
+        self.nonlinearity = nonlinearity
+        self.param = param
+        self.mode = mode
+
+    def forward(self, model):
+        apply_initializer(model, kaiming_normal, self.__dict__)
+
+
+class Orthogonal(_BaseInitializer):
+    """
+    Same as HeNormal, but uses pytorch implementation
+
+    Example:
+        >>> from clab.torch.nninit import *
+        >>> self = Orthogonal()
+    """
+    def __init__(self, gain=1):
+        self.gain = gain
+
+    def forward(self, model):
+        apply_initializer(model, nn.init.orthogonal, self.__dict__)
 
 
 def apply_initializer(input, func, funckw):

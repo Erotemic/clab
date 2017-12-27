@@ -1,5 +1,9 @@
 import torch
 from clab.torch.models import unet
+from clab import util  # NOQA
+from clab import getLogger
+logger = getLogger(__name__)
+print = util.protect_print(logger.info)
 
 
 class UNet2(unet.UNet):

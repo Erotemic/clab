@@ -226,10 +226,17 @@ def protect_print(print):
     import sys
     # def protected_print(*args, **kw):
     def protected_print(msg):
-        if len(getattr(tqdm.tqdm, '_instances', [])):
+        # Check if any progress bars are alive
+        progs = getattr(tqdm.tqdm, '_instances', [])
+        if len(progs) > 0:
+            prog = list(progs)[0]
             # Specify file in case we are capturing stdout
             for line in str(msg).split('\n'):
-                tqdm.tqdm.write(line, file=sys.stdout)
+                if len(line) > prog.ncols:
+                    for subline in ub.chunks(line, prog.ncols):
+                        tqdm.tqdm.write(''.join(subline), file=sys.stdout)
+                else:
+                    tqdm.tqdm.write(line, file=sys.stdout)
         else:
             # otherwise use the print / logger
             # (ensure logger has custom logic to exclude logging at this exact
@@ -243,6 +250,13 @@ def clean_tensorboard_protobufs(dpath):
     Removes event logs that only contain conflicting information
 
     dpath = '/home/local/KHQ/jon.crall/data/work_phase2/train/unet2/'
+
+    CommandLine:
+        python -m clab.util.misc clean_tensorboard_protobufs
+
+    Example:
+        >>> dpath = '.'
+        >>> clean_tensorboard_protobufs(dpath)
     """
 
     # from tensorflow.python.summary import event_accumulator
@@ -251,6 +265,7 @@ def clean_tensorboard_protobufs(dpath):
     from os.path import join
     from collections import defaultdict
     import ubelt as ub
+    import tqdm
 
     # Clean out iterno overrides
     event_paths = sorted(glob.glob(join(dpath, 'events.out.tfevents*')))
@@ -258,7 +273,7 @@ def clean_tensorboard_protobufs(dpath):
     bad_paths = set()
     good_paths = set()
     low_steps = defaultdict(lambda: float('inf'))
-    for p in reversed(event_paths):
+    for p in tqdm.tqdm(list(reversed(event_paths)), desc='cleaning'):
         ea = event_accumulator.EventAccumulator(p)
         ea.Reload()
         for key in ea.scalars.Keys():
@@ -357,3 +372,12 @@ def make_short_idstr(params):
         return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True)
     short_idstr = make_idstr(d)
     return short_idstr
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.util.misc
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

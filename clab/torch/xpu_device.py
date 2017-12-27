@@ -29,6 +29,12 @@ class XPU(ub.NiceRepr):
         else:
             return 'CPU'
 
+    def device_string(self):
+        if self.is_gpu():
+            return 'CUDA:{}'.format(self.num)
+        else:
+            return 'CPU'
+
     @property
     def num(xpu):
         return xpu.gpu_num

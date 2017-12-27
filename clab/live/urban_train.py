@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+from os.path import exists
 import torch
 import numpy as np
 import ubelt as ub
@@ -14,6 +15,7 @@ from clab.torch import models
 from clab.torch import metrics
 from clab.torch import hyperparams
 from clab.torch import fit_harness
+from clab.torch import nninit
 from clab.torch import im_loaders
 from clab.torch import criterions
 from clab import util  # NOQA
@@ -66,6 +68,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             RandomBlur(rng=self.rng),
         ])
         self.rand_aff = RandomWarpAffine(self.rng)
+        self.rand_aff.backend = 'cv2'
 
         if self.inputs.aux_paths:
             self.aux_keys = sorted(self.inputs.aux_paths.keys())
@@ -271,8 +274,6 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
             return data_tensor
 
     def show(self):
-        # self.augment = False
-        # self.augment = True
         loader = torch.utils.data.DataLoader(self, batch_size=6)
         iter_ = iter(loader)
         im_tensor, gt_tensor = next(iter_)
@@ -372,8 +373,13 @@ def get_task(taskname, boundary=True, arch=None):
         else:
             workdir = '~/data/work/urban_mapper'
 
-        task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
-                             workdir=workdir, boundary=boundary)
+        root = ub.truepath('~/data/UrbanMapper3D')
+        if not exists(root):
+            root = ub.truepath('~/remote/aretha/data/UrbanMapper3D')
+        if not exists(root):
+            raise Exception('root {} does not exist'.format(root))
+
+        task = UrbanMapper3D(root=root, workdir=workdir, boundary=boundary)
         print(task.classnames)
         task.prepare_fullres_inputs()
         task.preprocess()
@@ -382,7 +388,8 @@ def get_task(taskname, boundary=True, arch=None):
     return task
 
 
-def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, boundary=True, arch=None, halfcombo=None):
+def load_task_dataset(taskname, vali_frac=.1, colorspace='RGB', combine=None,
+                      boundary=True, arch=None, halfcombo=None):
     task = get_task(taskname, boundary=boundary, arch=arch)
     learn, test = next(task.xval_splits())
     learn.tag = 'learn'
@@ -420,7 +427,6 @@ def load_task_dataset(taskname, vali_frac=0, colorspace='RGB', combine=None, bou
     train_dataset = SSegInputsWrapper(train, task, colorspace=colorspace)
     vali_dataset = SSegInputsWrapper(vali, task, colorspace=colorspace)
     test_dataset = SSegInputsWrapper(test, task, colorspace=colorspace)
-    # train_dataset.augment = True
 
     print('* len(train_dataset) = {}'.format(len(train_dataset)))
     print('* len(vali_dataset) = {}'.format(len(vali_dataset)))
@@ -491,6 +497,35 @@ def directory_structure(workdir, arch, datasets, pretrained=None,
     return train_dpath
 
 
+class DualChanCE(torch.nn.Module):
+    """ hacked """
+    def __init__(self, ignore_label, weight):
+        super().__init__()
+        self.criterion1 = criterions.CrossEntropyLoss2D(**{
+            'ignore_label': ignore_label,
+            'weight': torch.FloatTensor(weight),
+        })
+        self.criterion2 = criterions.CrossEntropyLoss2D(
+            weight=torch.FloatTensor([.1, 1, 0]),
+            ignore_label=2
+        )
+
+    def forward(self, outputs, labels):
+        output1, output2 = outputs
+        label1, label2 = labels
+
+        # Compute the loss
+        loss1 = self.criterion1(output1, label1)
+        loss2 = self.criterion2(output2, label2)
+        loss = (.45 * loss1 + .55 * loss2)
+        return loss
+
+
+class SegNetVGG(nninit._BaseInitializer):
+    def forward(self, model):
+        model.init_vgg16_params()
+
+
 def urban_fit():
     """
 
@@ -498,6 +533,7 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --profile
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=segnet
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=segnet --dry
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet --noaux
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet
@@ -511,6 +547,7 @@ def urban_fit():
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --combine
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff
+        python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=segnet --colorspace=RGB --use_aux_diff
 
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=dense_unet --colorspace=RGB --use_aux_diff
 
@@ -535,8 +572,9 @@ def urban_fit():
     arch = ub.argval('--arch', default='unet')
     colorspace = ub.argval('--colorspace', default='RGB').upper()
 
-    datasets = load_task_dataset('urban_mapper_3d', colorspace=colorspace, arch=arch)
-    datasets['train'].augment = True
+    boundary = True
+    datasets = load_task_dataset('urban_mapper_3d', colorspace=colorspace,
+                                 arch=arch, boundary=boundary)
 
     # Make sure we use consistent normalization
     # TODO: give normalization a part of the hashid
@@ -556,7 +594,8 @@ def urban_fit():
     datasets['vali'].center_inputs = datasets['train'].center_inputs
 
     # Ensure normalization is the same for each dataset
-    datasets['train'].augment = True
+    # datasets['train'].augment = True
+    datasets['train'].augment = False
 
     # turn off aux layers
     if ub.argflag('--noaux'):
@@ -585,24 +624,66 @@ def urban_fit():
     print('n_channels = {!r}'.format(n_channels))
     print('batch_size = {!r}'.format(batch_size))
 
+    criterion = (criterions.CrossEntropyLoss2D, {
+        'ignore_label': ignore_label,
+        'weight': torch.FloatTensor(class_weights),
+    })
+
+    initializer = nninit.HeNormal
+
+    print('arch = {!r}'.format(arch))
+    dry = ub.argflag('--dry')
+
+    if arch == 'segnet':
+        model = (models.SegNet, dict(in_channels=n_channels, n_classes=n_classes))
+        initializer = SegNetVGG
+    elif arch == 'linknet':
+        model = (models.LinkNet, dict(in_channels=n_channels, n_classes=n_classes))
+    elif arch == 'unet':
+        model = (models.UNet, dict(in_channels=n_channels, n_classes=n_classes,
+                                   nonlinearity='leaky_relu'))
+    elif arch == 'unet2':
+        from clab.live import unet2
+        model = (unet2.UNet2, dict(n_alt_classes=3, in_channels=n_channels,
+                                   n_classes=n_classes,
+                                   nonlinearity='leaky_relu'))
+        criterion = (DualChanCE, {'ignore_label': ignore_label, 'weight':
+                                  torch.FloatTensor(class_weights), })
+    elif arch == 'dense_unet':
+        from clab.live import unet3
+        model = (unet3.DenseUNet, dict(n_alt_classes=3, in_channels=n_channels,
+                                       n_classes=n_classes))
+    elif arch == 'dense_unet2':
+        from clab.live import unet3
+        model = (unet3.DenseUNet2, dict(n_alt_classes=3,
+                                         in_channels=n_channels,
+                                         n_classes=n_classes))
+    elif arch == 'dummy':
+        model = (models.SSegDummy, dict(in_channels=n_channels,
+                                        n_classes=n_classes))
+    else:
+        raise ValueError('unknown arch')
+
+    xpu = xpu_device.XPU.from_argv()
+
     hyper = hyperparams.HyperParams(
-        criterion=(criterions.CrossEntropyLoss2D, {
-            'ignore_label': ignore_label,
-            # TODO: weight should be a FloatTensor
-            'weight': class_weights,
-        }),
+        model=model,
         optimizer=(torch.optim.SGD, {
             # 'weight_decay': .0006,
             'weight_decay': .0005,
             'momentum': 0.99 if arch == 'dense_unet' else .9,
             'nesterov': True,
+            'lr': 0.001,
         }),
-        scheduler=('Exponential', {
-            'gamma': 0.99,
-            # 'base_lr': 0.0015,
-            'base_lr': 0.001 if not ub.argflag('--halfcombo') else 0.0005,
-            'stepsize': 2,
-        }),
+        criterion=criterion,
+        # scheduler=('Exponential', {
+        #     'gamma': 0.99,
+        #     # 'base_lr': 0.0015,
+        #     'base_lr': 0.001,
+        #     'stepsize': 2,
+        # }),
+        scheduler=('ReduceLROnPlateau', {}),
+        initializer=initializer,
         other={
             'n_classes': n_classes,
             'n_channels': n_channels,
@@ -611,184 +692,60 @@ def urban_fit():
         }
     )
 
-    starting_points = {
+    harn = fit_harness.FitHarness(
+        hyper=hyper, datasets=datasets, xpu=xpu, dry=dry,
+        batch_size=batch_size,
+    )
 
-        'unet_rgb_4k': ub.truepath('~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_4214-yxalqwdk/solver_4214-yxalqwdk_unet_vgg_nttxoagf_a=1,n_ch=5,n_cl=3/torch_snapshots/_epoch_00000236.pt'),
+    if arch == 'segnet':
 
-        # 'unet_rgb_8k': ub.truepath('~/remote/aretha/data/work/urban_mapper/arch/unet/train/input_8438-haplmmpq/solver_8438-haplmmpq_unet_None_kvterjeu_a=1,c=RGB,n_ch=5,n_cl=3/torch_snapshots/_epoch_00000402.pt'),
-        # "ImageCenterScale", {"im_mean": [[[0.3750553785198646]]], "im_scale": [[[1.026544662398811]]]}
-        # "DTMCenterScale", "std": 2.5136079110849674, "nan_value": -32767.0 }
+        @harn.set_batch_runner
+        def batch_runner(harn, inputs, labels):
+            outputs = harn.model(*inputs)
+            loss = harn.criterion(outputs, labels[1])
+            return outputs, loss
 
-        # 'unet_rgb_8k': ub.truepath(
-        #     '~/data/work/urban_mapper2/arch/unet/train/input_4214-guwsobde/'
-        #     'solver_4214-guwsobde_unet_mmavmuou_eqnoygqy_a=1,c=RGB,n_ch=5,n_cl=4/torch_snapshots/_epoch_00000189.pt'
-        # )
+        # @harn.add_metric_hook
+        # def custom_metrics(harn, output, label):
+        #     ignore_label = datasets['train'].ignore_label
+        #     labels = datasets['train'].task.labels
 
-        'unet_rgb_8k': ub.truepath(
-            '~/remote/aretha/data/work/urban_mapper2/arch/unet2/train/input_4214-guwsobde/'
-            'solver_4214-guwsobde_unet2_mmavmuou_tqynysqo_a=1,c=RGB,n_ch=5,n_cl=4/torch_snapshots/_epoch_00000100.pt'
-        )
-    }
-
-    pretrained = ub.argval('--pretrained', default=None)
-    if pretrained is None:
-        if arch == 'segnet':
-            pretrained = 'vgg'
-        else:
-            pretrained = None
-            if ub.argflag('--combine'):
-                pretrained = starting_points['unet_rgb_8k']
-
-                if arch == 'unet2':
-                    pretrained = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000042.pt'
-                elif arch == 'dense_unet2':
-                    pretrained = '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000042.pt'
-            else:
-                pretrained = starting_points['unet_rgb_4k']
-
-    train_dpath = directory_structure(
-        datasets['train'].task.workdir, arch, datasets,
-        pretrained=pretrained,
-        train_hyper_id=hyper.hyper_id(),
-        suffix='_' + hyper.other_id())
-
-    print('arch = {!r}'.format(arch))
-    dry = ub.argflag('--dry')
-    if dry:
-        model = None
-    elif arch == 'segnet':
-        model = models.SegNet(in_channels=n_channels, n_classes=n_classes)
-        model.init_he_normal()
-        if pretrained == 'vgg':
-            model.init_vgg16_params()
-    elif arch == 'linknet':
-        model = models.LinkNet(in_channels=n_channels, n_classes=n_classes)
-    elif arch == 'unet':
-        model = models.UNet(in_channels=n_channels, n_classes=n_classes,
-                            nonlinearity='leaky_relu')
-        snapshot = xpu_device.XPU(None).load(pretrained)
-        model_state_dict = snapshot['model_state_dict']
-        model.load_partial_state(model_state_dict)
-    elif arch == 'unet2':
-        from clab.live import unet2
-        model = unet2.UNet2(n_alt_classes=3, in_channels=n_channels,
-                            n_classes=n_classes, nonlinearity='leaky_relu')
-        snapshot = xpu_device.XPU(None).load(pretrained)
-        model_state_dict = snapshot['model_state_dict']
-        model.load_partial_state(model_state_dict)
-
-    elif arch == 'dense_unet':
-        from clab.live import unet3
-        model = unet3.DenseUNet(n_alt_classes=3, in_channels=n_channels,
-                                n_classes=n_classes)
-        model.init_he_normal()
-        snapshot = xpu_device.XPU(None).load(pretrained)
-        model_state_dict = snapshot['model_state_dict']
-        model.load_partial_state(model_state_dict)
-    elif arch == 'dense_unet2':
-        from clab.live import unet3
-        model = unet3.DenseUNet2(n_alt_classes=3, in_channels=n_channels,
-                                 n_classes=n_classes)
-        # model.init_he_normal()
-        snapshot = xpu_device.XPU(None).load(pretrained)
-        model_state_dict = snapshot['model_state_dict']
-        model.load_partial_state(model_state_dict, shock_partial=False)
-    elif arch == 'dummy':
-        model = models.SSegDummy(in_channels=n_channels, n_classes=n_classes)
+        #     metrics_dict = metrics._sseg_metrics(output, label[1],
+        #                                          labels=labels,
+        #                                          ignore_label=ignore_label)
+        #     return metrics_dict
     else:
-        raise ValueError('unknown arch')
+        @harn.set_batch_runner
+        def batch_runner(harn, inputs, labels):
+            outputs = harn.model(*inputs)
+            loss = harn.criterion(outputs, labels)
+            return outputs, loss
 
-    if ub.argflag('--finetune'):
-        # Hack in a reduced learning rate
-        hyper = hyperparams.HyperParams(
-            criterion=(criterions.CrossEntropyLoss2D, {
-                'ignore_label': ignore_label,
-                # TODO: weight should be a FloatTensor
-                'weight': class_weights,
-            }),
-            optimizer=(torch.optim.SGD, {
-                # 'weight_decay': .0006,
-                'weight_decay': .0005,
-                'momentum': 0.99 if arch == 'dense_unet' else .9,
-                'nesterov': True,
-            }),
-            scheduler=('Constant', {
-                'base_lr': 0.0001,
-            }),
-            other={
-                'n_classes': n_classes,
-                'n_channels': n_channels,
-                'augment': datasets['train'].augment,
-                'colorspace': datasets['train'].colorspace,
-            }
-        )
+        # if datasets['train'].use_aux_diff:
+        #     @harn.add_metric_hook
+        #     def custom_metrics(harn, output, label):
+        #         ignore_label = datasets['train'].ignore_label
+        #         labels = datasets['train'].task.labels
 
-    xpu = xpu_device.XPU.from_argv()
+        #         metrics_dict = metrics._sseg_metrics(output[1], label[1],
+        #                                              labels=labels,
+        #                                              ignore_label=ignore_label)
+        #         return metrics_dict
+        # else:
+        #     @harn.add_metric_hook
+        #     def custom_metrics(harn, output, label):
+        #         ignore_label = datasets['train'].ignore_label
+        #         labels = datasets['train'].task.labels
 
-    if datasets['train'].use_aux_diff:
-        # arch in ['unet2', 'dense_unet']:
+        #         metrics_dict = metrics._sseg_metrics(output, label, labels=labels,
+        #                                              ignore_label=ignore_label)
+        #         return metrics_dict
 
-        from clab.live import fit_harn2
-        harn = fit_harn2.FitHarness(
-            model=model, hyper=hyper, datasets=datasets, xpu=xpu,
-            train_dpath=train_dpath, dry=dry,
-            batch_size=batch_size,
-        )
-        harn.criterion2 = criterions.CrossEntropyLoss2D(
-            weight=torch.FloatTensor([.1, 1, 0]),
-            ignore_label=2
-        )
-
-        def compute_loss(harn, outputs, labels):
-
-            output1, output2 = outputs
-            label1, label2 = labels
-
-            # Compute the loss
-            loss1 = harn.criterion(output1, label1)
-            loss2 = harn.criterion2(output2, label2)
-            loss = (.45 * loss1 + .55 * loss2)
-            return loss
-
-        harn.compute_loss = compute_loss
-
-        # z = harn.loaders['train']
-        # b = next(iter(z))
-        # print('b = {!r}'.format(b))
-        # import sys
-        # sys.exit(0)
-
-        def custom_metrics(harn, output, label):
-            ignore_label = datasets['train'].ignore_label
-            labels = datasets['train'].task.labels
-
-            metrics_dict = metrics._sseg_metrics(output[1], label[1],
-                                                 labels=labels,
-                                                 ignore_label=ignore_label)
-            return metrics_dict
-    else:
-        harn = fit_harness.FitHarness(
-            model=model, hyper=hyper, datasets=datasets, xpu=xpu,
-            train_dpath=train_dpath, dry=dry,
-            batch_size=batch_size,
-        )
-
-        def custom_metrics(harn, output, label):
-            ignore_label = datasets['train'].ignore_label
-            labels = datasets['train'].task.labels
-
-            metrics_dict = metrics._sseg_metrics(output, label, labels=labels,
-                                                 ignore_label=ignore_label)
-            return metrics_dict
-
-    harn.add_metric_hook(custom_metrics)
-
-    # HACK
-    # im = datasets['train'][0][0]
-    # w, h = im.shape[-2:]
-    # single_output_shape = (n_classes, w, h)
-    # harn.single_output_shape = single_output_shape
-    # print('harn.single_output_shape = {!r}'.format(harn.single_output_shape))
+    workdir = datasets['train'].task.workdir
+    train_dpath = harn.setup_dpath(workdir,
+                                   # short=['model', 'criterion'],
+                                   hashed=True)
+    print('train_dpath = {!r}'.format(train_dpath))
 
     harn.run()
     return harn

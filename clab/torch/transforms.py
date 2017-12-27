@@ -1,10 +1,12 @@
 import ubelt as ub
 import numpy as np
 import skimage
+from PIL import Image
 import six
 import cv2
 from clab.augment import augment_common
 from clab.util import imutil
+from clab import util
 
 
 class NaNInputer(object):
@@ -156,8 +158,8 @@ class ZipTransforms():
 
 
 class RandomWarpAffine(object):
-    def __init__(self, rng=None, **kw):
-        self.rng = rng
+    def __init__(self, rng=None, backend='skimage', **kw):
+        self.rng = util.ensure_rng(rng)
         self.augkw = augment_common.PERTERB_AUG_KW.copy()
         self.augkw.update(kw)
         self.skimage_interp_lookup = {
@@ -167,46 +169,215 @@ class RandomWarpAffine(object):
             'cubic'     : 3,
             'lanczos': NotImplementedError,
         }
+        self.pil_interp_lookup = {
+            'nearest'   : Image.NEAREST,
+            'linear'    : Image.BILINEAR,
+            'quadradic' : NotImplementedError,
+            'cubic'     : Image.BICUBIC,
+            'lanczos': NotImplementedError,
+        }
+        self.cv2_interp_lookup = {
+            'nearest'   : cv2.INTER_NEAREST,
+            'linear'    : cv2.INTER_LINEAR,
+            'quadradic' : NotImplementedError,
+            'cubic'     : cv2.INTER_CUBIC,
+            'lanczos': cv2.INTER_LANCZOS4,
+        }
+        self.cv2_border_lookup = {
+            'constant': cv2.BORDER_CONSTANT,
+            'reflect': cv2.BORDER_REFLECT,
+        }
+        self.pil_border_lookup = {
+            'constant': 'constant',
+            'reflect': NotImplementedError,
+        }
         # self.interp = 'nearest'
         # self.border_mode = 'reflect'
+        # self.backend = 'skimage'
+        # self.backend = 'cv2'
+        # self.backend = 'pil'
+        self.border_mode = 'constant'
+        self.interp = 'nearest'
+        self.backend = backend
+
+        # @ub.memoize
+        # def _memo_empty_uint8(shape):
+        #     data = np.empty(shape, dtype=np.uint8)
+        #     return data
 
     def __call__(self, data):
-        raise NotImplementedError(
-            'Use explicit calls to tie params between instances')
+        # raise NotImplementedError(
+        #     'Use explicit calls to tie params between instances')
         params = self.random_params()
-        return self.warp(data, params, self.interp, self.border_mode)
+        return self.warp(data, params, interp=self.interp,
+                         border_mode=self.border_mode, backend=self.backend)
 
     def random_params(self):
         affine_args = augment_common.random_affine_args(**self.augkw,
                                                         rng=self.rng)
         return affine_args
 
-    def warp(self, img, params, interp='nearest', border_mode='reflect'):
+    def warp(self, img, params, interp='nearest', border_mode='constant', backend=None):
+        """
+
+            >>> from clab.torch.transforms import *
+            >>> import plottool as pt
+            >>> pt.qtensure()
+            >>> img_orig = util.imread(ut.grab_test_imgpath('lena.png'))
+            >>> def _test_backend(img, backend, fnum):
+            >>>     try:
+            >>>         pnum_ = pt.make_pnum_nextgen(nSubplots=20)
+            >>>         self = RandomWarpAffine(0, backend=backend)
+            >>>         for _ in range(20):
+            >>>             imgaug = self.warp(img, self.random_params())
+            >>>             #pt.imshow(imgaug, fnum=fnum, pnum=pnum_())
+            >>>     except Exception as ex:
+            >>>         print('{} failed {}'.format(backend, repr(ex)))
+            >>>         pass
+            >>> def _test_all_backends(img):
+            >>>     _test_backend(img, backend='skimage', fnum=1)
+            >>>     _test_backend(img, backend='pil', fnum=2)
+            >>>     _test_backend(img, backend='cv2', fnum=3)
+            >>> # --- RGB dtype uint8 ---
+            >>> img =  img_orig.copy()
+            >>> _test_all_backends(img)
+            >>> # --- RGB dtype float32 --- (PIL FAILS)
+            >>> img = img_orig.copy().astype(np.float32) / 255
+            >>> _test_all_backends(img)
+            >>> # --- GRAY dtype float32, 0-1 ---
+            >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2)
+            >>> _test_all_backends(img)
+            >>> # --- RGB dtype uint16 ---
+            >>> img = ((img_orig.astype(np.float32) / 255) * (2 ** 16) - 1).astype(np.uint16)
+            >>> _test_all_backends(img)
+            >>> # --- GRAY dtype float32, -1000-1000 ---
+            >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2) * 2000 - 1000
+            >>> print(ut.get_stats(RandomWarpAffine(0, backend='pil')(img)))
+            >>> print(ut.get_stats(RandomWarpAffine(0, backend='skimage')(img)))
+            >>> print(ut.get_stats(RandomWarpAffine(0, backend='cv2')(img)))
+            >>> _test_all_backends(img)
+
+        Ignore:
+            >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2) * 2000 - 1000
+            >>> %timeit RandomWarpAffine(0, backend='skimage')(img)
+            4.76 ms ± 86.8 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
+            >>> %timeit RandomWarpAffine(0, backend='pil')(img)
+            1.11 ms ± 9.85 µs per loop (mean ± std. dev. of 7 runs, 1000 loops each)
+            >>> %timeit RandomWarpAffine(0, backend='cv2')(img)
+            25.6 ms ± 498 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)
+
+            >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2)
+            >>> ub.Timerit(50, bestof=5).call(RandomWarpAffine(0, backend='skimage'), img)
+            time per loop : 5.0 ms ± 0.26
+            >>> ub.Timerit(50, bestof=5).call(RandomWarpAffine(0, backend='pil'), img)
+            time per loop : 1.334 ms ± 0.19
+            >>> ub.Timerit(50, bestof=5).call(RandomWarpAffine(0, backend='cv2'), img)
+            time per loop : 20.24 ms ± 5.4
+
+            >>> img = (img_orig.copy())[0:8, 0:8]
+            >>> ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)
+            >>> ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)
+            >>> ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)
+
+            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+            ydatas = ub.ddict(list)
+            for size in xdata:
+                img = cv2.resize(img_orig, (size, size))
+                ydatas['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
+                ydatas['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
+                ydatas['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
+            pt.multi_plot(xdata, ydatas, title='affine warp speed (RGB uint8)', xlabel='image size', ylabel='seconds', fnum=99, ymax=.1)
+            pt.gca().set_yscale('log')
+            pt.gca().set_ylim(5e-5, 1e-1)
+
+            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+            ydatas_f32 = ub.ddict(list)
+            for size in xdata:
+                img = cv2.resize(img_orig, (size, size)).astype(np.float32).mean(axis=2)
+                ydatas_f32['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
+                ydatas_f32['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
+                ydatas_f32['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
+            pt.multi_plot(xdata, ydatas_f32, title='affine warp speed (GRAY float32)', xlabel='image size', ylabel='seconds', fnum=100, ymax=.1)
+            pt.gca().set_yscale('log')
+            pt.gca().set_ylim(5e-5, 1e-1)
+
+            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+            ydatas_f64 = ub.ddict(list)
+            for size in xdata:
+                img = cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2)
+                ydatas_f64['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
+                ydatas_f64['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
+                ydatas_f64['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
+            pt.multi_plot(xdata, ydatas_f64, title='affine warp speed (GRAY float32)', xlabel='image size', ylabel='seconds', fnum=101, ymax=.1)
+            pt.gca().set_yscale('log')
+            pt.gca().set_ylim(5e-5, 1e-1)
+
+            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+            ydatas_f64 = ub.ddict(list)
+            for size in xdata:
+                img = (cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2) * 255).astype(np.uint8)
+                ydatas_f64['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
+                ydatas_f64['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
+                ydatas_f64['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
+            pt.multi_plot(xdata, ydatas_f64, title='affine warp speed (GRAY uint8)', xlabel='image size', ylabel='seconds', fnum=102, ymax=.1)
+            pt.gca().set_yscale('log')
+            pt.gca().set_ylim(5e-5, 1e-1)
+
+
+        """
         x, y = img.shape[1] / 2, img.shape[0] / 2
         Aff = augment_common.affine_around_mat2x3(x, y, *params)
         matrix = np.array(Aff + [[0, 0, 1]])
-        skaff = skimage.transform.AffineTransform(matrix=matrix)
 
-        order = self.skimage_interp_lookup[interp]
+        if backend is None:
+            backend = self.backend
 
-        imaug = skimage.transform.warp(
-            img, skaff, output_shape=img.shape, order=order, mode=border_mode,
-            clip=True, preserve_range=True
-        )
-        imaug = imaug.astype(img.dtype)
+        if backend == 'skimage':
+            inv_matrix = np.linalg.inv(matrix)
+            order = self.skimage_interp_lookup[interp]
+            skaff = skimage.transform.AffineTransform(matrix=inv_matrix)
+            imaug = skimage.transform.warp(
+                img, skaff, output_shape=img.shape, order=order,
+                mode=border_mode, clip=True, preserve_range=True
+            )
+            imaug = imaug.astype(img.dtype)
+        elif backend == 'pil':
+            inv_matrix = np.linalg.inv(matrix)
+            pil_aff_params = list(inv_matrix.ravel()[0:6])
+            h1, w1 = img.shape[0:2]
+            resample = self.pil_interp_lookup[interp]
+            assert border_mode == 'constant'
+            # from torchvision.transforms.functional import to_pil_image
+            # n_chan = util.get_num_channels(img)
+            # if n_chan == 3 and img.dtype != np.uint8:
+            #     pass
+            #     # need to convert to uint8
+            # pil_img = to_pil_image(img)
+            pil_img = Image.fromarray(img)
+            imaug = np.array(pil_img.transform((w1, h1), Image.AFFINE,
+                                               pil_aff_params,
+                                               resample=resample))
+        elif backend == 'cv2':
+            h1, w1 = img.shape[0:2]
+            cv2_aff = matrix[0:2]
+            borderMode = self.cv2_border_lookup[border_mode]
+            cv2_interp = self.cv2_interp_lookup[interp]
+            imaug = cv2.warpAffine(img, cv2_aff, dsize=(w1, h1),
+                                   flags=cv2_interp, borderMode=borderMode)
+
         return imaug
 
-    def sseg_warp(self, im, aux_channels, gt):
+    def sseg_warp(self, im, aux_channels, gt, border_mode='constant'):
         """
         Specialized warping for semantic segmentation problems
         """
         params = self.random_params()
-        im_aug = self.warp(im, params, interp='cubic')
+        im_aug = self.warp(im, params, interp='cubic', border_mode=border_mode)
         aux_channels_aug = [
-            self.warp(aux, params, interp='nearest')
+            self.warp(aux, params, interp='nearest', border_mode=border_mode)
             for aux in aux_channels
         ]
-        gt_aug = self.warp(gt, params, interp='nearest')
+        gt_aug = self.warp(gt, params, interp='nearest', border_mode=border_mode)
         return im_aug, aux_channels_aug, gt_aug
 
 

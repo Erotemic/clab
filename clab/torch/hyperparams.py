@@ -302,7 +302,7 @@ class HyperParams(object):
                 if isinstance(v, torch.Tensor):
                     v = v.numpy()
                 if isinstance(v, np.ndarray):
-                    if v.kind == 'f':
+                    if v.dtype.kind == 'f':
                         v = list(map(float, v))
                     else:
                         raise NotImplementedError()

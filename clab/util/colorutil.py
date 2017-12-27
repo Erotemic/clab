@@ -60,16 +60,29 @@ def make_heatmask(probs, cmap='plasma', with_alpha=True):
     return heatmask
 
 
-def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20)):
+def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20), transparent=False):
     """
+    Notes:
+        shape is approximate
 
-    note that shape is approximate
 
-    domain = np.linspace(-30, 200)
-    cmap='plasma'
-    dpi = 80
-    dsize = (20, 200)
 
+    Ignore:
+        domain = np.linspace(-30, 200)
+        cmap='plasma'
+        dpi = 80
+        dsize = (20, 200)
+
+        util.imwrite('foo.png', util.colorbar_image(np.arange(0, 1)), shape=(400, 80))
+
+        import plottool as pt
+        pt.qtensure()
+
+        from clab import util
+        import matplotlib as mpl
+        mpl.style.use('ggplot')
+        util.imwrite('foo.png', util.colorbar_image(np.linspace(0, 1, 100), dpi=200, shape=(1000, 40), transparent=1))
+        ub.startfile('foo.png')
     """
     import matplotlib as mpl
     from clab.util import mplutil
@@ -89,10 +102,10 @@ def colorbar_image(domain, cmap='plasma', dpi=96, shape=(200, 20)):
 
     plt.colorbar(sm, cax=ax)
 
-    cb = mplutil.render_figure_to_image(fig, dpi=dpi)
+    cb_img = mplutil.render_figure_to_image(fig, dpi=dpi, transparent=transparent)
 
     plt.close(fig)
 
-    return cb
+    return cb_img
     # from clab import util
-    # util.imwrite('foo.png', img)
+    # util.imwrite('foo.png', cb_img)

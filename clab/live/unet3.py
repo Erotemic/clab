@@ -11,6 +11,11 @@ from clab.torch.models import mixin
 from clab.torch.models.output_shape_for import OutputShapeFor
 import numpy as np
 
+from clab import util  # NOQA
+from clab import getLogger
+logger = getLogger(__name__)
+print = util.protect_print(logger.info)
+
 
 def default_nonlinearity():
     # nonlinearity = functools.partial(nn.ReLU, inplace=False)
