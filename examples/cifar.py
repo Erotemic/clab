@@ -354,6 +354,11 @@ def train():
     Example:
         >>> train()
     """
+    import random
+    np.random.seed(1031726816 % 4294967295)
+    torch.manual_seed(137852547 % 4294967295)
+    random.seed(2497950049 % 4294967295)
+
     if ub.argflag('--lab'):
         datasets = cifar_training_datasets(output_colorspace='LAB')
         print('computing normalizers')
