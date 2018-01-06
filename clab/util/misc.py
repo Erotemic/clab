@@ -301,6 +301,9 @@ def random_indices(num, seed=0):
     return input_idxs
 
 
+_SEED_MAX = (2 ** 32 - 1)
+
+
 def ensure_rng(seed):
     """
     Creates a random number generator.
@@ -314,7 +317,7 @@ def ensure_rng(seed):
     elif isinstance(seed, np.random.RandomState):
         rng = seed
     else:
-        rng = np.random.RandomState(seed)
+        rng = np.random.RandomState(seed % _SEED_MAX)
     return rng
 
 

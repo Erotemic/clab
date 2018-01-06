@@ -3,13 +3,13 @@ import ubelt as ub
 from clab import util
 
 
-class DirectoryStructure(object):
+class FolderStructure(object):
     def __init__(self, workdir='.', hyper=None, datasets=None):
         self.datasets = datasets
         self.workdir = workdir
         self.hyper = hyper
 
-    def train_info(self, short=False, hashed=False):
+    def train_info(self, short=True, hashed=True):
         # TODO: if pretrained is another clab model, then we should read that
         # train_info if it exists and append it to a running list of train_info
         hyper = self.hyper
@@ -22,7 +22,12 @@ class DirectoryStructure(object):
         arch_dpath = join(self.workdir, 'arch', arch)
         train_base = join(arch_dpath, 'train')
 
-        input_id = self.datasets['train'].input_id
+        if 'train' in hyper.input_ids:
+            # NEW WAY
+            input_id = hyper.input_ids['train']
+        else:
+            # OLD WAY
+            input_id = self.datasets['train'].input_id
 
         train_hyper_id_long = hyper.hyper_id()
         train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
@@ -30,7 +35,7 @@ class DirectoryStructure(object):
         other_id = hyper.other_id()
 
         train_id = '{}_{}_{}'.format(
-            input_id, train_hyper_id_brief, other_id)
+            util.hash_data(input_id)[:6], train_hyper_id_brief, other_id)
 
         train_dpath = join(
             train_base,
@@ -57,7 +62,7 @@ class DirectoryStructure(object):
         }
         return train_info
 
-    def setup_dpath(self, short=False, hashed=False):
+    def setup_dpath(self, short=True, hashed=True):
         train_info = self.train_info(short, hashed)
 
         train_dpath = ub.ensuredir(train_info['train_dpath'])

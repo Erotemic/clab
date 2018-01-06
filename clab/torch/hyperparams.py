@@ -167,6 +167,10 @@ class HyperParams(object):
     """
     Holds hyper relavent to training strategy
 
+    The idea is that you tell it what is relevant FOR YOU, and then it makes
+    you nice ids based on that. If you give if enough info it also allows you
+    to use the training harness.
+
     CommandLine:
         python -m clab.torch.hyperparams HyperParams
 
@@ -209,6 +213,9 @@ class HyperParams(object):
         cls, kw = _rectify_initializer(initializer, kwargs)
         hyper.initializer_cls = cls
         hyper.initializer_params = kw
+
+        # set an identifier based on the input train dataset
+        hyper.input_ids = {}  # TODO
 
         if len(kwargs) > 0:
             raise ValueError('Unused kwargs {}'.format(list(kwargs.keys())))
@@ -319,6 +326,9 @@ class HyperParams(object):
         _append_part('criterion', hyper.criterion_cls, hyper.criterion_params)
         return initkw
 
+    def input_id(hyper, short=False, hashed=False):
+        pass
+
     def hyper_id(hyper, short=False, hashed=False):
         """
         Identification string that uniquely determined by training hyper.
@@ -347,11 +357,23 @@ class HyperParams(object):
             type_str = clsname.split('.')[-1]
             id_parts.append(type_str)
 
-            if (ub.iterable(short) and key in short) or short is True:
-                param_str = util.make_short_idstr(params)
-            elif (ub.iterable(hashed) and key in hashed) or hashed is True:
+            # Precidence of specifications (from lowest to highest)
+            # SF=single flag, EF=explicit flag
+            # SF-short, SF-hash, EF-short EF-hash
+            request_short = short is True
+            request_hash = hashed is True
+            if (ub.iterable(short) and key in short):
+                request_hash = False
+                request_short = True
+            if (ub.iterable(hashed) and key in hashed):
+                request_hash = True
+                request_short = False
+
+            if request_hash:
                 param_str = util.make_idstr(params)
                 param_str = util.hash_data(param_str)[0:6]
+            elif request_short:
+                param_str = util.make_short_idstr(params)
             else:
                 param_str = util.make_idstr(params)
 

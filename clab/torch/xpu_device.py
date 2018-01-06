@@ -82,12 +82,20 @@ class XPU(ub.NiceRepr):
 
     def to_xpu_var(xpu, *args, **kw):
         """
-        Puts data on this XPU device
+        Puts data on this XPU device and inside a Variable container
 
         Args:
             *args: list of tensors to put data
             **kwargs: Mainly used for volatile, forwarded to `torch.autograd.Variable`.
+                note: volatile is depricated in version > 0.4 use torch.no_grad
+
+        Example:
+            >>> from clab.torch.xpu_device import *
+            >>> xpu = XPU(gpu_num=None)
+            >>> data = torch.FloatTensor([0])
         """
+        # torch version 0.4 replace the volatile keyword with a context manager
+        assert 'volatile' not in kw, 'volatile is removed'
         if xpu.is_gpu():
             args = [torch.autograd.Variable(item.cuda(xpu.gpu_num), **kw) for item in args]
         else:

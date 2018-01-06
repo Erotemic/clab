@@ -121,8 +121,10 @@ class InMemoryInputs(ub.NiceRepr):
         inputs.colorspace = 'rgb'
         return inputs
 
-    def convert_colorspace(inputs, colorspace):
+    def convert_colorspace(inputs, colorspace, inplace=False):
         if colorspace.lower() == inputs.colorspace.lower():
+            if not inplace:
+                return inputs.im
             return
         im_out = np.empty_like(inputs.im)
         dst = np.ascontiguousarray(np.empty_like(inputs.im[0]))
@@ -130,8 +132,11 @@ class InMemoryInputs(ub.NiceRepr):
             util.convert_colorspace(im, src_space=inputs.colorspace,
                                     dst_space=colorspace, dst=dst)
             im_out[ix] = dst
-        inputs.im = im_out
-        inputs.colorspace = colorspace
+        if inplace:
+            inputs.im = im_out
+            inputs.colorspace = colorspace
+        else:
+            return im_out
 
     def take(inputs, idxs, **kw):
         new_inputs = inputs.__class__(**kw)
@@ -163,89 +168,102 @@ class InMemoryInputs(ub.NiceRepr):
 
 
 class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
-    def __init__(self, inputs, task, workdir):
-        self.inputs = inputs
-        self.task = task
+    def __init__(dset, inputs, task, workdir, output_colorspace='RGB'):
+        dset.inputs = inputs
+        dset.task = task
 
-        self.colorspace = 'RGB'
+        dset.output_colorspace = output_colorspace
 
-        self.rng = np.random.RandomState(432432)
+        dset.rng = np.random.RandomState(432432)
 
         inputs_base = ub.ensuredir((workdir, 'inputs'))
         inputs.base_dpath = inputs_base
         if len(inputs):
             inputs.prepare_id()
-            self.input_id = inputs.input_id
-            self.with_gt = self.inputs.gt is not None
+            dset.input_id = inputs.input_id
+            dset.with_gt = dset.inputs.gt is not None
         else:
-            self.input_id = ''
+            dset.input_id = ''
 
-        self.augment = None
-        self.im_augment = torchvision.transforms.Compose([
-            RandomGamma(rng=self.rng),
-            RandomBlur(rng=self.rng),
+        dset.augment = None
+        dset.im_augment = torchvision.transforms.Compose([
+            RandomGamma(rng=dset.rng),
+            RandomBlur(rng=dset.rng),
         ])
-        self.rand_aff = RandomWarpAffine(self.rng)
-        self.center_inputs = None
+        dset.rand_aff = RandomWarpAffine(dset.rng)
+        dset.center_inputs = None
 
-    def _make_normalizer(self, mode='dependant'):
-        if len(self.inputs):
+    def _make_normalizer(dset, mode='dependant'):
+        """
+        Example:
+            >>> inputs = cifar_test_inputs()
+            >>> task = CIFAR100_Task()
+            >>> workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
+            >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'LAB')
+            >>> center_inputs = dset._make_normalizer('independent')
+        """
+        if len(dset.inputs):
+            # compute normalizers in the output colorspace
+            out_im = dset.inputs.convert_colorspace(dset.output_colorspace,
+                                                    inplace=False)
             if mode == 'dependant':
                 # dependent centering per channel (for RGB)
-                im_mean = self.inputs.im.mean()
-                im_scale = self.inputs.im.std()
+                im_mean = out_im.mean()
+                im_scale = out_im.std()
             elif mode == 'independent':
                 # Independent centering per channel (for LAB)
-                im_mean = self.inputs.im.mean(axis=(0, 1, 2))
-                im_scale = self.inputs.im.std(axis=(0, 1, 2))
+                im_mean = out_im.mean(axis=(0, 1, 2))
+                im_scale = out_im.std(axis=(0, 1, 2))
 
             center_inputs = ImageCenterScale(im_mean, im_scale)
 
-        self.center_inputs = center_inputs
+        dset.center_inputs = center_inputs
         return center_inputs
 
-    def __len__(self):
-        return len(self.inputs)
+    def __len__(dset):
+        return len(dset.inputs)
 
-    def load_inputs(self, index):
-        im = self.inputs.im[index]
-
-        if self.inputs.gt is not None:
-            gt = self.inputs.gt[index]
-        else:
-            gt = None
-
-        if self.augment:
-            # Image augmentation must be done in RGB
-            # Augment intensity independently
-            im = self.im_augment(im)
-            # Augment geometry consistently
-            params = self.rand_aff.random_params()
-            im = self.rand_aff.warp(im, params, interp='cubic')
-
-        im = util.convert_colorspace(im, src_space=self.inputs.colorspace,
-                                     dst_space=self.colorspace)
-
-        # Do centering of inputs
-        im = self.center_inputs(im)
-        return im, gt
-
-    def __getitem__(self, index):
+    def load_inputs(dset, index):
         """
 
         Ignore:
-            >>> from clab.live.sseg_train import *
-            >>> self = load_task_dataset('urban_mapper_3d')['train']
-            >>> self.augment = True
+            >>> inputs = cifar_test_inputs()
+            >>> task = CIFAR100_Task()
+            >>> workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
+            >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'LAB')
+            >>> dset._make_normalizer('independent')
             >>> index = 0
-            >>> self.center_inputs = self._make_normalizer()
-            >>> im, gt = self[0]
+            >>> im, gt = dset.load_inputs(index)
         """
+        assert dset.inputs.colorspace.lower() == 'rgb', (
+            'we must be in rgb for augmentation')
+        im = dset.inputs.im[index]
+
+        if dset.inputs.gt is not None:
+            gt = dset.inputs.gt[index]
+        else:
+            gt = None
+
+        if dset.augment:
+            # Image augmentation must be done in RGB
+            # Augment intensity independently
+            im = dset.im_augment(im)
+            # Augment geometry consistently
+            params = dset.rand_aff.random_params()
+            im = dset.rand_aff.warp(im, params, interp='cubic')
+
+        im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
+                                     dst_space=dset.output_colorspace)
+        # Do centering of inputs
+        im = dset.center_inputs(im)
+        return im, gt
+
+    def __getitem__(dset, index):
         from clab.torch import im_loaders
-        im, gt = self.load_inputs(index)
+        im, gt = dset.load_inputs(index)
         input_tensor = im_loaders.numpy_image_to_float_tensor(im)
 
-        if self.with_gt:
+        if dset.with_gt:
             # print('gotitem: ' + str(data_tensor.shape))
             # print('gt_tensor: ' + str(gt_tensor.shape))
             return input_tensor, gt
@@ -253,53 +271,60 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             return input_tensor
 
     @property
-    def n_channels(self):
+    def n_channels(dset):
         return 3
 
     @property
-    def n_classes(self):
-        return int(self.task.labels.max() + 1)
+    def n_classes(dset):
+        return int(dset.task.labels.max() + 1)
 
     @property
-    def ignore_labels(self):
-        return self.task.ignore_labels
+    def ignore_labels(dset):
+        return dset.task.ignore_labels
 
-    def class_weights(self):
+    def class_weights(dset):
         """
             >>> from clab.live.sseg_train import *
-            >>> self = load_task_dataset('urban_mapper_3d')['train']
-            >>> self.class_weights()
+            >>> dset = load_task_dataset('urban_mapper_3d')['train']
+            >>> dset.class_weights()
         """
         # # Handle class weights
         # print('prep class weights')
-        # gtstats = self.inputs.prepare_gtstats(self.task)
-        # gtstats = self.inputs.gtstats
+        # gtstats = dset.inputs.prepare_gtstats(dset.task)
+        # gtstats = dset.inputs.gtstats
         # # Take class weights (ensure they are in the same order as labels)
         # mfweight_dict = gtstats['mf_weight'].to_dict()
-        # class_weights = np.array(list(ub.take(mfweight_dict, self.task.classnames)))
-        # class_weights[self.task.ignore_labels] = 0
+        # class_weights = np.array(list(ub.take(mfweight_dict, dset.task.classnames)))
+        # class_weights[dset.task.ignore_labels] = 0
         # # HACK
         # # class_weights[0] = 1.0
         # # class_weights[1] = 0.7
         # print('class_weights = {!r}'.format(class_weights))
-        # print('class_names   = {!r}'.format(self.task.classnames))
-        class_weights = np.ones(self.n_classes)
+        # print('class_names   = {!r}'.format(dset.task.classnames))
+        class_weights = np.ones(dset.n_classes)
         return class_weights
 
 
-def cifar_training_datasets():
-    """
-    """
+def cifar_inputs(train=False):
     root = ub.ensure_app_cache_dir('clab')
-    train_dset = cifar.CIFAR100(root=root, download=True, train=True)
-    bchw = (train_dset.train_data).astype(np.float32) / 255.0
-    labels = np.array(train_dset.train_labels)
+    train_dset = cifar.CIFAR100(root=root, download=True, train=train)
+    if train:
+        bchw = (train_dset.train_data).astype(np.float32) / 255.0
+        labels = np.array(train_dset.train_labels)
+    else:
+        bchw = (train_dset.test_data).astype(np.float32) / 255.0
+        labels = np.array(train_dset.test_labels)
     inputs = InMemoryInputs.from_bhwc_rgb(bchw, labels=labels)
-    # inputs.convert_colorspace('lab')
+    return inputs
 
+
+def cifar_training_datasets(output_colorspace='RGB'):
+    inputs = cifar_inputs(train=True)
+
+    # split training into train / validation
     vali_frac = .1
     n_vali = int(len(inputs) * vali_frac)
-    input_idxs = util.random_indices(len(inputs), seed=0)
+    input_idxs = util.random_indices(len(inputs), seed=1184576173)
     train_idxs = sorted(input_idxs[:-n_vali])
     vali_idxs = sorted(input_idxs[-n_vali:])
 
@@ -313,8 +338,9 @@ def cifar_training_datasets():
 
     task = CIFAR100_Task()
 
-    train_dset = CIFAR_Wrapper(train_inputs, task, workdir)
-    vali_dset = CIFAR_Wrapper(vali_inputs, task, workdir)
+    train_dset = CIFAR_Wrapper(train_inputs, task, workdir, output_colorspace=output_colorspace)
+    vali_dset = CIFAR_Wrapper(vali_inputs, task, workdir, output_colorspace=output_colorspace)
+    print('built datasets')
 
     datasets = {
         'train': train_dset,
@@ -328,55 +354,53 @@ def train():
     Example:
         >>> train()
     """
-    datasets = cifar_training_datasets()
-    datasets['train'].augment = True
-
-    datasets['train'].center_inputs = datasets['train']._make_normalizer('dependant')
+    if ub.argflag('--lab'):
+        datasets = cifar_training_datasets(output_colorspace='LAB')
+        print('computing normalizers')
+        datasets['train'].center_inputs = datasets['train']._make_normalizer('independent')
+        assert datasets['train'].output_colorspace == 'LAB'
+    else:
+        datasets = cifar_training_datasets(output_colorspace='RGB')
+        print('computing normalizers')
+        datasets['train'].center_inputs = datasets['train']._make_normalizer('dependant')
+        assert datasets['train'].output_colorspace == 'RGB'
+    print('computed normalizers')
     datasets['vali'].center_inputs = datasets['train'].center_inputs
-
-    criterion = torch.nn.CrossEntropyLoss()
+    datasets['train'].augment = True
 
     # from clab.torch.models.densenet_efficient import DenseNetEfficient
     import clab.torch.models.densenet
 
     hyper = hyperparams.HyperParams(
-        # criterion=(torch.nn.CrossEntropyLoss, {
-        #     # 'ignore_label': ignore_label,
-        #     # TODO: weight should be a FloatTensor
-        #     # 'weight': class_weights,
-        # }),
-
         model=(clab.torch.models.densenet.DenseNet, {
             'cifar': True,
             'num_classes': datasets['train'].n_classes,
         }),
         optimizer=(torch.optim.SGD, {
-            # 'weight_decay': .0006,
             'weight_decay': .0005,
             'momentum': 0.9,
             'nesterov': True,
             'lr': 0.001,
         }),
-        scheduler=('ReduceLROnPlateau', {
-            # 'gamma': 0.99,
-            # 'base_lr': 0.001,
-            # 'stepsize': 2,
+        scheduler=(torch.optim.lr_scheduler.ReduceLROnPlateau, {
+        }),
+        initializer=(nninit.KaimingNormal, {
+            'nonlinearity': 'relu',
+        }),
+        criterion=(torch.nn.CrossEntropyLoss, {
         }),
         # Specify anything else that is special about your hyperparams here
         # Especially if you make a custom_batch_runner
         other={
             'augment': datasets['train'].augment,
-            'colorspace': datasets['train'].colorspace,
-            'n_classes': datasets['train'].n_classes,
-            'criterion': 'cross_entropy',
+            'colorspace': datasets['train'].output_colorspace,
+            # 'n_classes': datasets['train'].n_classes,
+            # 'criterion': 'cross_entropy',
         },
-        init_method='he',
     )
+    hyper.input_ids['train'] = datasets['train'].input_id
 
     xpu = xpu_device.XPU.from_argv()
-
-    # TODO: need something to auto-generate a cachable directory structure
-    # train_dpath = ub.ensuredir('train_cifar_dense')
 
     batch_size = 32
     harn = fit_harness.FitHarness(
@@ -385,12 +409,12 @@ def train():
 
     @harn.set_batch_runner
     def batch_runner(harn, inputs, labels):
-        # Forward pass and compute the loss
+        """
+        Custom function to compute the output of a batch and its loss.
+        """
         output = harn.model(*inputs)
-        # Compute the loss
         label = labels[0]
-        # loss = harn.criterion(output, label)
-        loss = criterion(output, label)
+        loss = harn.criterion(output, label)
         return [output], loss
 
     workdir = ub.ensuredir('train_cifar_work')
@@ -402,7 +426,8 @@ def train():
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.live.cifar_train train
+        python examples/cifar.py train
+        python examples/cifar.py train --lab
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

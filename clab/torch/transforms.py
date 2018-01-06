@@ -130,7 +130,10 @@ class ImageCenterScale(ub.NiceRepr):
         self.im_scale = im_scale
 
     def __nice__(self):
-        return '{:g} {:g}'.format(self.im_mean, self.im_scale)
+        try:
+            return '{:g}, {:g}'.format(self.im_mean, self.im_scale)
+        except:
+            return '{}, {}'.format(self.im_mean, self.im_scale)
 
     def __call__(self, data):
         return (data - self.im_mean) / self.im_scale

@@ -34,105 +34,21 @@ def number_of_parameters(model, trainable=True):
     return n_params
 
 
-def mnist_demo():
+class grad_context(object):
     """
-    CommandLine:
-        python -m clab.torch.fit_harness mnist_demo
-
-    Example:
-        >>> mnist_demo()
+    TODO: PR to pytorch
     """
-    from clab.torch import models
-    from clab.torch import hyperparams
-    root = os.path.expanduser('~/data/mnist/')
+    def __init__(self, flag):
+        # if tuple(map(int, torch.__version__.split('.')[0:2])) < (0, 4):
+        self.prev = torch.is_grad_enabled()
+        self.flag = flag
 
-    dry = ub.argflag('--dry')
+    def __enter__(self):
+        torch.set_grad_enabled(self.flag)
 
-    transform = torchvision.transforms.Compose([
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize((0.1307,), (0.3081,))
-    ])
-    datasets = {
-        'train': torchvision.datasets.MNIST(root, transform=transform,
-                                            train=True, download=True),
-        'vali': torchvision.datasets.MNIST(root, transform=transform,
-                                           train=False, download=True),
-    }
-
-    # take a subset of data
-    factor = 1
-    datasets['train'].train_data = datasets['train'].train_data[::factor]
-    datasets['train'].train_labels = datasets['train'].train_labels[::factor]
-
-    factor = 1
-    datasets['vali'].test_data = datasets['vali'].test_data[::factor]
-    datasets['vali'].test_labels = datasets['vali'].test_labels[::factor]
-
-    # Give the training dataset an input_id
-    datasets['train'].input_id = 'mnist'
-
-    batch_size = 128
-    n_classes = 10
-    xpu = xpu_device.XPU.from_argv(min_memory=300)
-    # model = models.MnistNet(n_channels=1, n_classes=n_classes)
-    from clab.torch import nninit
-
-    hyper = hyperparams.HyperParams(
-        model=(models.MnistNet, dict(n_channels=1, n_classes=n_classes)),
-        optimizer=torch.optim.Adam,
-        scheduler='ReduceLROnPlateau',
-        criterion=torch.nn.CrossEntropyLoss,
-        initializer=(nninit.HeNormal, {}),
-        # initializer=(nninit.Pretrained, dict(fpath=ub.truepath('~/data/work/mnist/arch/MnistNet/train/input_mnist/solver_mnist_MnistNet,ufbg,Pretrained,dwlk,Adam,apce,ReduceLROnPlateau,zagw,CrossEntropyLoss,ceip_n=10/torch_snapshots/_epoch_00000095.pt'))),
-        # initializer=(nninit.Pretrained, dict(fpath=ub.truepath('~/data/work/mnist/arch/MnistNet/train/input_mnist/solver_mnist_MnistNet,ufbg,HeNormal,akyu,Adam,apce,ReduceLROnPlateau,zagw,CrossEntropyLoss,ceip_n=10/torch_snapshots/_epoch_00000001.pt'))),
-        # stopping=('EarlyStopping', dict(patience=10)),  # TODO
-        # initializer='he',
-        other={
-            'n_classes': n_classes,
-            # 'n_channels': n_channels,
-        }
-    )
-
-    # train_dpath = os.path.expanduser('~/data/work/mnist/harness/mnist-net')
-    workdir = os.path.expanduser('~/data/work/mnist/')
-
-    harn = FitHarness(
-        datasets=datasets, batch_size=batch_size,
-        xpu=xpu, hyper=hyper, dry=dry,
-    )
-
-    # all_labels = np.arange(n_classes)
-    # @harn.add_metric_hook
-    # def custom_metrics(harn, output, labels):
-    #     # ignore_label = datasets['train'].ignore_label
-    #     # labels = datasets['train'].task.labels
-    #     label = labels[0]
-    #     metrics_dict = metrics._clf_metrics(output, label, labels=all_labels)
-    #     return metrics_dict
-
-    train_dpath = harn.setup_dpath(workdir, hashed=True)
-    print('train_dpath = {!r}'.format(train_dpath))
-
-    if ub.argflag('--reset'):
-        ub.delete(train_dpath)
-
-    harn.run()
-
-    # if False:
-    #     import plottool as pt
-    #     pt.qtensure()
-    #     ims, gts = next(iter(harn.loaders['train']))
-    #     pic = im_loaders.rgb_tensor_to_imgs(ims, norm=False)[0]
-    #     pt.clf()
-    #     pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True)
-
-    #     with pt.RenderingContext() as render:
-    #         tensor_data = datasets['train'][0][0][None, :]
-    #         pic = im_loaders.rgb_tensor_to_imgs(tensor_data, norm=False)[0]
-    #         pt.figure(fnum=1, doclf=True)
-    #         pt.imshow(pic, norm=True, cmap='viridis', data_colorbar=True,
-    #                   fnum=1)
-    #     render.image
+    def __exit__(self, *args):
+        torch.set_grad_enabled(self.prev)
+        return False
 
 
 class FitHarness(object):
@@ -200,7 +116,7 @@ class FitHarness(object):
 
     def setup_dpath(harn, workdir='.', **kwargs):
         from clab.torch import folder_structure
-        structure = folder_structure.DirectoryStructure(
+        structure = folder_structure.FolderStructure(
             workdir=workdir, hyper=harn.hyper, datasets=harn.datasets,
         )
         dpath = structure.setup_dpath(**kwargs)
@@ -273,16 +189,9 @@ class FitHarness(object):
             harn.log('There are {} existing snapshots'.format(len(prev_states)))
             harn.xpu.to_xpu(harn.model)
 
-            # more than one criterion?
+            # more than one criterion? Wrap it in a single criterion OR
+            # specify a custom batch runner.
             if harn.hyper.criterion_cls:
-
-                # weight = harn.hyper.criterion_params.get('weight', None)
-                # if weight is not None:
-                #     harn.log('Casting weights')
-                #     weight = torch.FloatTensor(harn.hyper.criterion_params['weight'])
-                #     weight = harn.xpu.to_xpu(weight)
-                #     harn.hyper.criterion_params['weight'] = weight
-
                 harn.criterion = harn.hyper.criterion_cls(
                     **harn.hyper.criterion_params)
 
@@ -398,14 +307,7 @@ class FitHarness(object):
                     raise StopIteration()
 
                 # change learning rate (modified optimizer inplace)
-                if harn.scheduler is None:
-                    pass
-                elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
-                    assert vali_metrics is not None, (
-                        'must validate for ReduceLROnPlateau schedule')
-                    harn.scheduler.step(vali_metrics['loss'])
-                else:
-                    harn.scheduler.step()
+                harn._step_scheduler(vali_metrics)
 
                 harn.update_prog_description()
         except StopIteration:
@@ -414,7 +316,26 @@ class FitHarness(object):
             harn.log('An {} error occurred in the train loop'.format(type(ex)))
             harn._close_prog()
             raise
+
+        harn.log('\n\n\n')
+        harn.log('Training completed')
+        harn.log('Current LRs: {}'.format(harn.current_lrs()))
         harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.stopping.memory), nl=1)))
+        harn.log('Exiting harness.')
+
+    def _step_scheduler(harn, vali_metrics):
+        """
+        Helper function to change the learning rate that handles the way that
+        different schedulers might be used.
+        """
+        if harn.scheduler is None:
+            pass
+        elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
+            assert vali_metrics is not None, (
+                'must validate for ReduceLROnPlateau schedule')
+            harn.scheduler.step(vali_metrics['loss'])
+        else:
+            harn.scheduler.step()
 
     def run_epoch(harn, loader, tag, learn=False):
         """
@@ -440,52 +361,49 @@ class FitHarness(object):
                          position=position, leave=True, dynamic_ncols=True)
         prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
-        for bx, (inputs, labels) in enumerate(loader):
-            iter_idx = (harn.epoch * len(loader) + bx)
+        with grad_context(learn):
+            for bx, (inputs, labels) in enumerate(loader):
+                iter_idx = (harn.epoch * len(loader) + bx)
 
-            # The dataset should return a inputs/target 2-tuple of lists.
-            # In most cases each list will be length 1, unless there are
-            # multiple input branches or multiple output branches.
-            if not isinstance(inputs, (list, tuple)):
-                inputs = [inputs]
-            if not isinstance(labels, (list, tuple)):
-                labels = [labels]
+                # The dataset should return a inputs/target 2-tuple of lists.
+                # In most cases each list will be length 1, unless there are
+                # multiple input branches or multiple output branches.
+                if not isinstance(inputs, (list, tuple)):
+                    inputs = [inputs]
+                if not isinstance(labels, (list, tuple)):
+                    labels = [labels]
 
-            if tuple(map(int, torch.__version__.split('.')[0:2])) < (0, 4):
-                inputs = harn.xpu.to_xpu_var(*inputs, volatile=not learn)
-                labels = harn.xpu.to_xpu_var(*labels, volatile=not learn)
-            else:
-                with torch.no_grad():
-                    inputs = harn.xpu.to_xpu_var(*inputs)
-                    labels = harn.xpu.to_xpu_var(*labels)
+                # note volatile is depricated
+                inputs = harn.xpu.to_xpu_var(*inputs)
+                labels = harn.xpu.to_xpu_var(*labels)
 
-            # Core learning / backprop
-            outputs, loss = harn.run_batch(inputs, labels, learn=learn)
+                # Core learning / backprop
+                outputs, loss = harn.run_batch(inputs, labels, learn=learn)
 
-            # Measure train accuracy and other informative metrics
-            cur_metrics = harn._call_metric_hooks(outputs, labels, loss)
+                # Measure train accuracy and other informative metrics
+                cur_metrics = harn._call_metric_hooks(outputs, labels, loss)
 
-            # Accumulate measures
-            epoch_moving_metrics.update(cur_metrics)
-            iter_moving_metircs.update(cur_metrics)
+                # Accumulate measures
+                epoch_moving_metrics.update(cur_metrics)
+                iter_moving_metircs.update(cur_metrics)
 
-            # display_train training info
-            if harn.check_interval('display_' + tag, bx):
-                ave_metrics = iter_moving_metircs.average()
+                # display_train training info
+                if harn.check_interval('display_' + tag, bx):
+                    ave_metrics = iter_moving_metircs.average()
 
-                msg = harn.batch_msg({'loss': ave_metrics['loss']},
-                                     loader.batch_size)
-                prog.set_description(tag + ' ' + msg)
+                    msg = harn.batch_msg({'loss': ave_metrics['loss']},
+                                         loader.batch_size)
+                    prog.set_description(tag + ' ' + msg)
 
-                for key, value in ave_metrics.items():
-                    harn.log_value(tag + ' iter ' + key, value, iter_idx)
+                    for key, value in ave_metrics.items():
+                        harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
-                prog.update(harn.intervals['display_' + tag])
-                prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
+                    prog.update(harn.intervals['display_' + tag])
+                    prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
-            # Custom tensorboard output
-            for _hook in harn._tensorboard_hooks:
-                _hook(harn, tag, inputs, outputs, labels, bx, loader)
+                # Custom tensorboard output
+                for _hook in harn._tensorboard_hooks:
+                    _hook(harn, tag, inputs, outputs, labels, bx, loader)
 
         prog.close()
 
@@ -656,20 +574,14 @@ class FitHarness(object):
         # print('line = {!r}'.format(line))
 
     def log_value(harn, key, value, n_iter):
-        # if False:
-        #     print('{}={} @ {}'.format(key, value, n_iter))
         if harn.tlogger:
             harn.tlogger.log_value(key, value, n_iter)
 
     def log_histogram(harn, key, value, n_iter):
-        # if False:
-        #     print('{}={} @ {}'.format(key, value, n_iter))
         if harn.tlogger:
             harn.tlogger.log_histogram(key, value, n_iter)
 
     def log_images(harn, key, value, n_iter):
-        # if False:
-        #     print('{}={} @ {}'.format(key, value, n_iter))
         if harn.tlogger:
             harn.tlogger.log_images(key, value, n_iter)
 
