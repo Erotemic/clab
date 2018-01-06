@@ -52,8 +52,8 @@ class grad_context(object):
 
 
 class FitHarness(object):
-    def __init__(harn, datasets, batch_size=4, hyper=None, xpu=None,
-                 train_dpath='./train', dry=False):
+    def __init__(harn, datasets, batch_size=None, hyper=None, xpu=None,
+                 loaders=None, train_dpath='./train', dry=False):
 
         harn.datasets = None
         harn.loaders = None
@@ -72,7 +72,11 @@ class FitHarness(object):
         else:
             harn.xpu = xpu_device.XPU(xpu)
 
-        harn._setup_loaders(datasets, batch_size)
+        harn.datasets = datasets
+        if loaders is None:
+            harn.loaders = harn._setup_loaders(datasets, batch_size)
+        else:
+            harn.loaders = loaders
 
         harn.hyper = hyper
 
@@ -124,14 +128,14 @@ class FitHarness(object):
         return dpath
 
     def _setup_loaders(harn, datasets, batch_size):
+        """ automatic loader setup. Can be overriden by specifying loaders """
         data_kw = {'batch_size': batch_size}
         if harn.xpu.is_gpu():
             data_kw.update({'num_workers': 6, 'pin_memory': True})
 
         tags = ['train', 'vali', 'test']
 
-        harn.loaders = ub.odict()
-        harn.datasets = datasets
+        loaders = ub.odict()
         for tag in tags:
             if tag not in datasets:
                 continue
@@ -142,7 +146,8 @@ class FitHarness(object):
                 data_kw_['batch_size'] = max(batch_size // 4, 1)
             loader = torch.utils.data.DataLoader(dset, shuffle=shuffle,
                                                  **data_kw_)
-            harn.loaders[tag] = loader
+            loaders[tag] = loader
+        return loaders
 
     def initialize_training(harn):
         # TODO: Initialize the classes and then have a different function move

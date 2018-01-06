@@ -364,6 +364,11 @@ def train():
         print('computing normalizers')
         datasets['train'].center_inputs = datasets['train']._make_normalizer('independent')
         assert datasets['train'].output_colorspace == 'LAB'
+    elif ub.argflag('--rgb-indie'):
+        datasets = cifar_training_datasets(output_colorspace='RGB')
+        print('computing normalizers')
+        datasets['train'].center_inputs = datasets['train']._make_normalizer('dependant')
+        assert datasets['train'].output_colorspace == 'RGB'
     else:
         datasets = cifar_training_datasets(output_colorspace='RGB')
         print('computing normalizers')
@@ -385,7 +390,7 @@ def train():
             'weight_decay': .0005,
             'momentum': 0.9,
             'nesterov': True,
-            'lr': 0.001,
+            'lr': 0.01,
         }),
         scheduler=(torch.optim.lr_scheduler.ReduceLROnPlateau, {
         }),
@@ -407,9 +412,26 @@ def train():
 
     xpu = xpu_device.XPU.from_argv()
 
-    batch_size = 32
+    batch_size = 128
+    data_kw = {'batch_size': batch_size}
+    if xpu.is_gpu():
+        data_kw.update({'num_workers': 8, 'pin_memory': True})
+
+    tags = ['train', 'vali', 'test']
+
+    loaders = ub.odict()
+    for tag in tags:
+        dset = datasets[tag]
+        shuffle = tag == 'train'
+        data_kw_ = data_kw.copy()
+        if tag != 'train':
+            data_kw_['batch_size'] = max(batch_size // 4, 1)
+        loader = torch.utils.data.DataLoader(dset, shuffle=shuffle, **data_kw_)
+        loaders[tag] = loader
+
     harn = fit_harness.FitHarness(
-        hyper=hyper, datasets=datasets, xpu=xpu, batch_size=batch_size,
+        hyper=hyper, datasets=datasets, xpu=xpu,
+        loaders=loaders,
     )
 
     @harn.set_batch_runner

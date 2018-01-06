@@ -160,40 +160,119 @@ class ZipTransforms():
         ]
 
 
+class AffineWarp(object):
+    """
+    Wrapper around three different methods for affine warping.  The fastest is
+    cv2, followed by pil, followed by skimage.  The most flexible is skimage,
+    and the least flexible is pil, but cv2 has lanczos resampling while the
+    others do not. However, cv2.warpAffine has known bugs that sometimes occur
+    with multiprocessing, so its not always 100% safe to use.
+    """
+    skimage_interp_lookup = {
+        'nearest'   : 0,
+        'linear'    : 1,
+        'quadradic' : 2,
+        'cubic'     : 3,
+        'lanczos': NotImplemented,
+    }
+    pil_interp_lookup = {
+        'nearest'   : Image.NEAREST,
+        'linear'    : Image.BILINEAR,
+        'quadradic' : NotImplemented,
+        'cubic'     : Image.BICUBIC,
+        'lanczos': NotImplemented,
+    }
+    cv2_interp_lookup = {
+        'nearest'   : cv2.INTER_NEAREST,
+        'linear'    : cv2.INTER_LINEAR,
+        'quadradic' : NotImplemented,
+        'cubic'     : cv2.INTER_CUBIC,
+        'lanczos': cv2.INTER_LANCZOS4,
+    }
+
+    skimage_border_lookup = {
+        'constant': 'constant',
+        'reflect': 'reflect',
+    }
+    cv2_border_lookup = {
+        'constant': cv2.BORDER_CONSTANT,
+        'reflect': cv2.BORDER_REFLECT,
+    }
+    pil_border_lookup = {
+        'constant': 'constant',
+        'reflect': NotImplemented,
+    }
+    def __init__(self):
+        pass
+
+    def around_mat3x3(x, y, sx, sy, theta, shear, tx, ty):
+        Aff = augment_common.affine_around_mat2x3(x, y, sx, sy, theta, shear,
+                                                  tx, ty)
+        matrix = np.array(Aff + [[0, 0, 1]])
+        return matrix
+
+    def make_warper(self, backend, shape, matrix, interp, border_mode):
+        return {
+            'cv2': self.cv2_warper,
+            'pil': self.pil_warper,
+            'skimage': self.skimage_warper,
+        }[backend]
+        pass
+
+    def skimage_warper(self, shape, matrix, interp, border_mode):
+        inv_matrix = np.linalg.inv(matrix)
+        order = self.skimage_interp_lookup[interp]
+        skaff = skimage.transform.AffineTransform(matrix=inv_matrix)
+
+        def _warp(img):
+            imaug = skimage.transform.warp(
+                img, skaff, output_shape=img.shape, order=order,
+                mode=border_mode, clip=True, preserve_range=True
+            )
+            imaug = imaug.astype(img.dtype)
+            return imaug
+        return _warp
+
+    def pil_warper(self, shape, matrix, interp, border_mode):
+        inv_matrix = np.linalg.inv(matrix)
+        pil_aff_params = list(inv_matrix.ravel()[0:6])
+        h1, w1 = shape[0:2]
+        resample = self.pil_interp_lookup[interp]
+        assert border_mode == 'constant'
+        # from torchvision.transforms.functional import to_pil_image
+        # n_chan = util.get_num_channels(img)
+        # if n_chan == 3 and img.dtype != np.uint8:
+        #     pass
+        #     # need to convert to uint8
+        # pil_img = to_pil_image(img)
+
+        def _warp(img):
+            pil_img = Image.fromarray(img)
+            imaug = np.array(pil_img.transform((w1, h1), Image.AFFINE,
+                                               pil_aff_params,
+                                               resample=resample))
+            return imaug
+        return _warp
+
+    def cv2_warper(self, shape, matrix, interp, border_mode):
+        h1, w1 = shape[0:2]
+        inv_matrix = np.linalg.inv(matrix)
+        inv_matrix_2x3 = inv_matrix[0:2]
+        borderMode = self.cv2_border_lookup[border_mode]
+        cv2_interp = self.cv2_interp_lookup[interp]
+        flags = cv2_interp | cv2.WARP_INVERSE_MAP
+        def _warp(img):
+            imaug = cv2.warpAffine(img, inv_matrix_2x3, dsize=(w1, h1),
+                                   flags=flags, borderMode=borderMode)
+            return imaug
+        return _warp
+
+
 class RandomWarpAffine(object):
     def __init__(self, rng=None, backend='skimage', **kw):
         self.rng = util.ensure_rng(rng)
         self.augkw = augment_common.PERTERB_AUG_KW.copy()
         self.augkw.update(kw)
-        self.skimage_interp_lookup = {
-            'nearest'   : 0,
-            'linear'    : 1,
-            'quadradic' : 2,
-            'cubic'     : 3,
-            'lanczos': NotImplementedError,
-        }
-        self.pil_interp_lookup = {
-            'nearest'   : Image.NEAREST,
-            'linear'    : Image.BILINEAR,
-            'quadradic' : NotImplementedError,
-            'cubic'     : Image.BICUBIC,
-            'lanczos': NotImplementedError,
-        }
-        self.cv2_interp_lookup = {
-            'nearest'   : cv2.INTER_NEAREST,
-            'linear'    : cv2.INTER_LINEAR,
-            'quadradic' : NotImplementedError,
-            'cubic'     : cv2.INTER_CUBIC,
-            'lanczos': cv2.INTER_LANCZOS4,
-        }
-        self.cv2_border_lookup = {
-            'constant': cv2.BORDER_CONSTANT,
-            'reflect': cv2.BORDER_REFLECT,
-        }
-        self.pil_border_lookup = {
-            'constant': 'constant',
-            'reflect': NotImplementedError,
-        }
         # self.interp = 'nearest'
         # self.border_mode = 'reflect'
         # self.backend = 'skimage'
@@ -329,45 +408,15 @@ class RandomWarpAffine(object):
 
         """
         x, y = img.shape[1] / 2, img.shape[0] / 2
-        Aff = augment_common.affine_around_mat2x3(x, y, *params)
-        matrix = np.array(Aff + [[0, 0, 1]])
 
         if backend is None:
             backend = self.backend
 
-        if backend == 'skimage':
-            inv_matrix = np.linalg.inv(matrix)
-            order = self.skimage_interp_lookup[interp]
-            skaff = skimage.transform.AffineTransform(matrix=inv_matrix)
-            imaug = skimage.transform.warp(
-                img, skaff, output_shape=img.shape, order=order,
-                mode=border_mode, clip=True, preserve_range=True
-            )
-            imaug = imaug.astype(img.dtype)
-        elif backend == 'pil':
-            inv_matrix = np.linalg.inv(matrix)
-            pil_aff_params = list(inv_matrix.ravel()[0:6])
-            h1, w1 = img.shape[0:2]
-            resample = self.pil_interp_lookup[interp]
-            assert border_mode == 'constant'
-            # from torchvision.transforms.functional import to_pil_image
-            # n_chan = util.get_num_channels(img)
-            # if n_chan == 3 and img.dtype != np.uint8:
-            #     pass
-            #     # need to convert to uint8
-            # pil_img = to_pil_image(img)
-            pil_img = Image.fromarray(img)
-            imaug = np.array(pil_img.transform((w1, h1), Image.AFFINE,
-                                               pil_aff_params,
-                                               resample=resample))
-        elif backend == 'cv2':
-            h1, w1 = img.shape[0:2]
-            cv2_aff = matrix[0:2]
-            borderMode = self.cv2_border_lookup[border_mode]
-            cv2_interp = self.cv2_interp_lookup[interp]
-            imaug = cv2.warpAffine(img, cv2_aff, dsize=(w1, h1),
-                                   flags=cv2_interp, borderMode=borderMode)
-
+        affwarp = AffineWarp()
+        matrix = affwarp.around_mat3x3(x, y, *params)
+        _warp = affwarp.make_warper(backend, img.shape, matrix, interp,
+                                    border_mode)
+        imaug = _warp(img)
         return imaug
 
     def sseg_warp(self, im, aux_channels, gt, border_mode='constant'):

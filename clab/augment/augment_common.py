@@ -33,6 +33,8 @@ def random_affine_args(zoom_pdf=None,
 
     TODO: allow for a pdf of ranges for each dimension
 
+    TODO: depricate for an imgaug type approach
+
     Args:
         zoom_pdf (tuple): (default = (1.0, 1.0))
         tx_pdf (tuple): (default = (0.0, 0.0))
@@ -226,7 +228,8 @@ def affine_mat2x3(sx=1, sy=1, theta=0, shear=0, tx=0, ty=0, math=np):
 
 
 def affine_around_mat2x3(x, y, sx=1.0, sy=1.0, theta=0.0, shear=0.0, tx=0.0,
-                         ty=0.0, x2=None, y2=None, math=np):
+                         ty=0.0, flip_lr=False, flip_ud=False, x2=None,
+                         y2=None, math=np):
     r"""
     Executes an affine transform around center point (x, y).
     Equivalent to translation.dot(affine).dot(inv(translation))
@@ -307,6 +310,16 @@ def affine_around_mat2x3(x, y, sx=1.0, sy=1.0, theta=0.0, shear=0.0, tx=0.0,
     """
     x2 = x if x2 is None else x2
     y2 = y if y2 is None else y2
+
+    if flip_lr:
+        # shear 180 degrees + rotate 180 == lr-flip
+        theta += np.pi
+        shear += np.pi
+
+    if flip_ud:
+        # shear 180 degrees == ud-flip
+        shear += np.pi
+
     if math == 'skimage':
         import skimage.transform
         T1 = skimage.transform.AffineTransform(translation=(-x, -y))
