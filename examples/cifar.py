@@ -319,12 +319,14 @@ def cifar_inputs(train=False):
     return inputs
 
 
-def cifar_training_datasets(output_colorspace='RGB'):
+def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent'):
     inputs = cifar_inputs(train=True)
 
     # split training into train / validation
-    vali_frac = .1
+    vali_frac = .1  # 10%  is 5K images
     n_vali = int(len(inputs) * vali_frac)
+    # n_vali = 10000  # 10K validation as in http://torch.ch/blog/2015/07/30/cifar.html
+
     input_idxs = util.random_indices(len(inputs), seed=1184576173)
     train_idxs = sorted(input_idxs[:-n_vali])
     vali_idxs = sorted(input_idxs[-n_vali:])
@@ -341,12 +343,24 @@ def cifar_training_datasets(output_colorspace='RGB'):
 
     train_dset = CIFAR_Wrapper(train_inputs, task, workdir, output_colorspace=output_colorspace)
     vali_dset = CIFAR_Wrapper(vali_inputs, task, workdir, output_colorspace=output_colorspace)
+    test_dset = CIFAR_Wrapper(cifar_inputs(train=False), task, workdir,
+                              output_colorspace=output_colorspace)
     print('built datasets')
 
     datasets = {
         'train': train_dset,
         'vali': vali_dset,
+        'test': test_dset,
     }
+
+    print('computing normalizers')
+    datasets['train'].center_inputs = datasets['train']._make_normalizer(norm_mode)
+    for key in datasets.keys():
+        datasets[key].center_inputs = datasets['train'].center_inputs
+    print('computed normalizers')
+
+    datasets['train'].augment = True
+
     return datasets
 
 
@@ -361,23 +375,11 @@ def train():
     random.seed(2497950049 % 4294967295)
 
     if ub.argflag('--lab'):
-        datasets = cifar_training_datasets(output_colorspace='LAB')
-        print('computing normalizers')
-        datasets['train'].center_inputs = datasets['train']._make_normalizer('independent')
-        assert datasets['train'].output_colorspace == 'LAB'
+        datasets = cifar_training_datasets(output_colorspace='LAB', norm_mode='independent')
     elif ub.argflag('--rgb-indie'):
-        datasets = cifar_training_datasets(output_colorspace='RGB')
-        print('computing normalizers')
-        datasets['train'].center_inputs = datasets['train']._make_normalizer('dependant')
-        assert datasets['train'].output_colorspace == 'RGB'
+        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='independent')
     else:
-        datasets = cifar_training_datasets(output_colorspace='RGB')
-        print('computing normalizers')
-        datasets['train'].center_inputs = datasets['train']._make_normalizer('dependant')
-        assert datasets['train'].output_colorspace == 'RGB'
-    print('computed normalizers')
-    datasets['vali'].center_inputs = datasets['train'].center_inputs
-    datasets['train'].augment = True
+        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='dependant')
 
     # from clab.torch.models.densenet_efficient import DenseNetEfficient
     import clab.torch.models.densenet
@@ -445,6 +447,16 @@ def train():
         label = labels[0]
         loss = harn.criterion(output, label)
         return [output], loss
+
+    # all_labels = np.arange(n_classes)
+    @harn.add_metric_hook
+    def custom_metrics(harn, output, labels):
+        # ignore_label = datasets['train'].ignore_label
+        # labels = datasets['train'].task.labels
+        output = output[0]
+        label = labels[0]
+        metrics_dict = metrics._clf_metrics(output, label, labels=all_labels)
+        return metrics_dict
 
     workdir = ub.ensuredir('train_cifar_work')
     harn.setup_dpath(workdir)
