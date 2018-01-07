@@ -454,23 +454,22 @@ def train():
         """
         Custom function to compute the output of a batch and its loss.
         """
-        import utool
-        utool.embed()
         output = harn.model(*inputs)
         label = labels[0]
         loss = harn.criterion(output, label)
-        return [output], loss
+        outputs = [output]
+        return outputs, loss
 
-    task = datasets['train'].task
+    task = harn.datasets['train'].task
     all_labels = task.labels
     # ignore_label = datasets['train'].ignore_label
     from clab.torch import metrics
 
     @harn.add_metric_hook
-    def custom_metrics(harn, output, labels):
-        labels = labels[0]
-        output = output[0]
-        metrics_dict = metrics._clf_metrics(output, labels, labels=all_labels)
+    def custom_metrics(harn, outputs, labels):
+        label = labels[0]
+        output = outputs[0]
+        metrics_dict = metrics._clf_metrics(output, label, all_labels=all_labels)
         return metrics_dict
 
     workdir = ub.ensuredir('train_cifar_work')
