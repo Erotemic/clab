@@ -454,6 +454,8 @@ def train():
         """
         Custom function to compute the output of a batch and its loss.
         """
+        import utool
+        utool.embed()
         output = harn.model(*inputs)
         label = labels[0]
         loss = harn.criterion(output, label)
@@ -466,10 +468,8 @@ def train():
 
     @harn.add_metric_hook
     def custom_metrics(harn, output, labels):
-        if isinstance(labels, (list, tuple)):
-            labels = labels[0]
-        if isinstance(output, (list, tuple)):
-            output = output[0]
+        labels = labels[0]
+        output = output[0]
         metrics_dict = metrics._clf_metrics(output, labels, labels=all_labels)
         return metrics_dict
 
