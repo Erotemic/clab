@@ -316,10 +316,18 @@ def cifar_inputs(train=False):
         bchw = (train_dset.test_data).astype(np.float32) / 255.0
         labels = np.array(train_dset.test_labels)
     inputs = InMemoryInputs.from_bhwc_rgb(bchw, labels=labels)
+    if train:
+        inputs.tag = 'learn'
+    else:
+        inputs.tag = 'test'
     return inputs
 
 
 def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent'):
+    """
+    Example:
+        >>> datasets = cifar_training_datasets()
+    """
     inputs = cifar_inputs(train=True)
 
     # split training into train / validation
@@ -333,9 +341,11 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent'):
 
     train_inputs = inputs.take(train_idxs, tag='train')
     vali_inputs = inputs.take(vali_idxs, tag='vali')
+    test_inputs = cifar_inputs(train=False)
     # The dataset name and indices should fully specifiy dependencies
     train_inputs._set_id_from_dependency(['cifar100-train', train_idxs])
     vali_inputs._set_id_from_dependency(['cifar100-train', vali_idxs])
+    test_inputs._set_id_from_dependency(['cifar100-test'])
 
     workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
 
@@ -343,7 +353,7 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent'):
 
     train_dset = CIFAR_Wrapper(train_inputs, task, workdir, output_colorspace=output_colorspace)
     vali_dset = CIFAR_Wrapper(vali_inputs, task, workdir, output_colorspace=output_colorspace)
-    test_dset = CIFAR_Wrapper(cifar_inputs(train=False), task, workdir,
+    test_dset = CIFAR_Wrapper(test_inputs, task, workdir,
                               output_colorspace=output_colorspace)
     print('built datasets')
 
@@ -360,7 +370,6 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent'):
     print('computed normalizers')
 
     datasets['train'].augment = True
-
     return datasets
 
 
@@ -411,6 +420,8 @@ def train():
             # 'criterion': 'cross_entropy',
         },
     )
+    if ub.argflag('--rgb-indie'):
+        hyper.other['norm'] = 'dependant'
     hyper.input_ids['train'] = datasets['train'].input_id
 
     xpu = xpu_device.XPU.from_argv()
@@ -448,14 +459,18 @@ def train():
         loss = harn.criterion(output, label)
         return [output], loss
 
-    # all_labels = np.arange(n_classes)
+    task = datasets['train'].task
+    all_labels = task.labels
+    # ignore_label = datasets['train'].ignore_label
+    from clab.torch import metrics
+
     @harn.add_metric_hook
     def custom_metrics(harn, output, labels):
-        # ignore_label = datasets['train'].ignore_label
-        # labels = datasets['train'].task.labels
-        output = output[0]
-        label = labels[0]
-        metrics_dict = metrics._clf_metrics(output, label, labels=all_labels)
+        if isinstance(labels, list):
+            labels = labels[0]
+        if isinstance(output, list):
+            labels = output[0]
+        metrics_dict = metrics._clf_metrics(output, labels, labels=all_labels)
         return metrics_dict
 
     workdir = ub.ensuredir('train_cifar_work')
