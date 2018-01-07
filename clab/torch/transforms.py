@@ -167,7 +167,114 @@ class AffineWarp(object):
     and the least flexible is pil, but cv2 has lanczos resampling while the
     others do not. However, cv2.warpAffine has known bugs that sometimes occur
     with multiprocessing, so its not always 100% safe to use.
+
+    Benchmark:
+        >>> from clab.torch.transforms import *
+        >>> import itertools as it
+        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> img_orig = util.imread(fpath)
+        >>> shape = img_orig.shape
+        >>> aff = AffineWarp()
+        >>> x, y = shape[1] // 2, shape[0] // 2
+        >>> matrix = aff.around_mat3x3(x, y, sx=.8, theta=.3, shear=.001, tx=2.5)
+        >>> N = 100
+
+        >>> def _compare_results(results, scale, thresh):
+        >>>     diffs = []
+        >>>     for key1, key2 in it.combinations(results.keys(), 2):
+        >>>         ave_diff = np.abs(results[key1].astype(np.float64) - results[key2].astype(np.float64)).mean() / scale
+        >>>         #print('{} {} ave_diff = {!r}'.format(key1, key2, ave_diff))
+        >>>         diffs.append(ave_diff)
+        >>>     assert np.all(np.array(diffs) < thresh)
+
+        >>> def _assert_range(results, min, max):
+        >>>     for key, result in results.items():
+        >>>         assert result.max() <= max, '{} {}'.format(key, result.max())
+        >>>         assert result.min() >= min, '{} {}'.format(key, result.min())
+
+        >>> # Results for rgb float01
+        >>> img = img_orig.astype(np.float32) / 255
+        >>> results = ub.odict()
+        >>> for back in aff.backends:
+        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='float01')
+        >>>     results[back] = _warper(img)
+        >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
+        >>> _assert_range(results, 0, 1)
+        >>> _compare_results(results, scale=1, thresh=.02)
+        Timed ski for: 10 loops, best of 3
+            time per loop : best=67.75 ms, mean=68.14 ± 0.35 ms
+        Timed pil for: 10 loops, best of 3
+            time per loop : best=23.44 ms, mean=23.7 ± 0.22 ms
+        Timed cv2 for: 10 loops, best of 3
+            time per loop : best=3.403 ms, mean=3.713 ± 0.2 ms
+
+        >>> # Results for grayscale float01
+        >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2)
+        >>> results = ub.odict()
+        >>> for back in aff.backends:
+        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='float01')
+        >>>     results[back] = _warper(img)
+        >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
+        >>> _compare_results(results, scale=1, thresh=.02)
+        >>> _assert_range(results, 0, 1)
+        Timed ski for: 10 loops, best of 3
+            time per loop : best=21.31 ms, mean=22.5 ± 1.9 ms
+        Timed pil for: 10 loops, best of 3
+            time per loop : best=9.877 ms, mean=10.24 ± 0.37 ms
+        Timed cv2 for: 10 loops, best of 3
+            time per loop : best=1.753 ms, mean=1.926 ± 0.15 ms
+
+        >>> # Results for grayscale uint8
+        >>> img = ((img_orig.astype(np.float32) / 255).mean(axis=2) * 255).astype(np.uint8)
+        >>> results = ub.odict()
+        >>> for back in aff.backends:
+        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='uint8')
+        >>>     results[back] = _warper(img)
+        >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
+        >>> _compare_results(results, scale=255, thresh=.02)
+        Timed ski for: 10 loops, best of 3
+            time per loop : best=21.46 ms, mean=21.56 ± 0.14 ms
+        Timed pil for: 10 loops, best of 3
+            time per loop : best=11.22 ms, mean=11.9 ± 0.76 ms
+        Timed cv2 for: 10 loops, best of 3
+            time per loop : best=1.518 ms, mean=1.596 ± 0.053 ms
+
+        >>> # Results for rgb uint8
+        >>> img = img_orig.copy()
+        >>> results = ub.odict()
+        >>> for back in aff.backends:
+        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='uint8')
+        >>>     results[back] = _warper(img)
+        >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
+        >>> _compare_results(results, scale=255, thresh=.02)
+        Timed ski for: 10 loops, best of 3
+            time per loop : best=67.65 ms, mean=67.9 ± 0.25 ms
+        Timed pil for: 10 loops, best of 3
+            time per loop : best=21.38 ms, mean=21.65 ± 0.39 ms
+        Timed cv2 for: 10 loops, best of 3
+            time per loop : best=2.927 ms, mean=3.318 ± 0.3 ms
+
+    Ignore:
+        >>> # +SKIP
+        >>> import plottool as pt
+        >>> pt.qtensure()
+        >>> pnum_ = pt.make_pnum_nextgen(nCols=len(results) + 1)
+        >>> pt.imshow(img, pnum=pnum_(), fnum=1)
+        >>> for key, result in results.items():
+        >>>     pt.imshow(result, pnum=pnum_(), fnum=1, title=key)
+
+    Ignore:
+        >>> # +SKIP
+        >>> %timeit aff.make_warper('ski', img.shape, matrix)(img)
+        >>> %timeit aff.make_warper('pil', img.shape, matrix)(img)
+        >>> %timeit aff.make_warper('cv2', img.shape, matrix)(img)
+        >>> %timeit aff.make_warper('cv2_inv', img.shape, matrix)(img)
+        10 loops, best of 3: 22.6 ms per loop
+        100 loops, best of 3: 7.97 ms per loop
+        1000 loops, best of 3: 1.41 ms per loop
     """
+    backends = ['cv2', 'pil', 'ski']
+
     skimage_interp_lookup = {
         'nearest'   : 0,
         'linear'    : 1,
@@ -205,67 +312,112 @@ class AffineWarp(object):
     def __init__(self):
         pass
 
-    def around_mat3x3(x, y, sx, sy, theta, shear, tx, ty):
-        Aff = augment_common.affine_around_mat2x3(x, y, sx, sy, theta, shear,
-                                                  tx, ty)
-        matrix = np.array(Aff + [[0, 0, 1]])
-        return matrix
+    def warp(self, img, **kwargs):
+        _warper = self.make_warper(**kwargs)
+        return _warper(img)
 
-    def make_warper(self, backend, shape, matrix, interp, border_mode):
+    def around_mat3x3(self, x, y, sx=1.0, sy=1.0, theta=0.0, shear=0.0, tx=0.0,
+                      ty=0.0, flip_ud=False, flip_lr=False):
+        mat_2x3 = augment_common.affine_around_mat2x3(x, y, sx, sy, theta,
+                                                      shear, tx, ty,
+                                                      flip_ud=flip_ud,
+                                                      flip_lr=flip_lr)
+        mat_3x3 = np.array(mat_2x3 + [[0, 0, 1]])
+        return mat_3x3
+
+    def make_warper(self, backend, shape, matrix, interp='cubic',
+                    border_mode='constant', clip=None, mode='float01'):
+        if backend == 'skimage':
+            backend = 'ski'
+        if clip is None:
+            # Find a "good" value for clip
+            if mode == 'float01':
+                # We only need to clip for higher order interpolation methods
+                if interp not in {'nearest', 'linear'}:
+                    clip = True
+                else:
+                    clip = False
+
+            elif mode == 'uint8':
+                # only clip uint8 for skimage
+                if backend == 'ski':
+                    clip = True
+                else:
+                    clip = False
         return {
-            'cv2': self.cv2_warper,
-            'pil': self.pil_warper,
-            'skimage': self.skimage_warper,
-        }[backend]
-        pass
+            'cv2': self.make_cv2_warper,
+            'pil': self.make_pil_warper,
+            'ski': self.make_skimage_warper,
+        }[backend](shape, matrix, interp, border_mode, clip, mode)
 
-    def skimage_warper(self, shape, matrix, interp, border_mode):
+    def make_skimage_warper(self, shape, matrix, interp, border_mode, clip, mode):
         inv_matrix = np.linalg.inv(matrix)
         order = self.skimage_interp_lookup[interp]
         skaff = skimage.transform.AffineTransform(matrix=inv_matrix)
 
-        def _warp(img):
+        def _sk_warper(img):
             imaug = skimage.transform.warp(
                 img, skaff, output_shape=img.shape, order=order,
-                mode=border_mode, clip=True, preserve_range=True
+                mode=border_mode, clip=clip, preserve_range=True
             )
             imaug = imaug.astype(img.dtype)
             return imaug
-        return _warp
+        return _sk_warper
 
-    def pil_warper(self, shape, matrix, interp, border_mode):
+    def make_pil_warper(self, shape, matrix, interp, border_mode, clip, mode):
         inv_matrix = np.linalg.inv(matrix)
         pil_aff_params = list(inv_matrix.ravel()[0:6])
-        h1, w1 = shape[0:2]
+        h, w = shape[0:2]
         resample = self.pil_interp_lookup[interp]
-        assert border_mode == 'constant'
-        # from torchvision.transforms.functional import to_pil_image
-        # n_chan = util.get_num_channels(img)
-        # if n_chan == 3 and img.dtype != np.uint8:
-        #     pass
-        #     # need to convert to uint8
-        # pil_img = to_pil_image(img)
+        assert border_mode == 'constant', 'pil can only do constant right now'
 
-        def _warp(img):
-            pil_img = Image.fromarray(img)
-            imaug = np.array(pil_img.transform((w1, h1), Image.AFFINE,
-                                               pil_aff_params,
-                                               resample=resample))
+        need_convert_uint8 = False
+
+        if len(shape) > 2 and shape[2] >= 3:
+            # TODO: fixme when floating point values are not in the 0-1 range
+            if mode == 'float01':
+                # PIL cannot handle multi-channel float images.
+                # Need to convert to uint8
+                need_convert_uint8 = True
+                clip = False
+
+        def _pil_warper(img):
+            if need_convert_uint8:
+                orig_dtype = img.dtype
+                img = (img * 255.0).astype(np.uint8)
+
+            imaug = np.array(Image.fromarray(img).transform((w, h),
+                                                            Image.AFFINE,
+                                                            pil_aff_params,
+                                                            resample=resample))
+            if clip:
+                np.clip(imaug, 0, 1, out=imaug)
+            if need_convert_uint8:
+                imaug = imaug.astype(orig_dtype) / 255.0
             return imaug
-        return _warp
+        return _pil_warper
 
-    def cv2_warper(self, shape, matrix, interp, border_mode):
-        h1, w1 = shape[0:2]
-        inv_matrix = np.linalg.inv(matrix)
-        inv_matrix_2x3 = inv_matrix[0:2]
+    def make_cv2_warper(self, shape, matrix, interp, border_mode, clip, mode):
+        h, w = shape[0:2]
         borderMode = self.cv2_border_lookup[border_mode]
         cv2_interp = self.cv2_interp_lookup[interp]
-        flags = cv2_interp | cv2.WARP_INVERSE_MAP
-        def _warp(img):
-            imaug = cv2.warpAffine(img, inv_matrix_2x3, dsize=(w1, h1),
-                                   flags=flags, borderMode=borderMode)
-            return imaug
-        return _warp
+        # It is slightly faster (5-10%) to pass an inverted matrix to cv2
+        inv_mat_2x3 = np.linalg.inv(matrix)[0:2]
+        inv_flags = cv2_interp | cv2.WARP_INVERSE_MAP
+
+        # TODO: only clip if we are in float01 space
+        if clip:
+            def _cv2_warper(img):
+                imaug = cv2.warpAffine(img, inv_mat_2x3, dsize=(w, h),
+                                       flags=inv_flags, borderMode=borderMode)
+                np.clip(imaug, 0, 1, out=imaug)
+                return imaug
+        else:
+            def _cv2_warper(img):
+                imaug = cv2.warpAffine(img, inv_mat_2x3, dsize=(w, h),
+                                       flags=inv_flags, borderMode=borderMode)
+                return imaug
+        return _cv2_warper
 
 
 class RandomWarpAffine(object):

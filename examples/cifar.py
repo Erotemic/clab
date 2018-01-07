@@ -5,6 +5,7 @@ import torchvision
 import pandas as pd
 from torchvision.datasets import cifar
 from clab.torch import xpu_device
+from clab.torch import early_stop
 from clab.torch import nninit
 from clab.torch import hyperparams
 from clab.torch import fit_harness
@@ -250,7 +251,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             im = dset.im_augment(im)
             # Augment geometry consistently
             params = dset.rand_aff.random_params()
-            im = dset.rand_aff.warp(im, params, interp='cubic')
+            im = dset.rand_aff.warp(im, params, interp='cubic', backend='cv2')
 
         im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
                                      dst_space=dset.output_colorspace)
@@ -433,6 +434,7 @@ def train():
         hyper=hyper, datasets=datasets, xpu=xpu,
         loaders=loaders,
     )
+    harn.stopping = early_stop.EarlyStop(patience=40)
 
     @harn.set_batch_runner
     def batch_runner(harn, inputs, labels):
