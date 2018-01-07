@@ -481,6 +481,7 @@ if __name__ == '__main__':
     CommandLine:
         python examples/cifar.py train
         python examples/cifar.py train --lab
+        python examples/cifar.py train --rgb-indie
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
