@@ -390,7 +390,6 @@ def train():
     else:
         datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='dependant')
 
-    # from clab.torch.models.densenet_efficient import DenseNetEfficient
     import clab.torch.models.densenet
 
     hyper = hyperparams.HyperParams(
@@ -417,7 +416,6 @@ def train():
             'augment': datasets['train'].augment,
             'colorspace': datasets['train'].output_colorspace,
             # 'n_classes': datasets['train'].n_classes,
-            # 'criterion': 'cross_entropy',
         },
     )
     if ub.argflag('--rgb-indie'):

@@ -86,7 +86,7 @@ def _sseg_metrics(output, label, labels, ignore_label=-100):
     return metrics_dict
 
 
-def _clf_metrics(output, label, labels, ignore_label=-100):
+def _clf_metrics(output, label, all_labels, ignore_label=-100):
     """
 
     Ignore:
@@ -98,9 +98,9 @@ def _clf_metrics(output, label, labels, ignore_label=-100):
         >>> inputs, label = map(torch.autograd.Variable, next(iter(loader)))
         >>> model = models.UNet(in_channels=train.n_channels, n_classes=train.n_classes)
         >>> output = model(inputs)
-        >>> labels = train.task.labels
+        >>> all_labels = train.task.labels
         >>> ignore_label = train.ignore_label
-        >>> metrics = _sseg_metrics(output, label, labels, ignore_label)
+        >>> metrics = _sseg_metrics(output, label, all_labels, ignore_label)
     """
     pred = output.data.max(dim=1)[1]
     true = label.data
@@ -108,8 +108,8 @@ def _clf_metrics(output, label, labels, ignore_label=-100):
     y_pred = pred[mask].cpu().numpy()
     y_true = true[mask].cpu().numpy()
 
-    cfsn = confusion_matrix(y_pred, y_true, labels)
-    cfsn = pd.DataFrame(cfsn, index=labels, columns=labels)
+    cfsn = confusion_matrix(y_pred, y_true, labels=all_labels)
+    cfsn = pd.DataFrame(cfsn, index=all_labels, columns=all_labels)
 
     if ignore_label >= 0:
         cfsn = cfsn.drop(ignore_label, axis=0)
