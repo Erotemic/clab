@@ -203,7 +203,8 @@ def random_affine_args(zoom_pdf=None,
     return affine_args
 
 
-def affine_mat2x3(sx=1, sy=1, theta=0, shear=0, tx=0, ty=0, math=np):
+def affine_mat2x3(sx=1, sy=1, theta=0, shear=0, tx=0, ty=0, flip_lr=False,
+                  flip_ud=False, math=np):
     r"""
     Args:
         sx (float): x scale factor (default = 1)
@@ -212,10 +213,21 @@ def affine_mat2x3(sx=1, sy=1, theta=0, shear=0, tx=0, ty=0, math=np):
         shear (float): shear angle (radians) in counterclockwise directions
         tx (float): x-translation (default = 0)
         ty (float): y-translation (default = 0)
+        flip_lr (bool): modifies theta and shear to perform a left-right flip
+        flip_ud (bool): modifies the shear to perform an up-down flip
 
     References:
         https://github.com/scikit-image/scikit-image/blob/master/skimage/transform/_geometric.py
     """
+    if flip_lr:
+        # shear 180 degrees + rotate 180 == lr-flip
+        theta += np.pi
+        shear += np.pi
+
+    if flip_ud:
+        # shear 180 degrees == ud-flip
+        shear += np.pi
+
     sin1_ = math.sin(theta)
     cos1_ = math.cos(theta)
     sin2_ = math.sin(theta + shear)
@@ -243,6 +255,8 @@ def affine_around_mat2x3(x, y, sx=1.0, sy=1.0, theta=0.0, shear=0.0, tx=0.0,
         shear (float): counter-clockwise shear angle in radians(default = 0)
         tx (float): x-translation (default = 0)
         ty (float): y-translation (default = 0)
+        flip_lr (bool): modifies theta and shear to perform a left-right flip
+        flip_ud (bool): modifies the shear to perform an up-down flip
         x2 (float, optional): center y location in output space (default = x)
         y2 (float, optional): center y location in output space (default = y)
 

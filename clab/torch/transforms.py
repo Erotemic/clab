@@ -325,6 +325,14 @@ class AffineWarp(object):
         mat_3x3 = np.array(mat_2x3 + [[0, 0, 1]])
         return mat_3x3
 
+    def mat3x3(self, sx=1.0, sy=1.0, theta=0.0, shear=0.0, tx=0.0,
+               ty=0.0, flip_ud=False, flip_lr=False):
+        mat_2x3 = augment_common.affine_mat2x3(sx, sy, theta, shear, tx, ty,
+                                               flip_ud=flip_ud,
+                                               flip_lr=flip_lr)
+        mat_3x3 = np.array(mat_2x3 + [[0, 0, 1]])
+        return mat_3x3
+
     def make_warper(self, backend, shape, matrix, interp='cubic',
                     border_mode='constant', clip=None, mode='float01'):
         if backend == 'skimage':
