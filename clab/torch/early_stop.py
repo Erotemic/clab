@@ -7,6 +7,8 @@ class EarlyStop(object):
 
     TODO: Poisson based early stop
 
+    TODO: smoothing
+
     Example:
         >>> early_stop = EarlyStop()
         >>> early_stop.update(1, .5)

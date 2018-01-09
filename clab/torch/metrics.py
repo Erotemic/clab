@@ -287,7 +287,12 @@ class ExpMovingAve(MovingAve):
 
     Args:
         span (float): roughly corresponds to window size.
-            http://greenteapress.com/thinkstats2/html/thinkstats2013.html
+            equivalent to (2 / alpha) - 1
+        alpha (float): roughly corresponds to window size.
+            equivalent to 2 / (span + 1)
+
+    References:
+        http://greenteapress.com/thinkstats2/html/thinkstats2013.html
 
     Example:
         >>> from clab.torch.metrics import *
@@ -299,10 +304,18 @@ class ExpMovingAve(MovingAve):
         >>> str(self.update({'a': 2}))
         <ExpMovingAve({'a': 3.5})>
     """
-    def __init__(self, span=500):
+    def __init__(self, span=None, alpha=None):
         values = ub.odict()
         self.values = values
-        self.alpha = 2 / (span + 1)
+        if not bool(span is None) ^ bool(alpha is None):
+            raise ValueError('specify either alpha xor span')
+
+        if alpha is not None:
+            self.alpha = alpha
+        elif span is not None:
+            self.alpha = 2 / (span + 1)
+        else:
+            raise AssertionError('impossible state')
 
     def average(self):
         return self.values
