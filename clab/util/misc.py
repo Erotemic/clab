@@ -222,13 +222,64 @@ def compact_idstr(dict_):
 #         return self
 
 
+class PauseTQDM(object):
+    """
+
+    Not sure this works
+
+    CommandLine:
+        python -m clab.util.misc PauseTQDM
+
+    Example:
+        >>> print = protect_print(print)
+        >>> prog = tqdm.tqdm(list(range(1000)), maxinterval=.1, mininterval=.01)
+        >>> for i in range(10):
+        >>>     prog.update(1)
+        >>> #
+        >>> with PauseTQDM():
+        >>>     print('foobar')
+        >>>     print('foobaz')
+        >>>     print('foobiz')
+        >>> #
+        >>> print('foobar1')
+        >>> print('foobaz3')
+        >>> print('foobiz2')
+        >>> for i in range(9990):
+        >>>     prog.update(1)
+    """
+
+    def __init__(self):
+        self._tqdm_lock = None
+        self._prev = None
+
+    def start(self):
+        self._tqdm_lock = tqdm.tqdm.get_lock()
+        self._tqdm_lock.acquire()
+        self._prev = getattr(tqdm.tqdm, '_paused', False)
+        tqdm.tqdm._paused = True
+
+    def stop(self):
+        tqdm.tqdm._paused = self._prev
+        self._tqdm_lock.release()
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, extype, exval, tb):
+        self.stop()
+        if tb:
+            return False
+
+
 def protect_print(print):
     import sys
     # def protected_print(*args, **kw):
     def protected_print(msg):
         # Check if any progress bars are alive
+        paused = getattr(tqdm.tqdm, '_paused', False)
         progs = getattr(tqdm.tqdm, '_instances', [])
-        if len(progs) > 0:
+        if not paused and len(progs) > 0:
             prog = list(progs)[0]
             # Specify file in case we are capturing stdout
             for line in str(msg).split('\n'):
