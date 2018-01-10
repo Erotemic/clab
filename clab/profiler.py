@@ -5,6 +5,8 @@ import operator
 import atexit
 import sys
 import ubelt as ub
+import re
+import itertools as it
 
 if '--profile' in sys.argv:
     import line_profiler
@@ -87,8 +89,11 @@ class KernprofParser(object):
             #profile.dump_stats('out.lprof')
             import ubelt as ub
             print(summary_text)
-            ub.writeto('profile_output.txt', output_text + '\n' + summary_text)
-            ub.writeto('profile_output.%s.txt' % (ub.timestamp()),
+            suffix = ub.argval('--profname', default='')
+            if suffix:
+                suffix = '_' + suffix
+            ub.writeto('profile_output{}.txt'.format(suffix), output_text + '\n' + summary_text)
+            ub.writeto('profile_output{}.{}.txt'.format(suffix, ub.timestamp()),
                        output_text + '\n' + summary_text)
 
     def parse_rawprofile_blocks(self, text):
@@ -100,7 +105,6 @@ class KernprofParser(object):
         # The pystone total time is actually the average time spent in the function
         delim = 'Total time: '
         delim2 = 'Pystone time: '
-        import re
         #delim = 'File: '
         profile_block_list = re.split('^' + delim, text, flags=re.MULTILINE | re.DOTALL)
         for ix in range(1, len(profile_block_list)):
@@ -140,7 +144,6 @@ class KernprofParser(object):
             else:
                 return None
 
-        import re
         time_line = get_match_text(re.search('Pystone time: [0-9.]* s', block, flags=re.MULTILINE | re.DOTALL))
         if time_line is None:
             time_str = None
@@ -151,12 +154,11 @@ class KernprofParser(object):
         else:
             return None
 
-    def get_block_id(self, block):
+    def get_block_id(self, block, readlines=None):
 
         def named_field(key, regex, vim=False):
             return r'(?P<%s>%s)' % (key, regex)
 
-        import re
         fpath_regex = named_field('fpath', '\S+')
         funcname_regex = named_field('funcname', '\S+')
         lineno_regex = named_field('lineno', '[0-9]+')
@@ -169,6 +171,25 @@ class KernprofParser(object):
             fpath    = fileline_match.groupdict()['fpath']
             funcname = funcline_match.groupdict()['funcname']
             lineno   = funcline_match.groupdict()['lineno']
+            # TODO: Determine if the function belongs to a class
+
+            if readlines:
+                # TODO: make robust
+                classname = find_parent_class(fpath, funcname, lineno, readlines)
+                if classname:
+                    funcname = classname + '.' + funcname
+                # try:
+                #     lines = readlines(fpath)
+                #     row = int(lineno) - 1
+                #     funcline = lines[row]
+                #     if not funcline.startswith('def'):
+                #         # get indentation
+                #         indent = len(funcline) - len(funcline).lstrip()
+                #         # function is nested. fixme
+                #         funcname = '<nested>:' + funcname
+                #         find_pyclass_above_row(lines, row, indent)
+                # except Exception:
+                #     funcname = '<inspect_error>:' + funcname
             block_id = funcname + ':' + fpath + ':' + lineno
         else:
             block_id = 'None:None:None'
@@ -198,7 +219,13 @@ class KernprofParser(object):
         """
         time_list = [self.get_block_totaltime(block) for block in profile_block_list]
         time_list = [time if time is not None else -1 for time in time_list]
-        blockid_list = [self.get_block_id(block) for block in profile_block_list]
+
+        @ub.memoize
+        def readlines(fpath):
+            return ub.readfrom(fpath, aslines=True)
+
+        blockid_list = [self.get_block_id(block, readlines=readlines)
+                        for block in profile_block_list]
         sortx = ub.argsort(time_list)
         sorted_time_list = list(ub.take(time_list, sortx))
         sorted_blockid_list = list(ub.take(blockid_list, sortx))
@@ -247,3 +274,81 @@ class KernprofParser(object):
         # Sort and clean the text
         output_text = self.clean_line_profile_text(text)
         return output_text
+
+
+def find_parent_class(fpath, funcname, lineno, readlines=None):
+    """
+    >>> from clab import profiler
+    >>> funcname = 'clean_lprof_file'
+    >>> func = getattr(profiler.KernprofParser, funcname)
+    >>> lineno = func.__code__.co_firstlineno
+    >>> fpath = profiler.__file__
+    >>> #fpath = ub.truepath('~/code/clab/clab/profiler.py')
+    >>> #lineno   = 264
+    >>> readlines = lambda x: ub.readfrom(x, aslines=True)
+    >>> classname = find_parent_class(fpath, funcname, lineno, readlines)
+    >>> assert classname == 'KernprofParser'
+    """
+    if readlines is None:
+        def readlines(fpath):
+            return ub.readfrom(fpath, aslines=True)
+
+    try:
+        line_list = readlines(fpath)
+        row = int(lineno) - 1
+        funcline = line_list[row]
+        indent = len(funcline) - len(funcline.lstrip())
+        if indent > 0:
+            # get indentation
+            # function is nested. fixme
+            funcname = '<nested>:' + funcname
+            return find_pyclass_above_row(line_list, row, indent)
+    except:
+        pass
+
+
+def find_pyclass_above_row(line_list, row, indent):
+    """
+    originally part of the vim plugin
+
+    HACK: determine the class of the profiled funcs
+    """
+    # Get text posision
+    pattern = '^class [a-zA-Z_]'
+    classline, classpos = find_pattern_above_row(pattern, line_list, row,
+                                                 indent, maxIter=None)
+    import parse
+    result = parse.parse('class {name}({rest}', classline)
+    classname = result.named['name']
+    return classname
+
+
+def find_pattern_above_row(pattern, line_list, row, indent, maxIter=None):
+    """
+    searches a few lines above the curror until it **matches** a pattern
+    """
+    # Iterate until we match.
+    # Janky way to find function / class name
+    retval = None
+
+    for ix in it.count(0):
+        pos = row - ix
+        if maxIter is not None and ix > maxIter:
+            break
+        if pos < 0:
+            break
+        searchline = line_list[pos]
+
+        if indent is not None:
+            if not searchline.strip():
+                continue
+            search_n_indent = len(searchline) - len(searchline.lstrip())
+            if indent <= search_n_indent:
+                continue
+            # if indent < search_n_indent:
+            #     continue
+
+        if re.match(pattern, searchline) is not None:
+            retval = searchline, pos
+            break
+    return retval
