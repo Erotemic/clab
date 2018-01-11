@@ -35,7 +35,7 @@ def find_unused_gpu(min_memory=0):
     python -c "from clab.util import gpu_util; print(gpu_util.find_unused_gpu(300))"
     """
     gpus = gpu_info()
-    if gpus is None:
+    if not gpus:
         return None
     gpu_avail_mem = {n: gpu['mem_avail'] for n, gpu in gpus.items()}
     usage_order = ub.argsort(gpu_avail_mem)
@@ -50,10 +50,14 @@ def gpu_info():
     """
     Parses nvidia-smi
     """
-    result = ub.cmd('nvidia-smi')
-    if result['ret'] != 0:
+    try:
+        result = ub.cmd('nvidia-smi')
+        if result['ret'] != 0:
+            warnings.warn('Problem running nvidia-smi.')
+            return None
+    except Exception:
         warnings.warn('Could not run nvidia-smi.')
-        return None
+        return {}
 
     lines = result['out'].splitlines()
 

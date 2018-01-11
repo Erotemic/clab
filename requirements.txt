@@ -8,16 +8,18 @@ h5py
 bayesian-optimization
 torchvision
 pandas
-scikit-image
 tensorboard_logger
 parse
 sympy
 Pillow
 matplotlib
-scipy
 six
 protobuf
-line_profiler
+
+# line_profiler
+# scipy
+# scikit-image
+
 # onnx
 # tensorboard
 # opencv_python # CAREFUL, dont clobber ones that we installed

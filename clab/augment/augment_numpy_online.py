@@ -3,7 +3,10 @@ from clab import util  # NOQA
 import ubelt as ub
 import cv2
 import numpy as np
-import skimage.transform
+try:
+    import skimage.transform
+except ImportError:
+    pass
 from clab.augment.augment_common import random_affine_args, affine_around_mat2x3, PERTERB_AUG_KW
 
 

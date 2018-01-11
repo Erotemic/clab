@@ -1,6 +1,68 @@
-from os.path import join
+import os
+from os.path import join, normpath, dirname
 import ubelt as ub
 from clab import util
+
+
+
+def symlink(real_path, link_path, overwrite=False, on_error='raise',
+            verbose=2):
+    """
+    Attempt to create a symbolic link.
+
+    TODO:
+        Can this be fixed on windows?
+
+    Args:
+        path (str): path to real file or directory
+        link_path (str): path to desired location for symlink
+        overwrite (bool): overwrite existing symlinks (default = False)
+        on_error (str): strategy for dealing with errors.
+            raise or ignore
+        verbose (int):  verbosity level (default=2)
+
+    Returns:
+        str: link path
+
+    CommandLine:
+        python -m utool.util_path symlink
+    """
+    path = normpath(real_path)
+    link = normpath(link_path)
+    if verbose:
+        print('[util_path] Creating symlink: path={} link={}'.format(path, link))
+    if os.path.islink(link):
+        if verbose:
+            print('[util_path] symlink already exists')
+        os_readlink = getattr(os, "readlink", None)
+        if callable(os_readlink):
+            if os_readlink(link) == path:
+                if verbose > 1:
+                    print('[path] ... and points to the right place')
+                return link
+        else:
+            print('[util_path] Warning, symlinks are not implemented on windows')
+        if verbose > 1:
+            print('[util_path] ... but it points somewhere else')
+        if overwrite:
+            delete(link, verbose > 1)
+        elif on_error == 'ignore':
+            return False
+    try:
+        os_symlink = getattr(os, "symlink", None)
+        if callable(os_symlink):
+            os_symlink(path, link)
+        else:
+            raise NotImplementedError('')
+            # win_shortcut(path, link)
+    except Exception as ex:
+        # import utool as ut
+        # checkpath(link, verbose=True)
+        # checkpath(path, verbose=True)
+        do_raise = (on_error == 'raise')
+        if do_raise:
+            raise
+    return link
 
 
 class FolderStructure(object):
@@ -10,17 +72,17 @@ class FolderStructure(object):
         self.hyper = hyper
 
     def train_info(self, short=True, hashed=True):
+        # TODO: needs MASSIVE cleanup and organization
+
         # TODO: if pretrained is another clab model, then we should read that
         # train_info if it exists and append it to a running list of train_info
         hyper = self.hyper
 
         arch = hyper.model_cls.__name__
-        # arch_id = hyper.model_id()
 
-        # arch_hashid = hyper.model_id(brief=True)
-
-        arch_dpath = join(self.workdir, 'arch', arch)
-        train_base = join(arch_dpath, 'train')
+        # setup a short symlink directory as well
+        link_base = join(self.workdir, 'link', arch)
+        arch_base = join(self.workdir, 'arch', arch)
 
         if 'train' in hyper.input_ids:
             # NEW WAY
@@ -37,11 +99,12 @@ class FolderStructure(object):
         train_id = '{}_{}_{}'.format(
             util.hash_data(input_id)[:6], train_hyper_id_brief, other_id)
 
-        train_dpath = join(
-            train_base,
-            'input_' + input_id, 'fit_{}'.format(train_id)
-        )
-        # TODO: needs MASSIVE cleanup and organization
+        full_dname = 'fit_{}'.format(train_id)
+        link_dname = util.hash_data(full_dname)[0:8]
+        input_dname = 'input_' + input_id
+
+        link_dpath = join(link_base, input_dname, link_dname)
+        train_dpath = join(arch_base, input_dname, full_dname)
 
         # make temporary initializer so we can infer the history
         temp_initializer = hyper.make_initializer()
@@ -59,6 +122,8 @@ class FolderStructure(object):
             'train_hyper_hashid': train_hyper_hashid,
             'init_history': init_history,
             'init_history_hashid': util.hash_data(util.make_idstr(init_history)),
+            'link_dname': link_dname,
+            'link_dpath': link_dpath,
         }
         return train_info
 
@@ -70,6 +135,12 @@ class FolderStructure(object):
 
         util.write_json(train_info_fpath, train_info)
 
+        # setup symlinks
+        ub.ensuredir(dirname(train_info['link_dpath']))
+        symlink(train_info['link_dpath'], train_info['link_dpath'],
+                on_error='ignore')
+
+
         print('+=========')
         # print('hyper_strid = {!r}'.format(params.hyper_id()))
         # print('train_init_id = {!r}'.format(train_info['input_id']))
@@ -79,62 +150,4 @@ class FolderStructure(object):
         print('train_hyper_id_brief = {!r}'.format(train_info['train_hyper_id_brief']))
         print('train_id = {!r}'.format(train_info['train_id']))
         print('+=========')
-        train_dpath = ub.ensuredir(train_info['train_dpath'])
-        return train_dpath
-
-
-# def make_training_dpath(workdir, arch, datasets, hyper,
-#                         pretrained=None,
-#                         train_hyper_id=None, suffix=''):
-#     """
-#     from clab.torch.sseg_train import *
-#     datasets = load_task_dataset('urban_mapper_3d')
-#     datasets['train']._make_normalizer()
-#     arch = 'foobar'
-#     workdir = datasets['train'].task.workdir
-#     ut.exec_funckw(directory_structure, globals())
-#     """
-#     # workdir = os.path.expanduser('~/data/work/pycamvid')
-#     arch_dpath = ub.ensuredir((workdir, 'arch', arch))
-#     train_base = ub.ensuredir((arch_dpath, 'train'))
-#     test_base = ub.ensuredir((arch_dpath, 'test'))
-#     test_dpath = ub.ensuredir((test_base, 'input_' + datasets['test'].input_id))
-
-#     train_init_id = pretrained
-#     train_hyper_hashid = util.hash_data(train_hyper_id)[:8]
-
-#     train_id = '{}_{}_{}_{}'.format(
-#         datasets['train'].input_id, arch, train_init_id, train_hyper_hashid) + suffix
-
-#     train_dpath = ub.ensuredir((
-#         train_base,
-#         'input_' + datasets['train'].input_id, 'fit_{}'.format(train_id)
-#     ))
-
-#     train_info =  {
-#         'arch': arch,
-#         'train_id': datasets['train'].input_id,
-#         'train_hyper_id': train_hyper_id,
-#         'train_hyper_hashid': train_hyper_hashid,
-#         'colorspace': datasets['train'].colorspace,
-#     }
-#     if hasattr(datasets['train'], 'center_inputs'):
-#         # Hack in centering information
-#         # TODO: better serialization
-#         train_info['hack_centers'] = [
-#             (t.__class__.__name__, t.__getstate__())
-#             # ub.map_vals(str, t.__dict__)
-#             for t in datasets['train'].center_inputs.transforms
-#         ]
-#     util.write_json(join(train_dpath, 'train_info.json'), train_info)
-
-#     print('+=========')
-#     # print('hyper_strid = {!r}'.format(params.hyper_id()))
-#     print('train_init_id = {!r}'.format(train_init_id))
-#     print('arch = {!r}'.format(arch))
-#     print('train_hyper_hashid = {!r}'.format(train_hyper_hashid))
-#     print('train_hyper_id = {!r}'.format(train_hyper_id))
-#     print('train_id = {!r}'.format(train_id))
-#     print('+=========')
-
-#     return train_dpath, test_dpath
+        return train_info

@@ -9,7 +9,10 @@ import cv2
 import six
 from os.path import splitext  # NOQA
 import itertools as it  # NOQA
-import skimage.io
+try:
+    import skimage.io
+except ImportError:
+    pass
 
 from clab import getLogger
 logger = getLogger(__name__)

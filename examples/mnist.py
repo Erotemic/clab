@@ -172,14 +172,16 @@ def train_mnist():
         xpu=xpu, hyper=hyper, dry=dry,
     )
 
-    # all_labels = np.arange(n_classes)
-    # @harn.add_metric_hook
-    # def custom_metrics(harn, output, labels):
-    #     # ignore_label = datasets['train'].ignore_label
-    #     # labels = datasets['train'].task.labels
-    #     label = labels[0]
-    #     metrics_dict = metrics._clf_metrics(output, label, labels=all_labels)
-    #     return metrics_dict
+    all_labels = np.arange(n_classes)
+    from clab.torch import metrics
+
+    @harn.add_metric_hook
+    def custom_metrics(harn, output, labels):
+        # ignore_label = datasets['train'].ignore_label
+        # labels = datasets['train'].task.labels
+        label = labels[0]
+        metrics_dict = metrics._clf_metrics(output, label, all_labels=all_labels)
+        return metrics_dict
 
     train_dpath = harn.setup_dpath(workdir, hashed=True)
     print('train_dpath = {!r}'.format(train_dpath))
@@ -206,4 +208,8 @@ def train_mnist():
     #     render.image
 
 if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python examples/mnist.py
+    """
     train_mnist()

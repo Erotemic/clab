@@ -461,13 +461,28 @@ def train():
     task = harn.datasets['train'].task
     all_labels = task.labels
     # ignore_label = datasets['train'].ignore_label
-    from clab.torch import metrics
+    # from clab.torch import metrics
+    from clab.metrics import (confusion_matrix,
+                              pixel_accuracy_from_confusion,
+                              pixel_accuracy_from_confusion)
 
     @harn.add_metric_hook
     def custom_metrics(harn, outputs, labels):
         label = labels[0]
         output = outputs[0]
-        metrics_dict = metrics._clf_metrics(output, label, all_labels=all_labels)
+
+        y_pred = output.data.max(dim=1)[1].cpu().numpy()
+        y_true = label.data.cpu.numpy()
+
+        cfsn = confusion_matrix(y_pred, y_true, labels=all_labels)
+
+        global_tpr = pixel_accuracy_from_confusion(cfsn)  # same as tpr
+        perclass_acc = perclass_accuracy_from_confusion(cfsn)
+        class_accuracy = perclass_acc.fillna(0).mean()
+
+        metrics_dict = ub.odict()
+        metrics_dict['global_tpr'] = global_tpr
+        metrics_dict['class_tpr'] = class_accuracy
         return metrics_dict
 
     workdir = ub.ensuredir('train_cifar_work')

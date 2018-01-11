@@ -39,16 +39,21 @@ class grad_context(object):
     TODO: PR to pytorch
     """
     def __init__(self, flag):
-        # if tuple(map(int, torch.__version__.split('.')[0:2])) < (0, 4):
-        self.prev = torch.is_grad_enabled()
-        self.flag = flag
+        if tuple(map(int, torch.__version__.split('.')[0:2])) < (0, 4):
+            self.prev = None
+            self.flag = flag
+        else:
+            self.prev = torch.is_grad_enabled()
+            self.flag = flag
 
     def __enter__(self):
-        torch.set_grad_enabled(self.flag)
+        if self.prev is not None:
+            torch.set_grad_enabled(self.flag)
 
     def __exit__(self, *args):
-        torch.set_grad_enabled(self.prev)
-        return False
+        if self.prev is not None:
+            torch.set_grad_enabled(self.prev)
+            return False
 
 
 class FitHarness(object):
@@ -123,9 +128,10 @@ class FitHarness(object):
         structure = folder_structure.FolderStructure(
             workdir=workdir, hyper=harn.hyper, datasets=harn.datasets,
         )
-        dpath = structure.setup_dpath(**kwargs)
-        harn.train_dpath = dpath
-        return dpath
+        train_info = structure.setup_dpath(**kwargs)
+        harn.train_dpath = train_info['train_dpath']
+        harn.link_dpath = train_info['link_dpath']
+        return harn.train_dpath
 
     def _setup_loaders(harn, datasets, batch_size):
         """ automatic loader setup. Can be overriden by specifying loaders """

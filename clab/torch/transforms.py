@@ -1,12 +1,15 @@
 import ubelt as ub
 import numpy as np
-import skimage
 from PIL import Image
 import six
 import cv2
 from clab.augment import augment_common
 from clab.util import imutil
 from clab import util
+try:
+    import skimage
+except ImportError:
+    pass
 
 
 class NaNInputer(object):
