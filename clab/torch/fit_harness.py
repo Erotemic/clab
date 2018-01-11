@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 # import numpy as np
 import sys
+import shutil
 import tqdm
 import glob
 from os.path import join
@@ -101,7 +102,7 @@ class FitHarness(object):
         harn.scheduler = None
         # should this be a hyperparam? YES, maybe it doesn't change the
         # directory output, but it should be configuarble.
-        harn.stopping = early_stop.EarlyStop(patience=30)
+        harn.monitor = early_stop.EarlyStop(patience=30)
 
         # this is optional and is designed for default solvers
         # can be overriden by a custom_run_batch
@@ -247,7 +248,7 @@ class FitHarness(object):
     def update_prog_description(harn):
         lrs = harn.current_lrs()
         lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
-        desc = 'epoch lr:{} │ {}'.format(lr_str, harn.stopping.message())
+        desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())
         harn.main_prog.set_description(desc)
         harn.main_prog.set_postfix(
             {'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
@@ -276,8 +277,8 @@ class FitHarness(object):
 
         if not vali_loader:
             if not harn.scheduler:
-                if harn.stopping:
-                    raise ValueError('need a validataion dataset to use early stopping')
+                if harn.monitor:
+                    raise ValueError('need a validataion dataset to use early monitor')
                 if harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
                     raise ValueError('need a validataion dataset to use ReduceLROnPlateau')
 
@@ -299,7 +300,7 @@ class FitHarness(object):
                     if harn.check_interval('vali', harn.epoch):
                         vali_metrics = harn.run_epoch(
                             vali_loader, tag='vali', learn=False)
-                        harn.stopping.update(harn.epoch, vali_metrics['loss'])
+                        harn.monitor.update(harn.epoch, vali_metrics['loss'])
 
                     harn.update_prog_description()
 
@@ -308,8 +309,14 @@ class FitHarness(object):
                     if harn.check_interval('test', harn.epoch):
                         harn.run_epoch(test_loader, tag='test', learn=False)
 
-                if harn.check_interval('snapshot', harn.epoch):
-                    harn.save_snapshot()
+                # if harn.check_interval('snapshot', harn.epoch):
+                save_path = harn.save_snapshot()
+                if harn.monitor.is_improved():
+                    if save_path:
+                        # Copy the best snapshot the the main directory
+                        shutil.copy2(save_path, join(harn.train_dpath,
+                                     'best_snapshot.pt'))
+
 
                 harn.main_prog.update(1)
 
@@ -331,7 +338,7 @@ class FitHarness(object):
         harn.log('\n\n\n')
         harn.log('Training completed')
         harn.log('Current LRs: {}'.format(harn.current_lrs()))
-        harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.stopping.memory), nl=1)))
+        harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.monitor.memory), nl=1)))
         harn.log('Exiting harness.')
 
     def _step_scheduler(harn, vali_metrics):
@@ -545,6 +552,10 @@ class FitHarness(object):
         # the snapshot holds the previous epoch, so add one to move to current
         harn.epoch = snapshot['epoch'] + 1
         harn.model.load_state_dict(snapshot['model_state_dict'])
+
+        if 'monitor_state_dict' in snapshot:
+            harn.monitor.load_state_dict(snapshot['monitor_state_dict'])
+
         if 'optimizer_state_dict' in snapshot:
             harn.optimizer.load_state_dict(snapshot['optimizer_state_dict'])
         harn.log('Resuming training...')
@@ -571,8 +582,10 @@ class FitHarness(object):
                 'epoch': harn.epoch,
                 'model_state_dict': harn.model.state_dict(),
                 'optimizer_state_dict': harn.optimizer.state_dict(),
+                'monitor_state_dict': harn.monitor.state_dict(),
             }
             torch.save(snapshot, save_path)
+            return save_path
             # harn.log('Snapshot saved to {}'.format(save_path))
 
     def log(harn, msg):
@@ -601,7 +614,7 @@ class FitHarness(object):
             harn._close_prog()
             harn.log('Maximum harn.epoch reached, terminating ...')
             return True
-        if harn.stopping.is_done():
+        if harn.monitor.is_done():
             harn._close_prog()
             harn.log('Validation set is not improving, terminating ...')
             return True

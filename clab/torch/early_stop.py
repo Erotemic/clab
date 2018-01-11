@@ -5,101 +5,102 @@ from clab.torch.metrics import ExpMovingAve
 
 class EarlyStop(object):
     """
+    Rename to Training Monitor for early stop and backtracking
+    Or pick a better name... not sure
+    Should EarlyStop still be a class?
 
     TODO: Poisson based early stop
 
     TODO: smoothing
 
     Example:
-        >>> stopping = EarlyStop()
-        >>> stopping.update(1, .5)
-        >>> stopping.update(2, .4)
-        >>> stopping.update(3, .6)
-        >>> stopping.update(4, .3)
-        >>> stopping.update(5, .31)
-        >>> stopping.update(6, .2)
-        >>> stopping.best_epochs()
-        >>> print('Best epochs / loss: {}'.format(ub.repr2(list(stopping.memory), nl=1, precision=6)))
+        >>> monitor = EarlyStop()
+        >>> monitor.update(1, .5)
+        >>> monitor.update(2, .4)
+        >>> monitor.update(3, .6)
+        >>> monitor.update(4, .3)
+        >>> monitor.update(5, .31)
+        >>> monitor.update(6, .2)
+        >>> monitor.best_epochs()
+        >>> print('Best epochs / loss: {}'.format(ub.repr2(list(monitor.memory), nl=1, precision=6)))
     """
-    def __init__(stopping, patience=10):
-        # import sortedcontainers
-        # store tuples of (loss, epoch)
+    def __init__(monitor, patience=10):
+        monitor.ewma = ExpMovingAve(alpha=.6)
+        monitor.raw_loss = []
+        monitor.smooth_loss = []
+        monitor.epochs = []
 
         n_remember = 3
-        stopping.memory = collections.deque(maxlen=n_remember)
-        stopping.ewma = ExpMovingAve(alpha=.6)
+        monitor.memory = collections.deque(maxlen=n_remember)
+        monitor.prev_epoch = None
+        monitor.prev_loss = None
 
-        stopping.raw_loss = []
-        stopping.smooth_loss = []
-        stopping.epochs = []
-        # util.SortedQueue(maxsize=3)
+        monitor.best_epoch = None
+        monitor.best_loss = None
 
-        stopping.prev_epoch = None
-        stopping.prev_loss = None
+        monitor.patience = patience
+        monitor.n_bad_epochs = 0
 
-        stopping.best_epoch = None
-        stopping.best_loss = None
+    def load_state_dict(self, state):
+        return self.__dict__.update(state)
+        # let some of the state be lost to force training for just a bit more
+        monitor.n_bad_epochs = min(1, monitor.n_bad_epochs)
+        # state = ub.dict_subset(state, ['ewma', 'raw_loss', 'smooth_loss', 'epochs'])
 
-        stopping.patience = patience
-        stopping.n_bad_epochs = 0
+    def state_dict(self):
+        return self.__dict__.copy()
 
-    def update(stopping, epoch, loss):
+    def update(monitor, epoch, loss):
 
-        stopping.ewma.update({'loss': loss})
-        smooth = stopping.ewma.average()['loss']
+        monitor.ewma.update({'loss': loss})
+        smooth = monitor.ewma.average()['loss']
         # hack overwrite loss with a smoothed version
-        loss = smooth
 
-        stopping.raw_loss.append(loss)
-        stopping.smooth_loss.append(smooth)
-        stopping.epochs.append(epoch)
+        monitor.raw_loss.append(loss)
+        monitor.smooth_loss.append(smooth)
+        monitor.epochs.append(epoch)
 
-        stopping.prev_epoch = epoch
-        stopping.prev_loss = loss
+        monitor.prev_epoch = epoch
+        monitor.prev_loss = smooth
 
         # Dont allow overfitting epochs to be recorded as top-epochs
-        if len(stopping.memory) == 0:
-            stopping.memory.appendleft((epoch, loss))
-        elif loss < stopping.memory[0][1]:
+        if len(monitor.memory) == 0:
+            monitor.memory.appendleft((epoch, smooth))
+        elif smooth < monitor.memory[0][1]:
             # TODO: delete snapshots as they become irrelevant
-            stopping.memory.appendleft((epoch, loss))
+            monitor.memory.appendleft((epoch, smooth))
 
-        # if len(stopping.memory) == stopping.memory.maxsize:
-        #     if loss < stopping.memory.peek()[1]:
-        #         [epoch] = loss
-        # stopping.memory[epoch] = loss
-
-        if stopping.best_loss is None or loss < stopping.best_loss:
-            stopping.best_loss = loss
-            stopping.best_epoch = epoch
-            stopping.n_bad_epochs = 0
+        if monitor.best_loss is None or smooth < monitor.best_loss:
+            monitor.best_loss = smooth
+            monitor.best_epoch = epoch
+            monitor.n_bad_epochs = 0
         else:
-            stopping.n_bad_epochs += 1
+            monitor.n_bad_epochs += 1
 
-    def is_improved(stopping):
+    def is_improved(monitor):
         """
         returns True if the last update improved the validation loss
         """
-        return stopping.n_bad_epochs == 0
+        return monitor.n_bad_epochs == 0
 
-    def is_done(stopping):
-        return stopping.n_bad_epochs >= stopping.patience
+    def is_done(monitor):
+        return monitor.n_bad_epochs >= monitor.patience
 
-    def best_epochs(stopping):
-        return [epoch for epoch, loss in stopping.memory]
+    def best_epochs(monitor):
+        return [epoch for epoch, loss in monitor.memory]
 
-    def message(stopping):
-        if stopping.prev_epoch is None:
+    def message(monitor):
+        if monitor.prev_epoch is None:
             return 'vloss is unevaluated'
-        # if stopping.is_improved():
-            # message = 'vloss: {:.4f} (new_best)'.format(stopping.best_loss)
+        # if monitor.is_improved():
+            # message = 'vloss: {:.4f} (new_best)'.format(monitor.best_loss)
         message = 'vloss: {:.4f} (n_bad_epochs={:2d}, best={:.4f})'.format(
-            stopping.prev_loss, stopping.n_bad_epochs,
-            stopping.best_loss,
+            monitor.prev_loss, monitor.n_bad_epochs,
+            monitor.best_loss,
         )
-        if stopping.n_bad_epochs <= int(stopping.patience * .25):
+        if monitor.n_bad_epochs <= int(monitor.patience * .25):
             message = ub.color_text(message, 'green')
-        elif stopping.n_bad_epochs >= int(stopping.patience * .75):
+        elif monitor.n_bad_epochs >= int(monitor.patience * .75):
             message = ub.color_text(message, 'red')
         else:
             message = ub.color_text(message, 'yellow')

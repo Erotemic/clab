@@ -445,7 +445,7 @@ def train():
         hyper=hyper, datasets=datasets, xpu=xpu,
         loaders=loaders,
     )
-    harn.stopping = early_stop.EarlyStop(patience=40)
+    harn.monitor = early_stop.EarlyStop(patience=40)
 
     @harn.set_batch_runner
     def batch_runner(harn, inputs, labels):

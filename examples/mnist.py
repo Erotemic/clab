@@ -135,6 +135,7 @@ def train_mnist():
     # Give the training dataset an input_id
     from clab import util
     datasets['train'].input_id = 'mnist_' + util.hash_data(train_idx.numpy())[0:8]
+    del datasets['test']
 
     batch_size = 128
     n_classes = 10
