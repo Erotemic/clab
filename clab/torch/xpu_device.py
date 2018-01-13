@@ -9,7 +9,15 @@ class XPU(ub.NiceRepr):
     A processing device, either a GPU or CPU
     """
     def __init__(xpu, gpu_num=None):
+
         xpu.gpu_num = xpu._cast_as_int(gpu_num)
+
+        if xpu.gpu_num is not None:
+            if xpu.gpu_num < 0:
+                raise ValueError('gpu num must be positive not {}'.format(xpu.gpu_num))
+            device_count = torch.cuda.device_count()
+            if xpu.gpu_num >= device_count:
+                raise ValueError('GPU {} does not exist.'.format(xpu.gpu_num))
 
     def _cast_as_int(xpu, other):
         if other is None:

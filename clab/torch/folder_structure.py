@@ -4,7 +4,6 @@ import ubelt as ub
 from clab import util
 
 
-
 def symlink(real_path, link_path, overwrite=False, on_error='raise',
             verbose=2):
     """
@@ -45,7 +44,7 @@ def symlink(real_path, link_path, overwrite=False, on_error='raise',
         if verbose > 1:
             print('[util_path] ... but it points somewhere else')
         if overwrite:
-            delete(link, verbose > 1)
+            ub.delete(link, verbose > 1)
         elif on_error == 'ignore':
             return False
     try:
@@ -137,9 +136,8 @@ class FolderStructure(object):
 
         # setup symlinks
         ub.ensuredir(dirname(train_info['link_dpath']))
-        symlink(train_info['link_dpath'], train_info['link_dpath'],
+        symlink(train_info['train_dpath'], train_info['link_dpath'],
                 on_error='ignore')
-
 
         print('+=========')
         # print('hyper_strid = {!r}'.format(params.hyper_id()))
