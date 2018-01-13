@@ -43,6 +43,31 @@ class Task(object):
         task.relevant_labels = np.setdiff1d(task.labels, task.ignore_labels)
 
 
+class CIFAR10_Task(Task):
+    """
+    task = CIFAR10_Task()
+    task._initialize()
+    ignore_labelnames = []
+    alias = {}
+    """
+    def __init__(task, root=None):
+        if root is None:
+            root = ub.ensure_app_cache_dir('clab')
+        task.root = root
+        task._initialize()
+
+    def _initialize(task):
+        from os.path import join
+        import pickle
+        train_dset = cifar.CIFAR10(root=task.root, download=False, train=True)
+
+        fpath = join(train_dset.root, cifar.CIFAR10.base_folder, 'meta')
+        with open(fpath, 'rb') as fo:
+            entry = pickle.load(fo, encoding='latin1')
+            labelnames = entry['fine_label_names']
+        task.set_labelnames(labelnames)
+
+
 class CIFAR100_Task(Task):
     """
     task = CIFAR100_Task()
@@ -197,8 +222,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
     def _make_normalizer(dset, mode='dependant'):
         """
         Example:
-            >>> inputs = cifar_test_inputs()
-            >>> task = CIFAR100_Task()
+            >>> inputs, task = cifar_inputs(train=False)
             >>> workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
             >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'LAB')
             >>> center_inputs = dset._make_normalizer('independent')
@@ -228,8 +252,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         """
 
         Ignore:
-            >>> inputs = cifar_test_inputs()
-            >>> task = CIFAR100_Task()
+            >>> inputs, task = cifar_inputs(train=False)
             >>> workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
             >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'LAB')
             >>> dset._make_normalizer('independent')
@@ -306,9 +329,15 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         return class_weights
 
 
-def cifar_inputs(train=False):
+def cifar_inputs(train=False, cifar_num=10):
     root = ub.ensure_app_cache_dir('clab')
-    train_dset = cifar.CIFAR100(root=root, download=True, train=train)
+
+    if cifar_num == 10:
+        task = CIFAR10_Task()
+        train_dset = cifar.CIFAR10(root=root, download=True, train=train)
+    else:
+        task = CIFAR100_Task()
+        train_dset = cifar.CIFAR100(root=root, download=True, train=train)
     if train:
         bchw = (train_dset.train_data).astype(np.float32) / 255.0
         labels = np.array(train_dset.train_labels)
@@ -320,22 +349,32 @@ def cifar_inputs(train=False):
         inputs.tag = 'learn'
     else:
         inputs.tag = 'test'
-    return inputs
+    return inputs, task
 
 
-def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent'):
+def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
+                            cifar_num=10):
     """
     Example:
         >>> datasets = cifar_training_datasets()
     """
-    inputs = cifar_inputs(train=True)
+    inputs, task = cifar_inputs(train=True)
 
     # split training into train / validation
+    # 45K / 5K validation split was used in densenet and resnet papers.
+    # https://arxiv.org/pdf/1512.03385.pdf page 7
+    # https://arxiv.org/pdf/1608.06993.pdf page 5
+
     vali_frac = .1  # 10%  is 5K images
     n_vali = int(len(inputs) * vali_frac)
     # n_vali = 10000  # 10K validation as in http://torch.ch/blog/2015/07/30/cifar.html
 
-    input_idxs = util.random_indices(len(inputs), seed=1184576173)
+    # the gt indexes seem to already be scrambled, I think other papers sample
+    # validation from the end, so lets do that
+    input_idxs = np.arange(len(inputs))
+    # or just uncomment this line for reproducable random sampling
+    # input_idxs = util.random_indices(len(inputs), seed=1184576173)
+
     train_idxs = sorted(input_idxs[:-n_vali])
     vali_idxs = sorted(input_idxs[-n_vali:])
 
@@ -343,13 +382,11 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent'):
     vali_inputs = inputs.take(vali_idxs, tag='vali')
     test_inputs = cifar_inputs(train=False)
     # The dataset name and indices should fully specifiy dependencies
-    train_inputs._set_id_from_dependency(['cifar100-train', train_idxs])
-    vali_inputs._set_id_from_dependency(['cifar100-train', vali_idxs])
-    test_inputs._set_id_from_dependency(['cifar100-test'])
+    train_inputs._set_id_from_dependency(['cifar{}-train'.format(cifar_num), train_idxs])
+    vali_inputs._set_id_from_dependency(['cifar{}-train'.format(cifar_num), vali_idxs])
+    test_inputs._set_id_from_dependency(['cifar{}-test'.format(cifar_num)])
 
     workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
-
-    task = CIFAR100_Task()
 
     train_dset = CIFAR_Wrapper(train_inputs, task, workdir, output_colorspace=output_colorspace)
     vali_dset = CIFAR_Wrapper(vali_inputs, task, workdir, output_colorspace=output_colorspace)
@@ -383,12 +420,14 @@ def train():
     torch.manual_seed(137852547 % 4294967295)
     random.seed(2497950049 % 4294967295)
 
+    cifar_num = 10
+
     if ub.argflag('--lab'):
-        datasets = cifar_training_datasets(output_colorspace='LAB', norm_mode='independent')
+        datasets = cifar_training_datasets(output_colorspace='LAB', norm_mode='independent', cifar_num=cifar_num)
     elif ub.argflag('--rgb-indie'):
-        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='independent')
+        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='independent', cifar_num=cifar_num)
     else:
-        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='dependant')
+        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='dependant', cifar_num=cifar_num)
 
     import clab.torch.models.densenet
 
@@ -413,9 +452,10 @@ def train():
         # Specify anything else that is special about your hyperparams here
         # Especially if you make a custom_batch_runner
         other={
-            'augment': datasets['train'].augment,
+            'augment': datasets['train'].augment,  # TODO: type of augmentation as a parameter dependency
+
             'colorspace': datasets['train'].output_colorspace,
-            # 'n_classes': datasets['train'].n_classes,
+            'n_classes': datasets['train'].n_classes,
         },
     )
     if ub.argflag('--rgb-indie'):
@@ -464,7 +504,7 @@ def train():
     # from clab.torch import metrics
     from clab.metrics import (confusion_matrix,
                               pixel_accuracy_from_confusion,
-                              pixel_accuracy_from_confusion)
+                              perclass_accuracy_from_confusion)
 
     @harn.add_metric_hook
     def custom_metrics(harn, outputs, labels):
