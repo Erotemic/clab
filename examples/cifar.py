@@ -43,6 +43,49 @@ class Task(object):
         task.relevant_labels = np.setdiff1d(task.labels, task.ignore_labels)
 
 
+def zca_whitening_matrix(X):
+    """
+    Function to compute ZCA whitening matrix (aka Mahalanobis whitening).
+    Args:
+        X (ndarray): [M x N] matrix, Rows: Variables, Columns: Observations
+
+    Returns:
+        ZCAMatrix: [M x M] matrix
+
+    References:
+        https://stackoverflow.com/a/38590790/887074
+
+    Example:
+        >>> rng = np.random.RandomState(0)
+        >>> # Construct a matrix of observations from grayscale 8x8 images
+        >>> gray_images = [rng.rand(8, 8) for _ in range(1000)]
+        >>> X = np.array([img.ravel() for img in gray_images]).T
+        >>> M = zca_whitening_matrix(X)
+        >>> img = gray_images[0]
+        >>> norm = M.dot(img.ravel()).reshape(8, 8)
+        >>> # ... for the RGB channels of color images
+        >>> rgb_images = [rng.rand(3, 8, 8) for _ in range(1000)]
+        >>> #X = np.array([img.mean(axis=(1, 2)) for img in rgb_images]).T
+        >>> X = np.hstack([img.reshape(3, -1) for img in rgb_images])
+        >>> M = zca_whitening_matrix(X)
+        >>> img = rgb_images[0]
+        >>> norm = M.dot(img.reshape(3, 64)).reshape(3, 8, 8)
+    """
+    # Covariance matrix [column-wise variables]: Sigma = (X-mu)' * (X-mu) / N
+    sigma = np.cov(X, rowvar=True)  # [M x M]
+    # Singular Value Decomposition. X = U * np.diag(S) * V
+    U, S, V = np.linalg.svd(sigma)
+    # U: [M x M] eigenvectors of sigma.
+    # S: [M x 1] eigenvalues of sigma.
+    # V: [M x M] transpose of U
+    # Whitening constant: prevents division by zero
+    epsilon = 1e-5
+    L = np.diag(1.0 / np.sqrt(S + epsilon))
+    # ZCA Whitening matrix: U * Lambda * U'
+    ZCAMatrix = np.dot(U, np.dot(L, U.T))  # [M x M]
+    return ZCAMatrix
+
+
 class CIFAR10_Task(Task):
     """
     task = CIFAR10_Task()
@@ -211,12 +254,22 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         else:
             dset.input_id = ''
 
+        # TODO: only use horizontal flipping and translation by 4 pixels to
+        # match results from other papers
+        # https://arxiv.org/pdf/1603.09382.pdf page 8
+
         dset.augment = None
-        dset.im_augment = torchvision.transforms.Compose([
-            RandomGamma(rng=dset.rng),
-            RandomBlur(rng=dset.rng),
-        ])
-        dset.rand_aff = RandomWarpAffine(dset.rng)
+        # dset.im_augment = torchvision.transforms.Compose([
+        #     RandomGamma(rng=dset.rng),
+        #     RandomBlur(rng=dset.rng),
+        # ])
+        # dset.rand_aff = RandomWarpAffine(dset.rng)
+
+        dset.rand_aff = RandomWarpAffine(
+            dset.rng, tx_pdf=(-4, 4), ty_pdf=(-4, 4), flip_lr_prob=.5,
+            zoom_pdf=None, shear_pdf=None, flip_ud_prob=None,
+            enable_stretch=None, default_distribution='uniform')
+
         dset.center_inputs = None
 
     def _make_normalizer(dset, mode='dependant'):
@@ -271,7 +324,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         if dset.augment:
             # Image augmentation must be done in RGB
             # Augment intensity independently
-            im = dset.im_augment(im)
+            # im = dset.im_augment(im)
             # Augment geometry consistently
             params = dset.rand_aff.random_params()
             im = dset.rand_aff.warp(im, params, interp='cubic', backend='cv2')
@@ -371,6 +424,8 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
 
     # the gt indexes seem to already be scrambled, I think other papers sample
     # validation from the end, so lets do that
+    # The NIN paper https://arxiv.org/pdf/1312.4400.pdf in section 4 mentions
+    # that it uses the last 10K images for validation
     input_idxs = np.arange(len(inputs))
     # or just uncomment this line for reproducable random sampling
     # input_idxs = util.random_indices(len(inputs), seed=1184576173)
