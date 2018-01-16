@@ -106,7 +106,11 @@ class XPU(ub.NiceRepr):
         assert 'volatile' not in kw, 'volatile is removed'
         async = kw.pop('async', False)
         if xpu.is_gpu():
-            args = [torch.autograd.Variable(item.cuda(xpu.gpu_num, async=async), **kw) for item in args]
+            if async:
+                cukw = {'async': async}
+            else:
+                cukw = {}
+            args = [torch.autograd.Variable(item.cuda(xpu.gpu_num, **cukw), **kw) for item in args]
         else:
             args = [torch.autograd.Variable(item.cpu(), **kw) for item in args]
         return args

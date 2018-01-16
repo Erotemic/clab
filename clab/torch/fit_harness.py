@@ -38,6 +38,11 @@ def number_of_parameters(model, trainable=True):
 class grad_context(object):
     """
     TODO: PR to pytorch
+
+    TODO: make a torch contrib module
+    torch_contrib
+
+    Possibly dynamically inject into torch?
     """
     def __init__(self, flag):
         if tuple(map(int, torch.__version__.split('.')[0:2])) < (0, 4):
