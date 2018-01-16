@@ -70,6 +70,8 @@ def train_mnist():
     """
     CommandLine:
         python examples/mnist.py
+
+        python ~/code/clab/examples/mnist.py --gpu=2
     """
 
     """
