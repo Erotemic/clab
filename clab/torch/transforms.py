@@ -199,7 +199,7 @@ class AffineWarp(object):
         >>> img = img_orig.astype(np.float32) / 255
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='float01')
+        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix, mode='float01')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _assert_range(results, 0, 1)
@@ -215,7 +215,7 @@ class AffineWarp(object):
         >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2)
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='float01')
+        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix, mode='float01')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _compare_results(results, scale=1, thresh=.02)
@@ -231,7 +231,7 @@ class AffineWarp(object):
         >>> img = ((img_orig.astype(np.float32) / 255).mean(axis=2) * 255).astype(np.uint8)
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='uint8')
+        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix, mode='uint8')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _compare_results(results, scale=255, thresh=.02)
@@ -246,7 +246,7 @@ class AffineWarp(object):
         >>> img = img_orig.copy()
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(back, img.shape, matrix, mode='uint8')
+        >>>     _warper = aff.make_warper(img.shape, matrix, backend=back, mode='uint8')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _compare_results(results, scale=255, thresh=.02)
@@ -268,10 +268,10 @@ class AffineWarp(object):
 
     Ignore:
         >>> # +SKIP
-        >>> %timeit aff.make_warper('ski', img.shape, matrix)(img)
-        >>> %timeit aff.make_warper('pil', img.shape, matrix)(img)
-        >>> %timeit aff.make_warper('cv2', img.shape, matrix)(img)
-        >>> %timeit aff.make_warper('cv2_inv', img.shape, matrix)(img)
+        >>> %timeit aff.make_warper(img.shape, matrix, backend='ski')(img)
+        >>> %timeit aff.make_warper(img.shape, matrix, backend='pil')(img)
+        >>> %timeit aff.make_warper(img.shape, matrix, backend='cv2')(img)
+        >>> %timeit aff.make_warper(img.shape, matrix, backend='cv2_inv')(img)
         10 loops, best of 3: 22.6 ms per loop
         100 loops, best of 3: 7.97 ms per loop
         1000 loops, best of 3: 1.41 ms per loop
@@ -313,7 +313,13 @@ class AffineWarp(object):
         'reflect': NotImplemented,
     }
     def __init__(self):
-        pass
+        self.defaults = {
+            'backend': 'cv2',
+            'interp': 'cubic',
+            'border_mode': 'constant',
+            'mode': 'float01',
+            'clip': 'auto',
+        }
 
     def warp(self, img, **kwargs):
         _warper = self.make_warper(**kwargs)
@@ -336,11 +342,23 @@ class AffineWarp(object):
         mat_3x3 = np.array(mat_2x3 + [[0, 0, 1]])
         return mat_3x3
 
-    def make_warper(self, backend, shape, matrix, interp='cubic',
-                    border_mode='constant', clip=None, mode='float01'):
+    def make_warper(self, shape, matrix, interp=None, border_mode=None,
+                    clip=None, mode=None, backend=None):
+
+        if backend is None:
+            backend = self.defaults['backend']
+        if interp is None:
+            interp = self.defaults['interp']
+        if border_mode is None:
+            border_mode = self.defaults['border_mode']
+        if mode is None:
+            mode = self.defaults['mode']
+        if clip is None:
+            clip = self.defaults['clip']
+
         if backend == 'skimage':
             backend = 'ski'
-        if clip is None:
+        if clip == 'auto':
             # Find a "good" value for clip
             if mode == 'float01':
                 # We only need to clip for higher order interpolation methods
@@ -577,8 +595,9 @@ class RandomWarpAffine(object):
 
         affwarp = AffineWarp()
         matrix = affwarp.around_mat3x3(x, y, *params)
-        _warp = affwarp.make_warper(backend, img.shape, matrix, interp,
-                                    border_mode)
+        _warp = affwarp.make_warper(shape=img.shape, matrix=matrix,
+                                    interp=interp, backend=backend,
+                                    border_mode=border_mode)
         imaug = _warp(img)
         return imaug
 

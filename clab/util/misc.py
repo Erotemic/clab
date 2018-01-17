@@ -27,7 +27,7 @@ def isiterable(obj):
         return False
 
 
-def super2(this_class, self):
+def super2(this_class=None, self=None):
     """
     Fixes an error where reload causes super(X, self) to raise an exception
 
@@ -36,19 +36,23 @@ def super2(this_class, self):
     correct version of the class. See example for proper usage.
 
     Notes:
-        This is only useful in python2 where you call super like this:
-            >>> super(TheClass, self).__thefunc__(*theargs)
+        Can either be called in the python 2 way:
+            `super2(TheClass, self).__thefunc__(*theargs)`
 
-        In python 3 you can just call super like this:
-            >>> super().__thefunc__(*theargs)
-
-        So, if you dont need to support python2 you don't need this function.
+        Or in the python3 way:
+            `super2().__thefunc__(*theargs)`
 
     Args:
         this_class (class): class passed into super
-        self (instance): instance passed into super
+        self (instance): instance passed into super or (
+            cls in the case of classmethods)
 
-    DisableExample:
+    CommandLine:
+        python -m clab.util.misc super2
+        python -m clab.util.misc super2:0
+        python -m clab.util.misc super2:1
+
+    Example:
         >>> # If the parent module is reloaded, the super call may fail
         >>> # super(Foo, self).__init__()
         >>> # This will work around the problem most of the time
@@ -90,9 +94,71 @@ def super2(this_class, self):
         >>> import pytest
         >>> with pytest.raises(TypeError):
         >>>     danger2 = ChildDanger_new()
+
+    Example:
+        >>> # SAME VERSION BUT WITH IMPLICIT DNRY PYTHON3 MODE
+        >>> class Parent(object):
+        >>>     def __init__(self):
+        >>>         self.parent_attr = 'bar'
+        >>> class ChildSafe(Parent):
+        >>>     def __init__(self):
+        >>>         super2().__init__()
+        >>> class ChildDanger(Parent):
+        >>>     def __init__(self):
+        >>>         super().__init__()
+        >>> # initial loading is fine
+        >>> safe1 = ChildSafe()
+        >>> danger1 = ChildDanger()
+        >>> assert safe1.parent_attr == 'bar'
+        >>> assert danger1.parent_attr == 'bar'
+        >>> # But if we reload (via simulation), then there will be issues
+        >>> Parent_orig = Parent
+        >>> ChildSafe_orig = ChildSafe
+        >>> ChildDanger_orig = ChildDanger
+        >>> # reloading the changes the outer classname
+        >>> # but the inner class is still bound via the closure
+        >>> # (we simulate this by using the old functions)
+        >>> # (note in reloaded code the names would not change)
+        >>> class Parent_new(object):
+        >>>     __init__ = Parent_orig.__init__
+        >>> Parent_new.__name__ = 'Parent'
+        >>> class ChildSafe_new(Parent_new):
+        >>>     __init__ = ChildSafe_orig.__init__
+        >>> ChildSafe_new.__name__ = 'ChildSafe'
+        >>> class ChildDanger_new(Parent_new):
+        >>>     __init__ = ChildDanger_orig.__init__
+        >>> ChildDanger_new.__name__ = 'ChildDanger'
+        >>> #
+        >>> safe2 = ChildSafe_new()
+        >>> assert safe2.parent_attr == 'bar'
+        >>> import pytest
+        >>> with pytest.raises(TypeError):
+        >>>     danger2 = ChildDanger_new()
     """
 
-    if isinstance(self, this_class):
+    if this_class is None or self is None:
+        assert this_class is None and self is None, 'specify both or none'
+        # Experimental implicit python3 DNRY mode
+        # Use magic introspection to find `this_class` and `self`
+        frame = get_stack_frame(n=1)
+        # frame.f_code.co_name : name of the method / function
+        self_varname = frame.f_code.co_varnames[0]
+        self_or_cls = frame.f_locals[self_varname]
+        if hasattr(self_or_cls, '__name__'):
+            classname = self_or_cls.__name__
+        else:
+            classname = self_or_cls.__class__.__name__
+        self = self_or_cls
+        this_class = frame.f_globals[classname]
+
+    self_is_cls = isinstance(self, type)
+
+    if self_is_cls:
+        is_good = issubclass(self, this_class)
+    else:
+        is_good = isinstance(self, this_class)
+
+    if is_good:
         # Case where everything is ok
         this_class_now = this_class
     else:
@@ -115,17 +181,67 @@ def super2(this_class, self):
                     break
             return target_class
         # Find new version of class
-        leaf_class = self.__class__
+        if self_is_cls:
+            leaf_class = self
+        else:
+            leaf_class = self.__class__
+
         target_name = this_class.__name__
         target_class = find_parent_class(leaf_class, target_name)
 
         this_class_now = target_class
         #print('id(this_class)     = %r' % (id(this_class),))
         #print('id(this_class_now) = %r' % (id(this_class_now),))
-    assert isinstance(self, this_class_now), (
-        'Failed to fix %r, %r, %r' % (self, this_class, this_class_now))
+
+    try:
+        assert this_class_now is not None, (
+                'Failed to fix %r, %r, %r' % (self, this_class, this_class_now))
+
+        if self_is_cls:
+            assert issubclass(self, this_class_now), (
+                'Failed to fix %r, %r, %r' % (self, this_class, this_class_now))
+        else:
+            assert isinstance(self, this_class_now), (
+                'Failed to fix %r, %r, %r' % (self, this_class, this_class_now))
+    except Exception as ex:
+        print('self = {!r}'.format(self))
+        print('self_is_cls = {!r}'.format(self_is_cls))
+        print('this_class = {!r}'.format(this_class))
+        print('this_class_now = {!r}'.format(this_class_now))
+        raise
 
     return super(this_class_now, self)
+
+
+def get_stack_frame(n=0, strict=True):
+    """
+    Gets the current stack frame or any of its ancestors dynamically
+
+    Args:
+        n (int): n=0 means the frame you called this function in.
+                 n=1 is the parent frame.
+        strict (bool): (default = True)
+
+    Returns:
+        frame: frame_cur
+
+    Example:
+        >>> frame_cur = get_stack_frame(n=0)
+        >>> print('frame_cur = %r' % (frame_cur,))
+        >>> assert frame_cur.f_globals['frame_cur'] is frame_cur
+    """
+    import inspect
+    frame_cur = inspect.currentframe()
+    # Use n+1 to always skip the frame of this function
+    for ix in range(n + 1):
+        frame_next = frame_cur.f_back
+        if frame_next is None:  # nocover
+            if strict:
+                raise AssertionError('Frame level %r is root' % ix)
+            else:
+                break
+        frame_cur = frame_next
+    return frame_cur
 
 
 def roundrobin(iterables):
