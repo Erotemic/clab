@@ -92,16 +92,24 @@ class FolderStructure(object):
 
         train_hyper_id_long = hyper.hyper_id()
         train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)
-        train_hyper_hashid = util.hash_data(train_hyper_id_long)[:8]
+        train_hyper_hashid = ub.hash_data(train_hyper_id_long)[:8]
         other_id = hyper.other_id()
 
-        train_id = '{}_{}_{}'.format(
-            util.hash_data(input_id)[:6], train_hyper_id_brief, other_id)
+        aug_brief = 'au' + ub.hash_data(hyper.augment)[0:6]
+
+        train_id = '{}_{}_{}_{}'.format(
+            ub.hash_data(input_id)[:6], train_hyper_id_brief,
+            aug_brief, other_id)
 
         full_dname = 'fit_{}'.format(train_id)
-        link_dname = util.hash_data(full_dname)[0:8]
-        input_dname = 'input_' + input_id
 
+        train_hyper_id_hashed = hyper.hyper_id(hashed=True)
+        link_dname = '{}_{}_{}_{}'.format(
+            ub.hash_data(input_id)[:6], train_hyper_id_hashed,
+            aug_brief, ub.hash_data(other_id)[0:4])
+        # link_dname = ub.hash_data(full_dname)[0:8]
+
+        input_dname = 'input_' + input_id
         link_dpath = join(link_base, input_dname, link_dname)
         train_dpath = join(arch_base, input_dname, full_dname)
 
@@ -120,9 +128,13 @@ class FolderStructure(object):
             'train_hyper_id_brief': train_hyper_id_brief,
             'train_hyper_hashid': train_hyper_hashid,
             'init_history': init_history,
-            'init_history_hashid': util.hash_data(util.make_idstr(init_history)),
+            'init_history_hashid': ub.hash_data(util.make_idstr(init_history)),
             'link_dname': link_dname,
             'link_dpath': link_dpath,
+
+            # HACKED IN
+            'augment': hyper.augment,
+            'aug_brief': aug_brief,
         }
         return train_info
 

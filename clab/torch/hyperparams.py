@@ -190,7 +190,11 @@ class HyperParams(object):
     """
 
     def __init__(hyper, criterion=None, optimizer=None, scheduler=None,
-                 model=None, other=None, initializer=None, **kwargs):
+                 model=None, other=None, initializer=None,
+
+                 # TODO: give hyper info about the inputs
+                 augment=None, train=None, vali=None,
+                 **kwargs):
 
         cls, kw = _rectify_model(model, kwargs)
         hyper.model_cls = cls
@@ -216,6 +220,10 @@ class HyperParams(object):
 
         # set an identifier based on the input train dataset
         hyper.input_ids = {}  # TODO
+
+        hyper.train = train
+        hyper.vali = vali
+        hyper.augment = augment
 
         if len(kwargs) > 0:
             raise ValueError('Unused kwargs {}'.format(list(kwargs.keys())))
@@ -329,27 +337,8 @@ class HyperParams(object):
     def input_id(hyper, short=False, hashed=False):
         pass
 
-    def hyper_id(hyper, short=False, hashed=False):
-        """
-        Identification string that uniquely determined by training hyper.
-        Suitable for hashing.
-
-        CommandLine:
-            python -m clab.torch.hyperparams HyperParams.hyper_id
-
-        Example:
-            >>> from clab.torch.hyperparams import *
-            >>> hyper = HyperParams(criterion='CrossEntropyLoss', other={'n_classes': 10, 'n_channels': 5})
-            >>> print(hyper.hyper_id())
-            >>> print(hyper.hyper_id(short=['optimizer']))
-            >>> print(hyper.hyper_id(short=['optimizer'], hashed=True))
-            >>> print(hyper.hyper_id(short=['optimizer', 'criterion'], hashed=['criterion']))
-            >>> print(hyper.hyper_id(hashed=True))
-        """
-        # hyper._normalize()
+    def _parts_id(hyper, parts, short=False, hashed=False):
         id_parts = []
-
-        parts = hyper.get_initkw()
         for key, value in parts.items():
             if value is None:
                 continue
@@ -380,49 +369,44 @@ class HyperParams(object):
             if param_str:
                 id_parts.append(param_str)
         idstr = ','.join(id_parts)
-
-        # id_parts = []
-        # # total = ub.odict()
-
-        # def _make_part(cls, params):
-        #     """
-        #     append an id-string derived from the class and params.
-        #     TODO: what if we have an instance and not a cls/params tuple?
-        #     """
-        #     if cls is None:
-        #         return
-        #     d = ub.odict()
-        #     for k, v in sorted(params.items()):
-        #         # if k in total:
-        #         #     raise KeyError(k)
-        #         if isinstance(v, torch.Tensor):
-        #             v = v.numpy()
-        #         if isinstance(v, np.ndarray):
-        #             if v.kind == 'f':
-        #                 v = list(map(float, v))
-        #             else:
-        #                 raise NotImplementedError()
-        #         d[k] = v
-        #         # total[k] = v
-        #     type_str = cls.__name__
-        #     param_str = make_idstr(d)
-        #     # param_str = util.make_short_idstr(d)
-        #     assert ' at 0x' not in param_str, 'probably hashing an object: {}'.format(param_str)
-        #     id_parts.append(type_str)
-        #     if param_str:
-        #         if breif:
-        #             id_parts.append(util.hash_data(param_str)[0:4])
-        #         else:
-        #             id_parts.append(param_str)
-
-        # _make_part(hyper.model_cls, hyper.model_params)
-        # _make_part(hyper.initializer_cls, hyper.initializer_params)
-        # _make_part(hyper.optimizer_cls, hyper.optimizer_params)
-        # _make_part(hyper.scheduler_cls, hyper.scheduler_params)
-        # _make_part(hyper.criterion_cls, hyper.criterion_params)
-
-        # idstr = ','.join(id_parts)
         return idstr
+
+    # def other_id2(hyper, short=False, hashed=False):
+    #     """
+    #     Example:
+    #         >>> from clab.torch.hyperparams import *
+    #         >>> hyper = HyperParams(criterion='CrossEntropyLoss', aug='foobar', train='idfsds')
+    #         >>> hyper.other_id2(hashed=True)
+    #     """
+    #     parts = ub.odict([
+    #         ('aug', ('aug', hyper.augment)),
+    #         ('train', ('train', hyper.train)),
+    #         ('vali', ('vali', hyper.vali)),
+    #     ])
+    #     idstr = hyper._parts_id(parts, short, hashed)
+    #     return idstr
+
+    def hyper_id(hyper, short=False, hashed=False):
+        """
+        Identification string that uniquely determined by training hyper.
+        Suitable for hashing.
+
+        CommandLine:
+            python -m clab.torch.hyperparams HyperParams.hyper_id
+
+        Example:
+            >>> from clab.torch.hyperparams import *
+            >>> hyper = HyperParams(criterion='CrossEntropyLoss', other={'n_classes': 10, 'n_channels': 5})
+            >>> print(hyper.hyper_id())
+            >>> print(hyper.hyper_id(short=['optimizer']))
+            >>> print(hyper.hyper_id(short=['optimizer'], hashed=True))
+            >>> print(hyper.hyper_id(short=['optimizer', 'criterion'], hashed=['criterion']))
+            >>> print(hyper.hyper_id(hashed=True))
+        """
+        # hyper._normalize()
+
+        parts = hyper.get_initkw()
+        return hyper._parts_id(parts, short, hashed)
 
 if __name__ == '__main__':
     r"""
