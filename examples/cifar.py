@@ -104,10 +104,10 @@ class CIFAR10_Task(Task):
         import pickle
         train_dset = cifar.CIFAR10(root=task.root, download=False, train=True)
 
-        fpath = join(train_dset.root, cifar.CIFAR10.base_folder, 'meta')
+        fpath = join(train_dset.root, cifar.CIFAR10.base_folder, 'batches.meta')
         with open(fpath, 'rb') as fo:
             entry = pickle.load(fo, encoding='latin1')
-            labelnames = entry['fine_label_names']
+            labelnames = entry['label_names']
         task.set_labelnames(labelnames)
 
 
@@ -411,7 +411,7 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
     Example:
         >>> datasets = cifar_training_datasets()
     """
-    inputs, task = cifar_inputs(train=True)
+    inputs, task = cifar_inputs(train=True, cifar_num=cifar_num)
 
     # split training into train / validation
     # 45K / 5K validation split was used in densenet and resnet papers.
@@ -435,7 +435,7 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
 
     train_inputs = inputs.take(train_idxs, tag='train')
     vali_inputs = inputs.take(vali_idxs, tag='vali')
-    test_inputs = cifar_inputs(train=False)
+    test_inputs, _ = cifar_inputs(train=False, cifar_num=cifar_num)
     # The dataset name and indices should fully specifiy dependencies
     train_inputs._set_id_from_dependency(['cifar{}-train'.format(cifar_num), train_idxs])
     vali_inputs._set_id_from_dependency(['cifar{}-train'.format(cifar_num), vali_idxs])
@@ -567,13 +567,14 @@ def train():
         output = outputs[0]
 
         y_pred = output.data.max(dim=1)[1].cpu().numpy()
-        y_true = label.data.cpu.numpy()
+        y_true = label.data.cpu().numpy()
 
         cfsn = confusion_matrix(y_pred, y_true, labels=all_labels)
 
         global_tpr = pixel_accuracy_from_confusion(cfsn)  # same as tpr
         perclass_acc = perclass_accuracy_from_confusion(cfsn)
-        class_accuracy = perclass_acc.fillna(0).mean()
+        # class_accuracy = perclass_acc.fillna(0).mean()
+        class_accuracy = np.nan_to_num(perclass_acc).mean()
 
         metrics_dict = ub.odict()
         metrics_dict['global_tpr'] = global_tpr

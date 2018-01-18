@@ -172,6 +172,8 @@ def random_affine_args(zoom_pdf=None,
         ty = param_distribution(ty_pdf)
 
     def bernoulli_event(p):
+        if p is None:
+            p = 0
         return p == 1 or (p != 0 and rng.rand() < p)
 
     """
