@@ -9,6 +9,7 @@ import six
 from clab import util
 from clab.torch import criterions
 from clab.torch import nninit
+from torch.optim.optimizer import required
 # from clab.torch import lr_schedule
 
 
@@ -89,9 +90,8 @@ def _rectify_optimizer(arg, kw):
 
     cls, kw2 = _rectify_class(_lookup, arg, kw)
 
-    from torch.optim import optimizer
     for k, v in kw2.items():
-        if v is optimizer.required:
+        if v is required:
             raise ValueError('Must specify {} for {}'.format(k, cls))
 
     return cls, kw2

@@ -476,8 +476,8 @@ class RandomWarpAffine(object):
                          border_mode=self.border_mode, backend=self.backend)
 
     def random_params(self):
-        affine_args = augment_common.random_affine_args(**self.augkw,
-                                                        rng=self.rng)
+        affine_args = augment_common.random_affine_args(rng=self.rng,
+                                                        **self.augkw)
         return affine_args
 
     def warp(self, img, params, interp='nearest', border_mode='constant', backend=None):

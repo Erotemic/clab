@@ -1,3 +1,6 @@
+"""
+DEPRICATE
+"""
 from PIL import Image
 from PIL import ImageFilter
 # from PIL import ImageEnhance
@@ -28,7 +31,7 @@ def online_affine_perterb(pil_images, rng, **kw):
     """
     augkw = PERTERB_AUG_KW.copy()
     augkw.update(kw)
-    affine_args = random_affine_args(**augkw, rng=rng)
+    affine_args = random_affine_args(rng=rng, **augkw)
 
     for img in pil_images:
         w1, h1 = img.size

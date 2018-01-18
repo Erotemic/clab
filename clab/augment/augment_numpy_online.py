@@ -1,3 +1,6 @@
+"""
+DEPRICATE
+"""
 from clab.util import imutil
 from clab import util  # NOQA
 import ubelt as ub
@@ -52,7 +55,7 @@ def online_affine_perterb_np(np_images, rng, interp='cubic',
     """
     augkw = PERTERB_AUG_KW.copy()
     augkw.update(kw)
-    affine_args = random_affine_args(**augkw, rng=rng)
+    affine_args = random_affine_args(rng=rng, **augkw)
 
     if not ub.iterable(interp):
         interps = [interp] * len(np_images)
