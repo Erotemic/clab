@@ -190,23 +190,26 @@ def apply_initializer(input, func, funckw):
     Args:
         input: can be a model, layer, or tensor
     """
+    if getattr(input, 'bias', None) is not None:
+        # zero all biases
+        input.bias.data.zero_()
+
     if isinstance(input, (Variable, torch.Tensor)):
-        data = input
-    elif isinstance(input, torch.nn.Conv2d):
-        data = input
-        func(data.weight, **funckw)
-    elif getattr(input, 'bias', None) is not None:
-        data = input
-        data.bias.data.fill_(0)
+        assert False, ('input is tensor? does this make sense?')
+        # data = input
+    elif isinstance(input, (torch.nn.modules.conv._ConvNd)):
+        func(input.weight, **funckw)
+    elif isinstance(input, torch.nn.modules.batchnorm._BatchNorm):
+        input.reset_parameters()
+    # elif isinstance(input, torch.nn.modules.Linear):
+    #     input.reset_parameters()
+    elif hasattr(input, 'reset_parameters'):
+        input.reset_parameters()
     else:
         # input is a torch module
         model = input
         for item in trainable_layers(model):
             apply_initializer(item, func, funckw)
-            # if isinstance(item, torch.nn.Conv2d):
-            #     func(item.weight, **funckw)
-            # if getattr(item, 'bias', None) is not None:
-            #     item.bias.data.fill_(0)
 
 
 def uniform(tensor, a=0, b=1):
@@ -514,21 +517,49 @@ def shock(tensor, func, scale=.0001, funckw={}):
 #         tensor += offset
 #         return tensor
 
+# TRAINABLE_LAYER_TYPES = [
+#     # Any module with a reset_parameters()
+#     torch.nn.modules.conv._ConvNd,
+#     torch.nn.modules.batchnorm._BatchNorm,
+#     torch.nn.modules.Linear,
+#     torch.nn.modules.Embedding,
+#     torch.nn.modules.EmbeddingBag,
+#     torch.nn.modules.GRUCell,
+
+# ]
+
+# for key, value in vars(torch.nn.modules).items():
+#     if hasattr(value, 'reset_parameters'):
+#         print(key)
+
 
 def trainable_layers(model):
     queue = [model]
     while queue:
         item = queue.pop(0)
         # TODO: need to put all trainable layer types here
-        if isinstance(item, torch.nn.Conv2d):
+        # (I think this is just everything with reset_parameters)
+        if isinstance(item, torch.nn.modules.conv._ConvNd):
             yield item
+        elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
+            yield item
+        elif hasattr(item, 'reset_parameters'):
+            yield item
+        # if isinstance(input, torch.nn.modules.Linear):
+        #     yield item
+        # if isinstance(input, torch.nn.modules.Bilinear):
+        #     yield item
+        # if isinstance(input, torch.nn.modules.Embedding):
+        #     yield item
+        # if isinstance(input, torch.nn.modules.EmbeddingBag):
+        #     yield item
         for child in item.children():
             queue.append(child)
 
 
 def init_he_normal(model):
     for item in trainable_layers(model):
-        if isinstance(item, torch.nn.Conv2d):
+        if isinstance(item, torch.nn.modules.conv._ConvNd):
             he_normal(item.weight)
         if getattr(item, 'bias', None) is not None:
             item.bias.data.fill_(0)
