@@ -6,9 +6,8 @@ import numpy as np
 import six
 import pandas as pd
 import ubelt as ub
-from .util import fnameutil
-from .util import imutil
-from .util import hashutil
+from clab.util import fnameutil
+from clab.util import imutil
 
 from clab import getLogger
 logger = getLogger(__name__)
@@ -404,17 +403,17 @@ class Inputs(ub.NiceRepr):
                 # stride>1 is faster but might break
                 # stride=1 is the safest
                 hashes = [
-                    hashutil.hash_file(p, stride=32)
+                    ub.hash_file(p, stride=32)
                     for p in ub.ProgIter(self.gt_paths, label='hashing')
                     if 'aug' not in basename(p) and 'part' not in basename(p)
                 ]
-                label_hashid = hashutil.hash_data(hashes)
+                label_hashid = ub.hash_data(hashes)
                 depends.append(label_hashid)
         n_im = None if self.im_paths is None else len(self.im_paths)
         n_gt = None if self.gt_paths is None else len(self.gt_paths)
         self.n_input = n_im or n_gt
 
-        hashid = hashutil.hash_data(depends)[:self.abbrev]
+        hashid = ub.hash_data(depends)[:self.abbrev]
         self.input_id = '{}-{}'.format(self.n_input, hashid)
 
         print(' * n_images = {}'.format(n_im))

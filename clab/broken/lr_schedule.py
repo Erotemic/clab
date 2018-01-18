@@ -1,3 +1,7 @@
+"""
+DEPRICATE: torch has these already
+"""
+
 
 class BaseLRSchedule(object):
     def _update_optimizer(self, lr, optimizer=None):
