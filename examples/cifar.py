@@ -386,11 +386,11 @@ def cifar_inputs(train=False, cifar_num=10):
     root = ub.ensure_app_cache_dir('clab')
 
     if cifar_num == 10:
-        task = CIFAR10_Task()
         train_dset = cifar.CIFAR10(root=root, download=True, train=train)
+        task = CIFAR10_Task()
     else:
-        task = CIFAR100_Task()
         train_dset = cifar.CIFAR100(root=root, download=True, train=train)
+        task = CIFAR100_Task()
     if train:
         bchw = (train_dset.train_data).astype(np.float32) / 255.0
         labels = np.array(train_dset.train_labels)
