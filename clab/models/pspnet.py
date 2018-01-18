@@ -1,8 +1,8 @@
 import torch.nn as nn
 
-from clab.torch.models._common import ResidualBlock, Conv2DBatchNormRelu
-from clab.torch.models.linknet import LinkNetUp
-from clab.torch.models._common import OutputShapeFor
+from clab.models._common import ResidualBlock, Conv2DBatchNormRelu
+from clab.models.linknet import LinkNetUp
+from clab.models._common import OutputShapeFor
 
 
 class PSPNet(nn.Module):
@@ -99,7 +99,7 @@ class PSPNet(nn.Module):
 
     def forward(self, x):
         """
-        >>> from clab.torch.models.pspnet import *  # NOQA
+        >>> from clab.models.pspnet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 256, 256)
         >>> B, C, W, H = (4, 3, 572, 572)

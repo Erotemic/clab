@@ -1,5 +1,5 @@
 import torch
-from clab.torch.models import unet
+from clab.models import unet
 import ubelt as ub
 import torchvision  # NOQA
 import torch.nn as nn
@@ -7,8 +7,8 @@ import math
 import torch  # NOQA
 import torch.nn.functional as F
 from clab import util
-from clab.torch.models import mixin
-from clab.torch.models.output_shape_for import OutputShapeFor
+from clab.models import mixin
+from clab.models.output_shape_for import OutputShapeFor
 import numpy as np
 
 from clab import util  # NOQA
@@ -308,7 +308,7 @@ class DenseUNet(nn.Module, mixin.NetMixin):
         >>> inputs = Variable(torch.rand(B, C, W, H), volatile=True)
         >>> outputs = self(inputs)
 
-        >>> from clab.torch.models import unet
+        >>> from clab.models import unet
         >>> model_unet = unet.UNet()
         >>> self.number_of_parameters()
 
@@ -528,7 +528,7 @@ class DenseUNet2(nn.Module, mixin.NetMixin):
         >>> inputs = Variable(torch.rand(B, C, W, H), volatile=True)
         >>> outputs = self(inputs)
 
-        >>> from clab.torch.models import unet
+        >>> from clab.models import unet
         >>> model_unet = unet.UNet()
         >>> self.number_of_parameters()
 

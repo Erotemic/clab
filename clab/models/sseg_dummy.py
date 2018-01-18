@@ -6,7 +6,7 @@ __all__ = ['SSegDummy']
 class SSegDummy(nn.Module):
     """
     >>> import sys
-    >>> from clab.torch.models.segnet import *
+    >>> from clab.models.segnet import *
     >>> n_classes = 12
     >>> in_channels = 5
     >>> self = SegNet(n_classes, in_channels)
@@ -22,7 +22,7 @@ class SSegDummy(nn.Module):
     def forward(self, inputs):
         """
         Example:
-            >>> from clab.torch.models.sseg_dummy import *
+            >>> from clab.models.sseg_dummy import *
             >>> from torch.autograd import Variable
             >>> B, C, W, H = (4, 5, 256, 256)
             >>> n_classes = 11

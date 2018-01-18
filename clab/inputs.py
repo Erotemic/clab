@@ -441,7 +441,7 @@ class Inputs(ub.NiceRepr):
                              with_im=False, stride=1):
         """
         Ignore:
-            >>> from clab.torch.sseg_train import *
+            >>> from clab.sseg_train import *
             >>> #task = get_task('urban_mapper_3d')
             >>> task = get_task('camvid')
             >>> self, test = next(task.xval_splits())
@@ -456,8 +456,8 @@ class Inputs(ub.NiceRepr):
         import pickle
         import copy
         from clab.util import jsonutil
-        from clab.torch.transforms import NaNInputer
-        from clab.torch import im_loaders
+        from clab.transforms import NaNInputer
+        from clab import im_loaders
 
         self.prepare_input()
         fpath = join(self.input_dpath, 'center_stats{}.pkl'.format(colorspace))

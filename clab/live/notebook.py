@@ -10,7 +10,7 @@ from clab import xpu_device
 from clab.util import imutil
 from clab import models
 
-from clab.torch.sseg_train import get_task, SSegInputsWrapper
+from clab.sseg_train import get_task, SSegInputsWrapper
 
 
 def hack_camvid_eval():
@@ -101,7 +101,7 @@ def dump_task_inference(task, inputs, load_path):
         #     'img': img,
         # })
 
-        from clab.torch import filters
+        from clab import filters
 
         posterior = filters.crf_posterior(img, log_probs)
         # output = prob_tensor.data.cpu().numpy()[0]

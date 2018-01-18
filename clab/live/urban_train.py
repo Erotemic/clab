@@ -10,17 +10,17 @@ import os  # NOQA
 from os.path import join
 
 import torchvision  # NOQA
-from clab.torch import xpu_device
-from clab.torch import models
-from clab.torch import metrics
-from clab.torch import hyperparams
-from clab.torch import fit_harness
-from clab.torch import nninit
-from clab.torch import im_loaders
-from clab.torch import criterions
+from clab import xpu_device
+from clab import models
+from clab import metrics
+from clab import hyperparams
+from clab import fit_harness
+from clab import nninit
+from clab import im_loaders
+from clab import criterions
 from clab import util  # NOQA
-from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
-from clab.torch.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
+from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+from clab.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
 from clab.util import imutil
 
 
@@ -566,7 +566,7 @@ def urban_fit():
                 --pretrained '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000041.pt' --gpu=3
 
     Example:
-        >>> from clab.torch.fit_harness import *
+        >>> from clab.fit_harness import *
         >>> harn = urban_fit()
     """
     arch = ub.argval('--arch', default='unet')

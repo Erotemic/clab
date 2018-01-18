@@ -47,11 +47,11 @@ import ubelt as ub
 import os  # NOQA
 from os.path import join, splitext, basename  # NOQA
 from clab import util
-from clab.torch import xpu_device
-from clab.torch import models
+from clab import xpu_device
+from clab import models
 from clab.util import imutil
 from clab.live.urban_metrics import instance_fscore
-from clab.torch.fit_harness import get_snapshot
+from clab.fit_harness import get_snapshot
 
 
 def urban_mapper_eval_dataset(boundary=True, arch=None):
@@ -553,7 +553,7 @@ def hypersearch_probs(task, paths):
             seed_prob = probs[:, :, task.classname_to_id['inner_building']]
 
             probs1 = memo_read_arr(path1)
-            # from clab.torch.filters import crf_posterior
+            # from clab.live.filters import crf_posterior
             # Doesnt help
             # if use_crf:
             #     probs1 = crf_posterior(bgr[:, :, ::-1], np.log(probs1).transpose(2, 0, 1)).transpose(1, 2, 0)
@@ -666,7 +666,7 @@ def draw_failures(task, paths):
         fn_labels = infod['fn']
 
         # visualize failure cases
-        from clab.torch.metrics import CumMovingAve
+        from clab.metrics import CumMovingAve
         ave_scores = CumMovingAve()
         if True:
             from clab.tasks import urban_mapper_3d
@@ -739,7 +739,7 @@ class PredictHarness(object):
         info_dpath = join(train_dpath, 'train_info.json')
         info = util.read_json(info_dpath)
         # TODO: better deserialization
-        from clab.torch import transforms
+        from clab import transforms
         transform_list = []
         for tup in info['hack_centers']:
             classname = tup[0]
@@ -1097,7 +1097,7 @@ def mask_instance_label(pred, k=15, n_iters=1, dist_thresh=5,
                                 iterations=n_iters)
 
     if watershed:
-        from clab.torch import filters
+        from clab.live import filters
         mask = filters.watershed_filter(mask, dist_thresh=dist_thresh)
 
     mask = mask.astype(np.uint8)

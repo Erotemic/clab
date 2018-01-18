@@ -42,7 +42,7 @@ import ubelt as ub
 import torch
 import torch.nn
 import torchvision  # NOQA
-from clab.torch import xpu_device
+from clab import xpu_device
 import torch.nn.functional as F
 from torch import nn
 
@@ -82,9 +82,9 @@ def train_mnist():
     How will you train your model?
     With FitHarness
     """
-    from clab.torch import fit_harness
-    from clab.torch import hyperparams
-    from clab.torch import nninit
+    from clab import fit_harness
+    from clab import hyperparams
+    from clab import nninit
     import copy
     import numpy as np
     root = os.path.expanduser('~/data/mnist/')
@@ -176,7 +176,7 @@ def train_mnist():
     )
 
     all_labels = np.arange(n_classes)
-    from clab.torch import metrics
+    from clab import metrics
 
     @harn.add_metric_hook
     def custom_metrics(harn, output, labels):

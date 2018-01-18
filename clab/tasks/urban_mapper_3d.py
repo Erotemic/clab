@@ -530,7 +530,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
                                     iterations=n_iters)
 
         if watershed:
-            from clab.torch import filters
+            from clab.live import filters
             mask = filters.watershed_filter(mask, dist_thresh=dist_thresh)
 
         mask = mask.astype(np.uint8)

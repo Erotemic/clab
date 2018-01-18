@@ -1,5 +1,5 @@
 import torch
-from clab.torch.models import unet
+from clab.models import unet
 from clab import util  # NOQA
 from clab import getLogger
 logger = getLogger(__name__)
@@ -28,7 +28,7 @@ class UNet2(unet.UNet):
         >>> print(np.array(inputs.shape) - np.array(outputs.shape))
 
     Example:
-        >>> from clab.torch.models.unet import *  # NOQA
+        >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 5, 480, 360)
         >>> n_classes = 11
@@ -72,7 +72,7 @@ class UNet2(unet.UNet):
 
     def forward(self, inputs):
         """
-            >>> from clab.torch.models.unet import *  # NOQA
+            >>> from clab.models.unet import *  # NOQA
             >>> import torch
             >>> from torch.autograd import Variable
             >>> B, C, W, H = (4, 5, 256, 256)

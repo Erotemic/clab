@@ -5,11 +5,11 @@ import numpy as np  # NOQA
 import ubelt as ub
 import os  # NOQA
 from os.path import join, expanduser, splitext, basename  # NOQA
-from clab.torch import xpu_device
+from clab import xpu_device
 from clab.util import imutil
-from clab.torch import models
+from clab import models
 
-from clab.torch.sseg_train import get_task, SSegInputsWrapper
+from clab.sseg_train import get_task, SSegInputsWrapper
 
 
 def copy_latest_snapshots():

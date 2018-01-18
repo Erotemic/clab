@@ -9,13 +9,13 @@ import os  # NOQA
 from os.path import join
 
 import torchvision  # NOQA
-from clab.torch import xpu_device
-from clab.torch import models
-from clab.torch import metrics
-from clab.torch import hyperparams
-from clab.torch import fit_harness
-from clab.torch import im_loaders
-from clab.torch import criterions
+from clab import xpu_device
+from clab import models
+from clab import metrics
+from clab import hyperparams
+from clab import fit_harness
+from clab import im_loaders
+from clab import criterions
 from clab import util  # NOQA
 from clab.util import imutil
 
@@ -46,7 +46,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
     """
     def __init__(self, inputs, task, colorspace='RGB'):
-        from clab.torch.transforms import (RandomWarpAffine, RandomGamma,
+        from clab.transforms import (RandomWarpAffine, RandomGamma,
                                              RandomBlur,)
         self.inputs = inputs
         self.task = task
@@ -81,7 +81,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
         self.center_inputs = None
 
     def _make_normalizer(self):
-        from clab.torch.transforms import (ImageCenterScale, DTMCenterScale,
+        from clab.transforms import (ImageCenterScale, DTMCenterScale,
                                            ZipTransforms)
         transforms = []
         nan_value = -32767.0  # hack: specific number for DTM
@@ -129,7 +129,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
     def _original_urban_mapper_normalizer(self, imcenter=.5, imscale=1.0):
         nan_value = -32767.0  # hack: specific number for DTM
-        from clab.torch.transforms import (ImageCenterScale, DTMCenterScale,
+        from clab.transforms import (ImageCenterScale, DTMCenterScale,
                                            ZipTransforms)
         assert self.colorspace == 'RGB'
         im_center = ImageCenterScale(imcenter, imscale)
@@ -362,7 +362,7 @@ def task_datasets(task, vali_frac=0, colorspace='RGB'):
 def directory_structure(workdir, arch, datasets, pretrained=None,
                         train_hyper_id=None, suffix=''):
     """
-    from clab.torch.sseg_train import *
+    from clab.sseg_train import *
     datasets = load_task_dataset('urban_mapper_3d')
     datasets['train']._make_normalizer()
     arch = 'foobar'
@@ -442,7 +442,7 @@ def task_fit(taskname):
         python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=unet --dry
 
     Example:
-        >>> from clab.torch.fit_harness import *
+        >>> from clab.fit_harness import *
         >>> taskname = ub.argval('--task', default='camvid')
         >>> harn = task_fit(taskname)
         >>> #import utool as ut

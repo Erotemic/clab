@@ -57,11 +57,11 @@ class ContrastiveLoss(nn.Module):
         $(y E)^2 + ((1 - y) max(m - E, 0)^2)$
 
     CommandLine:
-        python -m clab.torch.criterions ContrastiveLoss --show
+        python -m clab.criterions ContrastiveLoss --show
 
 
     Example:
-        >>> from clab.torch.criterions import *
+        >>> from clab.criterions import *
         >>> import utool as ut
         >>> import numpy as np
         >>> vecs1, vecs2, label = testdata_siam_desc()
@@ -85,7 +85,7 @@ class ContrastiveLoss(nn.Module):
         >>> ut.show_if_requested()
 
     Example:
-        >>> from clab.torch.models import SiameseLP
+        >>> from clab.models import SiameseLP
         >>> from torch.autograd import Variable  # NOQA
         >>> imgs1 = Variable(torch.rand(3, 3, 224, 244))
         >>> imgs2 = Variable(torch.rand(3, 3, 224, 244))
@@ -159,7 +159,7 @@ class CrossEntropyLoss2D(nn.Module):
     https://discuss.pytorch.org/t/about-segmentation-loss-function/2906/8
 
     Example:
-        >>> from clab.torch.criterions import *
+        >>> from clab.criterions import *
         >>> #inputs, targets = testdata_sseg()
         >>> weight = Variable(torch.FloatTensor([1, 1, 0]))
         >>> size_average = True
@@ -246,7 +246,7 @@ class CrossEntropyLoss2D(nn.Module):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.torch.criterions
+        python -m clab.criterions
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

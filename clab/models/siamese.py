@@ -1,6 +1,6 @@
 import torch
 import torchvision
-from clab.torch.models.output_shape_for import OutputShapeFor
+from clab.models.output_shape_for import OutputShapeFor
 
 
 class SiameseLP(torch.nn.Module):
@@ -8,7 +8,7 @@ class SiameseLP(torch.nn.Module):
     Siamese pairwise distance
 
     Example:
-        >>> from clab.torch.models.siamese import *
+        >>> from clab.models.siamese import *
         >>> self = SiameseLP()
     """
 
@@ -86,7 +86,7 @@ class SiameseLP(torch.nn.Module):
 #     Siamese pairwise classifier
 
 #     Example:
-#         >>> from clab.torch.models.siamese import *
+#         >>> from clab.models.siamese import *
 #         >>> self = SiameseCLF()
 #     """
 

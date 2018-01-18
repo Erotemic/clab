@@ -14,9 +14,9 @@ from torch.autograd import Variable
 import tensorboard_logger
 import torchvision  # NOQA
 import itertools as it
-from clab.torch import metrics
-from clab.torch import xpu_device
-from clab.torch import early_stop
+from clab import metrics
+from clab import xpu_device
+from clab import early_stop
 from clab import util  # NOQA
 from clab import getLogger
 import time
@@ -130,7 +130,7 @@ class FitHarness(object):
         harn.epoch = 0
 
     def setup_dpath(harn, workdir='.', **kwargs):
-        from clab.torch import folder_structure
+        from clab import folder_structure
         structure = folder_structure.FolderStructure(
             workdir=workdir, hyper=harn.hyper, datasets=harn.datasets,
         )
@@ -739,7 +739,7 @@ def get_snapshot(train_dpath, epoch='recent'):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.torch.fit_harness
+        python -m clab.fit_harness
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

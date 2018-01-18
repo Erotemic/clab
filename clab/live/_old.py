@@ -112,7 +112,7 @@
     if 1:
         import pandas as pd  # NOQA
         from clab.metrics import confusion_matrix, jaccard_score_from_confusion  # NOQA
-        from clab.torch import filters  # NOQA
+        from clab import filters  # NOQA
 
         paths = {}
         for mode in ['pred', 'pred_crf']:

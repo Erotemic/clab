@@ -1,6 +1,6 @@
 import ubelt as ub
 import torch
-from clab.torch import nnio
+from clab import nnio
 from clab.util import gpu_util
 
 
@@ -66,8 +66,8 @@ class XPU(ub.NiceRepr):
         """
         gpu_num = ub.argval('--gpu', default=None)
         if ub.argflag('--cpu'):
-            gpu_num = None
-        if gpu_num is None:
+            xpu = XPU(None)
+        elif gpu_num is None:
             xpu = XPU.available(**kwargs)
         else:
             if gpu_num.lower() == 'none':
@@ -98,7 +98,7 @@ class XPU(ub.NiceRepr):
                 note: volatile is depricated in version > 0.4 use torch.no_grad
 
         Example:
-            >>> from clab.torch.xpu_device import *
+            >>> from clab.xpu_device import *
             >>> xpu = XPU(gpu_num=None)
             >>> data = torch.FloatTensor([0])
         """
@@ -126,3 +126,12 @@ class XPU(ub.NiceRepr):
     def load(xpu, fpath):
         print('Loading data onto {} from {}'.format(xpu, fpath))
         return torch.load(fpath, map_location=xpu.map_location())
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.xpu_device all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

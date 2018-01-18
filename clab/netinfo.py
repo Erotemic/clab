@@ -89,8 +89,8 @@ def as_networkx(model, input_shapes, params=None):
             require grad (TODO: make optional)
 
     Example:
-        >>> from clab.torch.netinfo import *
-        >>> from clab.torch.models.unet import *  # NOQA
+        >>> from clab.netinfo import *
+        >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 372, 400)
         >>> n_classes = 11

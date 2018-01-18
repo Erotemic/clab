@@ -1,8 +1,8 @@
 # import torch
 import torch.nn as nn
-from clab.torch import nninit
+from clab import nninit
 import numpy as np
-from clab.torch.models.output_shape_for import OutputShapeFor
+from clab.models.output_shape_for import OutputShapeFor
 import ubelt as ub
 
 
@@ -101,7 +101,7 @@ class NetMixin(object):
     def load_partial_state(model, model_state_dict, shock_partial=False):
         """
         Example:
-            >>> from clab.torch.models.unet import *  # NOQA
+            >>> from clab.models.unet import *  # NOQA
             >>> self1 = UNet(in_channels=5, n_classes=3)
             >>> self2 = UNet(in_channels=6, n_classes=4)
             >>> model_state_dict = self1.state_dict()

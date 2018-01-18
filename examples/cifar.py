@@ -4,13 +4,13 @@ import torch
 import torchvision
 import pandas as pd
 from torchvision.datasets import cifar
-from clab.torch import xpu_device
-from clab.torch import early_stop
-from clab.torch import nninit
-from clab.torch import hyperparams
-from clab.torch import fit_harness
-from clab.torch.transforms import (ImageCenterScale,)
-from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+from clab import xpu_device
+from clab import early_stop
+from clab import nninit
+from clab import hyperparams
+from clab import fit_harness
+from clab.transforms import (ImageCenterScale,)
+from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 from clab import util
 
 
@@ -336,7 +336,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         return im, gt
 
     def __getitem__(dset, index):
-        from clab.torch import im_loaders
+        from clab import im_loaders
         im, gt = dset.load_inputs(index)
         input_tensor = im_loaders.numpy_image_to_float_tensor(im)
 
@@ -484,10 +484,10 @@ def train():
     else:
         datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='dependant', cifar_num=cifar_num)
 
-    import clab.torch.models.densenet
+    import clab.models.densenet
 
     hyper = hyperparams.HyperParams(
-        model=(clab.torch.models.densenet.DenseNet, {
+        model=(clab.models.densenet.DenseNet, {
             'cifar': True,
             'num_classes': datasets['train'].n_classes,
         }),
@@ -556,7 +556,7 @@ def train():
     task = harn.datasets['train'].task
     all_labels = task.labels
     # ignore_label = datasets['train'].ignore_label
-    # from clab.torch import metrics
+    # from clab import metrics
     from clab.metrics import (confusion_matrix,
                               pixel_accuracy_from_confusion,
                               perclass_accuracy_from_confusion)

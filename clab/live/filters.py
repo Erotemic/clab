@@ -14,7 +14,7 @@ def watershed_filter(mask, dist_thresh=5, topology=None, demo_mode=False):
         https://docs.opencv.org/trunk/d3/db4/tutorial_py_watershed.html
 
     Example:
-        >>> from clab.torch import filters
+        >>> from clab import filters
         >>> from clab import util
         >>> import ubelt as ub
         >>> pred = util.imread(ub.grabdata('https://i.imgur.com/Xdm4A24.png'))

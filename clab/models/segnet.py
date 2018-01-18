@@ -3,7 +3,7 @@ Adapated from:
     https://github.com/meetshah1995/pytorch-semseg
 """
 import torch.nn as nn
-from clab.torch.models._common import Conv2DBatchNormRelu
+from clab.models._common import Conv2DBatchNormRelu
 
 __all__ = ['SegNet']
 
@@ -74,7 +74,7 @@ class SegnetUp3(nn.Module):
 class SegNet(nn.Module):
     """
     >>> import sys
-    >>> from clab.torch.models.segnet import *
+    >>> from clab.models.segnet import *
     >>> n_classes = 12
     >>> in_channels = 5
     >>> self = SegNet(n_classes, in_channels)
@@ -109,7 +109,7 @@ class SegNet(nn.Module):
 
     def forward(self, inputs):
         """
-            >>> from clab.torch.models.segnet import *  # NOQA
+            >>> from clab.models.segnet import *  # NOQA
             >>> from torch.autograd import Variable
             >>> B, C, W, H = (4, 5, 256, 256)
             >>> n_classes = 11
@@ -138,7 +138,7 @@ class SegNet(nn.Module):
         # down_blocks = [self.down1, self.down2, self.down3, self.down4, self.down5]
         # up_blocks = [self.up5, self.up4, self.up3, self.up2, self.up1]
         for layer in self.trainable_layers():
-            from clab.torch  import nninit
+            from clab  import nninit
             nninit.he_normal(layer.weight)
             layer.bias.data.fill_(0)
 

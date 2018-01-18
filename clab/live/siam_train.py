@@ -12,14 +12,14 @@ import torchvision
 from clab import util
 from clab.util import hashutil
 from clab import augment
-from clab.torch import xpu_device
-from clab.torch import models
-from clab.torch import hyperparams
-from clab.torch import fit_harness
-from clab.torch import im_loaders
-from clab.torch import criterions
+from clab import xpu_device
+from clab import models
+from clab import hyperparams
+from clab import fit_harness
+from clab import im_loaders
+from clab import criterions
 from clab import util  # NOQA
-from clab.torch.fit_harness import get_snapshot
+from clab.fit_harness import get_snapshot
 
 # from clab.util import imutil
 
@@ -749,13 +749,13 @@ def siam_vsone_train():
     )
 
     def custom_metrics(harn, output, label):
-        from .torch import metrics
+        from clab import metrics
         metrics_dict = metrics._siamese_metrics(output, label,
-                                                margin=harn.criterion.margin)
+                                                 margin=harn.criterion.margin)
         return metrics_dict
 
     dry = ub.argflag('--dry')
-    from .torch.sseg_train import directory_structure
+    from clab.live.sseg_train import directory_structure
     train_dpath, test_dpath = directory_structure(
         workdir, model.__class__.__name__, datasets, pretrained=pretrained,
         train_hyper_id=hyper.hyper_id(), suffix='_' + hyper.other_id())

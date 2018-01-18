@@ -72,7 +72,7 @@
 
     # def run()
                 # if False:
-                #     from clab.torch import filters
+                #     from clab import filters
                 #     posterior = filters.crf_posterior(bgr, log_probs)
                 #     pred_crf = posterior.argmax(axis=0)
                 #     blend_pred_crf = pharn.dataset.task.colorize(pred_crf, bgr)

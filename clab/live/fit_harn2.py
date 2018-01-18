@@ -14,9 +14,9 @@ from torch.autograd import Variable
 import tensorboard_logger
 import torchvision  # NOQA
 import itertools as it
-from clab.torch import metrics
-from clab.torch import xpu_device
-from clab.torch import nnio
+from clab import metrics
+from clab import xpu_device
+from clab import nnio
 from clab import util  # NOQA
 from clab import getLogger
 logger = getLogger(__name__)
@@ -32,8 +32,8 @@ def demo():
         >>> from clab.live.fit_harn2 import *
         >>> demo()
     """
-    from clab.torch import hyperparams
-    from clab.torch import layers
+    from clab import hyperparams
+    from clab import layers
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
     ])
@@ -79,8 +79,8 @@ def demo():
             return self.seq(inputs)
 
     if SSEG:
-        from clab.torch.models import unet
-        from clab.torch import criterions
+        from clab.models import unet
+        from clab import criterions
         model = unet.UNet(in_channels=1, n_classes=n_classes, feature_scale=64)
         hyper = hyperparams.HyperParams(
             criterion_cls=criterions.CrossEntropyLoss2D,
@@ -781,7 +781,7 @@ def get_snapshot(train_dpath, epoch='recent'):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.torch.fit_harn2
+        python -m clab.fit_harn2
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

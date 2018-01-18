@@ -57,7 +57,7 @@ class Pretrained(_BaseInitializer):
         self.fpath = fpath
 
         if isinstance(initializer, str):
-            from clab.torch import nninit
+            from clab import nninit
             initializer = getattr(nninit, initializer)()
 
         self.initializer = initializer
@@ -86,7 +86,7 @@ class Pretrained(_BaseInitializer):
 class NoOp(_BaseInitializer):
     """
     Example:
-        >>> from clab.torch.nninit import *
+        >>> from clab.nninit import *
         >>> self = NoOp()
         >>> #info = self.history()
         >>> #assert info['__name__'] == 'NoOp'
@@ -98,7 +98,7 @@ class NoOp(_BaseInitializer):
 class HeNormal(_BaseInitializer):
     """
     Example:
-        >>> from clab.torch.nninit import *
+        >>> from clab.nninit import *
         >>> self = HeNormal()
         >>> #info = self.history()
         >>> #assert info['__name__'] == 'HeNormal'
@@ -141,7 +141,7 @@ class KaimingUniform(_BaseInitializer):
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from clab.torch.nninit import *
+        >>> from clab.nninit import *
         >>> self = KaimingNormal()
     """
     def __init__(self, nonlinearity='leaky_relu', param=0, mode='fan_in'):
@@ -158,7 +158,7 @@ class KaimingNormal(_BaseInitializer):
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from clab.torch.nninit import *
+        >>> from clab.nninit import *
         >>> self = KaimingNormal()
     """
     def __init__(self, nonlinearity='leaky_relu', param=0, mode='fan_in'):
@@ -175,7 +175,7 @@ class Orthogonal(_BaseInitializer):
     Same as HeNormal, but uses pytorch implementation
 
     Example:
-        >>> from clab.torch.nninit import *
+        >>> from clab.nninit import *
         >>> self = Orthogonal()
     """
     def __init__(self, gain=1):
@@ -568,7 +568,7 @@ def init_he_normal(model):
 def load_partial_state(model, model_state_dict, initializer=None, shock_partial=True):
     """
     Example:
-        >>> from clab.torch.models.unet import *  # NOQA
+        >>> from clab.models.unet import *  # NOQA
         >>> self1 = UNet(in_channels=5, n_classes=3)
         >>> self2 = UNet(in_channels=6, n_classes=4)
         >>> model_state_dict = self1.state_dict()

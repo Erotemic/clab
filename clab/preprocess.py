@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
+"""
+DEPRICATE
+"""
 from __future__ import absolute_import, division, print_function
 import cv2
 import ubelt as ub
 from os.path import join, expanduser, basename, splitext, abspath, exists  # NOQA
 from PIL import Image
 from clab import inputs
-from .util import fnameutil  # NOQA
-from .util import imutil
-from .util import hashutil
+from clab.util import fnameutil  # NOQA
+from clab.util import imutil
+from clab.util import hashutil
 import numpy as np
 
 from clab import getLogger

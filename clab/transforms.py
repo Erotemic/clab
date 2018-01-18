@@ -172,7 +172,7 @@ class AffineWarp(object):
     with multiprocessing, so its not always 100% safe to use.
 
     Benchmark:
-        >>> from clab.torch.transforms import *
+        >>> from clab.transforms import *
         >>> import itertools as it
         >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
         >>> img_orig = util.imread(fpath)
@@ -483,7 +483,7 @@ class RandomWarpAffine(object):
     def warp(self, img, params, interp='nearest', border_mode='constant', backend=None):
         """
 
-            >>> from clab.torch.transforms import *
+            >>> from clab.transforms import *
             >>> import plottool as pt
             >>> pt.qtensure()
             >>> img_orig = util.imread(ut.grab_test_imgpath('lena.png'))

@@ -1,5 +1,5 @@
 import torch
-from clab.torch import xpu_device
+from clab import xpu_device
 
 
 def device_mapping(gpu_num: int):
@@ -21,7 +21,7 @@ def device_mapping(gpu_num: int):
         >>> # doctest: +SKIP
         >>> # To load a tensor onto a specific gpu
         >>> import ubelt as ub
-        >>> from clab.torch.nnio import *
+        >>> from clab.nnio import *
         >>> from clab.util import gpu_util
         >>> ngpus = gpu_util.num_gpus()
         >>> if ngpus <= 1:
@@ -66,8 +66,8 @@ def export_model(fpath, model, input_shapes=None):
 
     Example:
         >>> import ubelt as ub
-        >>> from clab.torch.nnio import *
-        >>> from clab.torch import models
+        >>> from clab.nnio import *
+        >>> from clab import models
         >>> model = models.MnistNet()
         >>> dpath = ub.ensure_app_cache_dir('clab', 'test', 'nnio')
         >>> fpath = dpath + '/export.onnx'
@@ -76,7 +76,7 @@ def export_model(fpath, model, input_shapes=None):
 
 
     Example:
-        >>> from clab.torch import models
+        >>> from clab import models
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 372, 400)
         >>> n_classes = 11

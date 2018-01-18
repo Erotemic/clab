@@ -39,7 +39,7 @@ def np_loader(fpath, colorspace=None):
 def pil_loader(fpath, colorspace=None):
     """
     Example:
-        >>> from clab.torch.im_loaders import *
+        >>> from clab.im_loaders import *
         >>> assert int(Image.PILLOW_VERSION.split('.')[0]) >= 4
         >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
         >>> pil_img = pil_loader(fpath)
@@ -76,7 +76,7 @@ def pil_loader(fpath, colorspace=None):
 
 
     Ignore:
-        >>> from clab.torch.im_loaders import *
+        >>> from clab.im_loaders import *
         >>> import torchvision.transforms.functional as tvf
         >>> tvf.to_tensor(pil_img)
         >>> dtm_fpath = ub.grabdata('http://www.topcoder.com/contest/problem/UrbanMapper3D/JAX_Tile_043_DTM.tif')

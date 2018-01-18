@@ -283,7 +283,7 @@ def find_parent_class(fpath, funcname, lineno, readlines=None):
     >>> func = getattr(profiler.KernprofParser, funcname)
     >>> lineno = func.__code__.co_firstlineno
     >>> fpath = profiler.__file__
-    >>> #fpath = ub.truepath('~/code/clab/clab/profiler.py')
+    >>> #fpath = ub.truepath('~/code/clab/clab/util/profiler.py')
     >>> #lineno   = 264
     >>> readlines = lambda x: ub.readfrom(x, aslines=True)
     >>> classname = find_parent_class(fpath, funcname, lineno, readlines)

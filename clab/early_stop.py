@@ -1,6 +1,6 @@
 import ubelt as ub
 import collections
-from clab.torch.metrics import ExpMovingAve
+from clab.metrics import ExpMovingAve
 
 
 class EarlyStop(object):
@@ -41,8 +41,8 @@ class EarlyStop(object):
         monitor.patience = patience
         monitor.n_bad_epochs = 0
 
-    def load_state_dict(self, state):
-        return self.__dict__.update(state)
+    def load_state_dict(monitor, state):
+        return monitor.__dict__.update(state)
         # let some of the state be lost to force training for just a bit more
         monitor.n_bad_epochs = min(1, monitor.n_bad_epochs)
         # state = ub.dict_subset(state, ['ewma', 'raw_loss', 'smooth_loss', 'epochs'])

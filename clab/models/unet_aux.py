@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch
-from clab.torch.models import unet
+from clab.models import unet
 # import math
 # import torch.nn.functional as F
 # from ._common import OutputShapeFor
@@ -24,8 +24,8 @@ class InputAux2(nn.Module):
 
     def forward(self, inputs, aux1, aux2):
         """
-            >>> from clab.torch.models.unet_aux import *
-            >>> from clab.torch.models.unet import *
+            >>> from clab.models.unet_aux import *
+            >>> from clab.models.unet import *
             >>> from torch.autograd import Variable
             >>> B, W, H = (4, 256, 256)
             >>> inputs = Variable(torch.rand(B, 3, W, H))

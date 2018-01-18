@@ -20,15 +20,15 @@ from clab.live import unet3
 from clab.live.urban_metrics import instance_fscore
 from clab.live.urban_pred import seeded_instance_label_from_probs
 from clab.tasks.urban_mapper_3d import UrbanMapper3D
-from clab.torch import criterions
-from clab.torch import hyperparams
-from clab.torch import im_loaders
-from clab.torch import metrics
-from clab.torch import models
-from clab.torch import transforms
-from clab.torch import xpu_device
-from clab.torch.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
-from clab.torch.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+from clab import criterions
+from clab import hyperparams
+from clab import im_loaders
+from clab import metrics
+from clab import models
+from clab import transforms
+from clab import xpu_device
+from clab.transforms import (ImageCenterScale, DTMCenterScale, ZipTransforms)
+from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 
 print = util.protect_print(print)
 

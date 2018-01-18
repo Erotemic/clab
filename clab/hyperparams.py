@@ -7,10 +7,10 @@ import ubelt as ub
 import torch
 import six
 from clab import util
-from clab.torch import criterions
-from clab.torch import nninit
+from clab import criterions
+from clab import nninit
 from torch.optim.optimizer import required
-# from clab.torch import lr_schedule
+# from clab import lr_schedule
 
 
 def _rectify_class(lookup, arg, kw):
@@ -172,10 +172,10 @@ class HyperParams(object):
     to use the training harness.
 
     CommandLine:
-        python -m clab.torch.hyperparams HyperParams
+        python -m clab.hyperparams HyperParams
 
     Example:
-        >>> from clab.torch.hyperparams import *
+        >>> from clab.hyperparams import *
         >>> hyper = HyperParams(
         >>>     criterion=('CrossEntropyLoss2D', {
         >>>         'weight': [0, 2, 1],
@@ -267,10 +267,10 @@ class HyperParams(object):
     # def model_id(hyper, brief=False):
     #     """
     #     CommandLine:
-    #         python -m clab.torch.hyperparams HyperParams.model_id
+    #         python -m clab.hyperparams HyperParams.model_id
 
     #     Example:
-    #         >>> from clab.torch.hyperparams import *
+    #         >>> from clab.hyperparams import *
     #         >>> hyper = HyperParams(model='DenseNet', optimizer=('SGD', dict(lr=.001)))
     #         >>> print(hyper.model_id())
     #         >>> hyper = HyperParams(model='AlexNet', optimizer=('SGD', dict(lr=.001)))
@@ -293,7 +293,7 @@ class HyperParams(object):
 
     def other_id(hyper):
         """
-            >>> from clab.torch.hyperparams import *
+            >>> from clab.hyperparams import *
             >>> hyper = HyperParams(other={'augment': True, 'n_classes': 10, 'n_channels': 5})
             >>> hyper.hyper_id()
         """
@@ -374,7 +374,7 @@ class HyperParams(object):
     # def other_id2(hyper, short=False, hashed=False):
     #     """
     #     Example:
-    #         >>> from clab.torch.hyperparams import *
+    #         >>> from clab.hyperparams import *
     #         >>> hyper = HyperParams(criterion='CrossEntropyLoss', aug='foobar', train='idfsds')
     #         >>> hyper.other_id2(hashed=True)
     #     """
@@ -392,10 +392,10 @@ class HyperParams(object):
         Suitable for hashing.
 
         CommandLine:
-            python -m clab.torch.hyperparams HyperParams.hyper_id
+            python -m clab.hyperparams HyperParams.hyper_id
 
         Example:
-            >>> from clab.torch.hyperparams import *
+            >>> from clab.hyperparams import *
             >>> hyper = HyperParams(criterion='CrossEntropyLoss', other={'n_classes': 10, 'n_channels': 5})
             >>> print(hyper.hyper_id())
             >>> print(hyper.hyper_id(short=['optimizer']))

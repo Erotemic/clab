@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 # flake8: noqa
+from __future__ import absolute_import, division, print_function, unicode_literals
 import logging
 
 __version__ = '0.0.1'
@@ -75,3 +77,24 @@ logger = getLogger(__name__)
 logging.getLogger('PIL').setLevel(logging.INFO)
 logging.getLogger('PIL.PngImagePlugin').setLevel(logging.INFO)
 logging.getLogger('parse').setLevel(logging.INFO)
+
+from clab.util import profiler
+
+"""
+python -c "import ubelt._internal as a; a.autogen_init('clab', attrs=False)"
+"""
+# <AUTOGEN_INIT>
+from clab import criterions
+from clab import layers
+from clab import filters
+from clab import fit_harness
+from clab import hyperparams
+from clab import im_loaders
+from clab import lr_schedule
+from clab import metrics
+from clab import models
+from clab import netinfo
+from clab import nninit
+from clab import nnio
+from clab import transforms
+from clab import xpu_device

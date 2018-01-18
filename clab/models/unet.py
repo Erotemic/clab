@@ -1,11 +1,11 @@
 import torch.nn as nn
-from clab.torch.models import mixin
+from clab.models import mixin
 import functools
 import math
 import torch
 import torch.nn.functional as F
-from clab.torch import nninit
-from clab.torch.models.output_shape_for import OutputShapeFor
+from clab import nninit
+from clab.models.output_shape_for import OutputShapeFor
 from clab import util
 from clab import getLogger
 logger = getLogger(__name__)
@@ -184,7 +184,7 @@ class UNet(nn.Module, mixin.NetMixin):
     dims, so the input should be mirrored with
 
     Example:
-        >>> from clab.torch.models.unet import *  # NOQA
+        >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 256, 256)
         >>> B, C, W, H = (4, 3, 572, 572)
@@ -198,7 +198,7 @@ class UNet(nn.Module, mixin.NetMixin):
         >>> print(np.array(inputs.size()) - np.array(outputs.size()))
 
     Example:
-        >>> from clab.torch.models.unet import *  # NOQA
+        >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 5, 480, 360)
         >>> n_classes = 11
@@ -302,8 +302,8 @@ class UNet(nn.Module, mixin.NetMixin):
     def find_padding_and_crop_for(self, input_shape):
         """
         Example:
-            >>> from clab.torch.models.unet import *  # NOQA
-            >>> from clab.torch.models.unet import nn, math, torch, F, OutputShapeFor
+            >>> from clab.models.unet import *  # NOQA
+            >>> from clab.models.unet import nn, math, torch, F, OutputShapeFor
             >>> from torch.autograd import Variable
             >>> B, C, W, H = (4, 3, 572, 572)
             >>> B, C, W, H = (4, 3, 372, 400)
@@ -476,7 +476,7 @@ class UNet(nn.Module, mixin.NetMixin):
 
     def forward(self, inputs):
         """
-            >>> from clab.torch.models.unet import *  # NOQA
+            >>> from clab.models.unet import *  # NOQA
             >>> import torch
             >>> from torch.autograd import Variable
             >>> B, C, W, H = (4, 5, 256, 256)
@@ -519,7 +519,7 @@ class UNet(nn.Module, mixin.NetMixin):
     def load_partial_state(model, model_state_dict, shock_partial=True):
         """
         Example:
-            >>> from clab.torch.models.unet import *  # NOQA
+            >>> from clab.models.unet import *  # NOQA
             >>> self1 = UNet(in_channels=5, n_classes=3)
             >>> self2 = UNet(in_channels=6, n_classes=4)
             >>> model_state_dict = self1.state_dict()

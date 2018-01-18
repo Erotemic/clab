@@ -1,8 +1,8 @@
 
 
 def opt_crf():
-    from clab.torch.urban_pred import get_snapshot, urban_mapper_eval_dataset, PredictHarness  # NOQA
-    from clab.torch.sseg_train import task_datasets, get_task, SSegInputsWrapper  # NOQA
+    from clab.urban_pred import get_snapshot, urban_mapper_eval_dataset, PredictHarness  # NOQA
+    from clab.sseg_train import task_datasets, get_task, SSegInputsWrapper  # NOQA
     from clab import util
     import ubelt as ub
 
@@ -292,7 +292,7 @@ def opt_postprocess_boundary():
         # The unsure region is now labeled as zero
 
         """
-        from clab.torch.urban_mapper import draw_gt_contours
+        from clab.urban_mapper import draw_gt_contours
         wseed_color = task.instance_colorize(wseed)
 
         twall_alpha = util.ensure_alpha_channel(twall * 255, alpha=1)
@@ -524,7 +524,7 @@ def junk():
         # The unsure region is now labeled as zero
 
         """
-        from clab.torch.urban_mapper import draw_gt_contours
+        from clab.urban_mapper import draw_gt_contours
         wseed_color = task.instance_colorize(wseed)
 
         twall_alpha = util.ensure_alpha_channel(twall * 255, alpha=1)
