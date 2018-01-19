@@ -2,6 +2,13 @@
 # flake8: noqa
 from __future__ import absolute_import, division, print_function, unicode_literals
 import logging
+import traceback
+import os
+import io
+try:
+    import coloredlogs
+except ImportError:
+    coloredlogs = None
 
 __version__ = '0.0.1'
 
@@ -20,7 +27,6 @@ class CustomLogger(logging.getLoggerClass()):
 
         This function comes straight from the original python one
         """
-        import os
         f = logging.currentframe()
         #On some versions of IronPython, currentframe() returns None if
         #IronPython isn't run with -X:Frames.
@@ -57,15 +63,15 @@ def _init_logger():
     # logfmt = '%(message)s'
     logfmt = '%(levelname)s %(name)s(%(lineno)d): %(message)s'
     level = logging.DEBUG
-    try:
-        import coloredlogs
+    if coloredlogs:
         # The colorscheme can be controlled by several environment variables
         # https://coloredlogs.readthedocs.io/en/latest/#environment-variables
         coloredlogs.install(level=level, fmt=logfmt)
-    except ImportError:
+    else:
         logging.basicConfig(format=logfmt, level=level)
 
 _init_logger()
+
 
 def getLogger(name):
     logger = logging.getLogger(name)
@@ -77,6 +83,7 @@ logger = getLogger(__name__)
 logging.getLogger('PIL').setLevel(logging.INFO)
 logging.getLogger('PIL.PngImagePlugin').setLevel(logging.INFO)
 logging.getLogger('parse').setLevel(logging.INFO)
+
 
 from clab.util import profiler
 

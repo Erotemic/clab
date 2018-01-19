@@ -1,4 +1,5 @@
 import six
+import sys
 import ubelt as ub
 import numpy as np
 import h5py
@@ -389,7 +390,6 @@ class PauseTQDM(object):
 
 
 def protect_print(print):
-    import sys
     # def protected_print(*args, **kw):
     def protected_print(msg):
         # Check if any progress bars are alive

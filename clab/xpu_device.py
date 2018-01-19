@@ -56,6 +56,9 @@ class XPU(ub.NiceRepr):
     @classmethod
     def available(XPU, min_memory=6000):
         gpu_num = gpu_util.find_unused_gpu(min_memory=min_memory)
+        n_available = torch.cuda.device_count()
+        if gpu_num >= n_available:
+            gpu_num = None
         xpu = XPU(gpu_num)
         return xpu
 
