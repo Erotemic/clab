@@ -100,10 +100,8 @@ from clab import hyperparams
 from clab import im_loaders
 from clab import inputs
 from clab import live
-from clab import lr_schedule
 from clab import metrics
 from clab import models
-from clab import netinfo
 from clab import nninit
 from clab import nnio
 from clab import preprocess

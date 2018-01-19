@@ -10,7 +10,6 @@ from clab import util
 from clab import criterions
 from clab import nninit
 from torch.optim.optimizer import required
-# from clab import lr_schedule
 
 
 def _rectify_class(lookup, arg, kw):
@@ -35,7 +34,6 @@ def _rectify_class(lookup, arg, kw):
 def _class_default_params(cls):
     """
     cls = torch.optim.Adam
-    cls = lr_schedule.Exponential
     """
     import inspect
     sig = inspect.signature(cls)
@@ -110,8 +108,6 @@ def _rectify_lr_scheduler(arg, kw):
                 torch.optim.lr_scheduler.MultiStepLR,
                 torch.optim.lr_scheduler.ExponentialLR,
                 torch.optim.lr_scheduler.ReduceLROnPlateau,
-                # lr_schedule.Constant,
-                # lr_schedule.Exponential,
             ]
             cls = {c.__name__: c for c in options}[arg]
         else:
