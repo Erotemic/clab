@@ -126,7 +126,7 @@ def kaiming_normal(tensor, nonlinearity='leaky_relu', param=0, mode='fan_in'):
 
 def kaiming_uniform(tensor, nonlinearity='leaky_relu', param=0, mode='fan_in'):
     if isinstance(tensor, Variable):
-        kaiming_uniform(tensor, nonlinearity, param, mode)
+        kaiming_uniform(tensor.data, nonlinearity=nonlinearity, param=param, mode=mode)
         return tensor
 
     fan = nn.init._calculate_correct_fan(tensor, mode)
