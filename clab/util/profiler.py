@@ -55,7 +55,7 @@ def profile_onthefly(func):
         retval = new_func(*args, **kwargs)
         new_func.print_report()
         return retval
-
+    wraper.new_func = new_func
     return wraper
 
 
