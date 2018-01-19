@@ -84,17 +84,23 @@ from clab.util import profiler
 python -c "import ubelt._internal as a; a.autogen_init('clab', attrs=False)"
 """
 # <AUTOGEN_INIT>
+from clab import augment
 from clab import criterions
-from clab import layers
-from clab import filters
+from clab import early_stop
 from clab import fit_harness
+from clab import folder_structure
 from clab import hyperparams
 from clab import im_loaders
+from clab import inputs
+from clab import live
 from clab import lr_schedule
 from clab import metrics
 from clab import models
 from clab import netinfo
 from clab import nninit
 from clab import nnio
+from clab import preprocess
+from clab import tasks
 from clab import transforms
+from clab import util
 from clab import xpu_device
