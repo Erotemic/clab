@@ -128,6 +128,10 @@ class XPU(ub.NiceRepr):
 
     def load(xpu, fpath):
         print('Loading data onto {} from {}'.format(xpu, fpath))
+        # HACK because we moved metrics module and we should have done that
+        from clab import metrics
+        import sys
+        sys.modules['clab.torch.metrics'] = metrics
         return torch.load(fpath, map_location=xpu.map_location())
 
 
