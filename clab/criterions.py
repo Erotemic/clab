@@ -189,8 +189,8 @@ class CrossEntropyLoss2D(nn.Module):
     """
     def __init__(self, weight=None, size_average=True, ignore_label=-100):
         super(CrossEntropyLoss2D, self).__init__()
-        self.nll_loss = torch.nn.NLLLoss2d(weight, size_average,
-                                           ignore_index=ignore_label)
+        self.nll_loss = torch.nn.NLLLoss(weight, size_average,
+                                         ignore_index=ignore_label)
 
     def forward(self, inputs, targets):
         """

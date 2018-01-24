@@ -313,7 +313,10 @@ class UNet(nn.Module, mixin.NetMixin):
             >>> self.raw_output_shape_for(input_shape)
             >>> prepad, postcrop = self.find_padding_and_crop_for(input_shape)
         """
-        input_shape = tuple(input_shape)
+        B, *rest = input_shape
+        # change batch to something arbitrary because it doesnt matter
+        B = 8
+        input_shape = tuple([B]) + tuple(rest)
         if input_shape in self._cache:
             return self._cache[input_shape]
 
