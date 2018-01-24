@@ -89,6 +89,8 @@ class FolderStructure(object):
         else:
             # OLD WAY
             input_id = self.datasets['train'].input_id
+            if callable(input_id):
+                input_id = input_id()
 
         train_hyper_id_long = hyper.hyper_id()
         train_hyper_id_brief = hyper.hyper_id(short=short, hashed=hashed)

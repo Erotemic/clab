@@ -321,9 +321,9 @@ class EvalSegErr(Exception):
         return repr(self.value)
 
 
-def tpr(output, label, labels, ignore_label=-100):
+def acc(output, label, labels, ignore_label=-100):
     """
-    true positive rate
+    accuracy (this is not tpr because tpr only considers a single class)
 
     Example:
         >>> from clab.sseg_train import *
@@ -335,7 +335,7 @@ def tpr(output, label, labels, ignore_label=-100):
         >>> model = models.UNet(in_channels=train.n_channels, n_classes=train.n_classes)
         >>> output = model(inputs)
         >>> ignore_label = train.ignore_label
-        >>> accuracy = tpr(output, label)
+        >>> accuracy = acc(output, label)
     """
     pred = output.data.max(dim=1)[1]
     true = label.data
@@ -348,7 +348,7 @@ def tpr(output, label, labels, ignore_label=-100):
     # pred = output.data.max(dim=1)[1].cpu().numpy()
     # true = label.data.cpu().numpy()
     # is_tp = pred == true
-    # tpr = is_tp.sum() / is_tp.size
+    # acc = is_tp.sum() / is_tp.size
     # return accuracy
 
 
@@ -384,15 +384,15 @@ def _sseg_metrics(output, label, labels, ignore_label=-100):
     # TODO: fix timetime warnings: Mean of empty slice, invalid value encoutered
     # in true_divide
 
-    pixel_accuracy = pixel_accuracy_from_confusion(cfsn)  # same as tpr
+    pixel_accuracy = pixel_accuracy_from_confusion(cfsn)
     perclass_acc = perclass_accuracy_from_confusion(cfsn)
     perclass_acc = perclass_acc.fillna(0)
     class_accuracy = perclass_acc.mean()
 
     metrics_dict = ub.odict()
     metrics_dict['miou'] = miou
-    metrics_dict['pixel_tpr'] = pixel_accuracy
-    metrics_dict['class_tpr'] = class_accuracy
+    metrics_dict['pixel_acc'] = pixel_accuracy
+    metrics_dict['class_acc'] = class_accuracy
     # if len(perclass_acc) < 3:
     #     for k, acc in perclass_acc.to_dict().items():
     #         metrics_dict['class{}_tpr'.format(k)] = acc
@@ -428,14 +428,14 @@ def _clf_metrics(output, label, all_labels, ignore_label=-100):
         cfsn = cfsn.drop(ignore_label, axis=0)
         cfsn = cfsn.drop(ignore_label, axis=1)
 
-    global_tpr = pixel_accuracy_from_confusion(cfsn)  # same as tpr
+    global_acc = pixel_accuracy_from_confusion(cfsn)
     perclass_acc = perclass_accuracy_from_confusion(cfsn)
     perclass_acc = perclass_acc.fillna(0)
     class_accuracy = perclass_acc.mean()
 
     metrics_dict = ub.odict()
-    metrics_dict['global_tpr'] = global_tpr
-    metrics_dict['class_tpr'] = class_accuracy
+    metrics_dict['global_acc'] = global_acc
+    metrics_dict['class_acc'] = class_accuracy
     return metrics_dict
 
 

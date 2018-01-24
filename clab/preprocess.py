@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DEPRICATE
+REFACTOR
 """
 from __future__ import absolute_import, division, print_function
 import cv2
@@ -20,6 +20,10 @@ print = logger.info
 
 class Preprocessor(object):
     """
+
+    TODO: Rename to input chipper
+
+
     Class for adapting the resolution of input images into a size suitable for
     a network. Also handles on-disk data augmentation.
 

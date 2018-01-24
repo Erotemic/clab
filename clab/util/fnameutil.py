@@ -5,7 +5,8 @@ Processing for filenames. The logic is relatively hacky.
 pip install pygtrie
 """
 from __future__ import print_function, division
-from os.path import commonprefix, isdir, dirname, relpath, splitext
+from os.path import commonprefix, isdir, dirname
+# from os.path import relpath, splitext
 from collections import deque
 import pygtrie
 
