@@ -42,9 +42,9 @@ import ubelt as ub
 import torch
 import torch.nn
 import torchvision  # NOQA
-from clab import xpu_device
 import torch.nn.functional as F
 from torch import nn
+import clab
 
 
 class MnistNet(nn.Module):
@@ -82,9 +82,6 @@ def train_mnist():
     How will you train your model?
     With FitHarness
     """
-    from clab import fit_harness
-    from clab import hyperparams
-    from clab import nninit
     import copy
     import numpy as np
     root = os.path.expanduser('~/data/mnist/')
@@ -135,26 +132,25 @@ def train_mnist():
     }
 
     # Give the training dataset an input_id
-    from clab import util
-    datasets['train'].input_id = 'mnist_' + util.hash_data(train_idx.numpy())[0:8]
+    datasets['train'].input_id = 'mnist_' + ub.hash_data(train_idx.numpy())[0:8]
     del datasets['test']
 
     batch_size = 128
     n_classes = 10
-    xpu = xpu_device.XPU.from_argv(min_memory=300)
+    xpu = clab.xpu_device.XPU.from_argv(min_memory=300)
 
     if False:
-        initializer = (nninit.Pretrained, {
+        initializer = (clab.nninit.Pretrained, {
             'fpath': 'path/to/pretained/weights.pt'
         })
     else:
-        initializer = (nninit.KaimingNormal, {'nonlinearity': 'relu'})
+        initializer = (clab.nninit.KaimingNormal, {'nonlinearity': 'relu'})
 
     """
     # Here is the fit_harness magic.
     # This keeps track of your stuff
     """
-    hyper = hyperparams.HyperParams(
+    hyper = clab.hyperparams.HyperParams(
         model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
         # optimizer=torch.optim.Adam,
         optimizer=(torch.optim.SGD, {'lr': 0.001}),
@@ -170,20 +166,19 @@ def train_mnist():
 
     workdir = os.path.expanduser('~/data/work/mnist/')
 
-    harn = fit_harness.FitHarness(
+    harn = clab.fit_harness.FitHarness(
         datasets=datasets, batch_size=batch_size,
         xpu=xpu, hyper=hyper, dry=dry,
     )
 
     all_labels = np.arange(n_classes)
-    from clab import metrics
 
     @harn.add_metric_hook
     def custom_metrics(harn, output, labels):
         # ignore_label = datasets['train'].ignore_label
         # labels = datasets['train'].task.labels
         label = labels[0]
-        metrics_dict = metrics._clf_metrics(output, label, all_labels=all_labels)
+        metrics_dict = clab.metrics._clf_metrics(output, label, all_labels=all_labels)
         return metrics_dict
 
     train_dpath = harn.setup_dpath(workdir, hashed=True)
