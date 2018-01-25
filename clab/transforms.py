@@ -124,7 +124,7 @@ class DTMCenterScale(object):
 
     def __setstate__(self, state):
         for key, value in state.items():
-            setattr(key, value)
+            setattr(self, key, value)
 
 
 class ImageCenterScale(ub.NiceRepr):
@@ -149,7 +149,7 @@ class ImageCenterScale(ub.NiceRepr):
 
     def __setstate__(self, state):
         for key, value in state.items():
-            setattr(key, value)
+            setattr(self, key, value)
 
 
 class ZipTransforms():
