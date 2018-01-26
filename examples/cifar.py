@@ -44,7 +44,7 @@ class Task(object):
         task.relevant_labels = np.setdiff1d(task.labels, task.ignore_labels)
 
 
-def radial_fourier_mask(img_chw):
+def radial_fourier_mask(img_chw, radius=11):
     """
     In [1] they use a radius of 11.0 on CIFAR-10.
 
@@ -60,14 +60,77 @@ def radial_fourier_mask(img_chw):
         >>> dset.center_inputs = None
         >>> img_tensor, label = dset[4]
         >>> img_chw = img_tensor.numpy()
+        >>> out = radial_fourier_mask(img_chw, radius=11)
         >>> # xdoc: REQUIRES(--show)
         >>> import plottool as pt
         >>> pt.qtensure()
-        >>> pt.imshow(img_chw.transpose(1, 2, 0))
-        >>> dft = [cv2.dft(chan, flags=cv2.DFT_COMPLEX_OUTPUT) for chan in img_chw]
+        >>> def rgb_to_bgr(im):
+        >>>     needs_transpose = (im.shape[0] == 3)
+        >>>     if needs_transpose:
+        >>>         im = im.transpose(1, 2, 0)
+        >>>     out = util.convert_colorspace(im, src_space='rgb', dst_space='bgr')
+        >>>     if needs_transpose:
+        >>>         out = out.transpose(2, 0, 1)
+        >>>     return out
+        >>> def to_lab(im):
+        >>>     needs_transpose = (im.shape[0] == 3)
+        >>>     if needs_transpose:
+        >>>         im = im.transpose(1, 2, 0)
+        >>>     out = util.convert_colorspace(im, src_space='bgr', dst_space='lab')
+        >>>     if needs_transpose:
+        >>>         out = out.transpose(2, 0, 1)
+        >>>     return out
+        >>> def to_bgr(im):
+        >>>     needs_transpose = (im.shape[0] == 3)
+        >>>     if needs_transpose:
+        >>>         im = im.transpose(1, 2, 0)
+        >>>     out = util.convert_colorspace(im, src_space='lab', dst_space='bgr')
+        >>>     if needs_transpose:
+        >>>         out = out.transpose(2, 0, 1)
+        >>>     return out
+        >>> bgr_img = rgb_to_bgr(img_chw)
+        >>> pt.imshow(bgr_img.transpose(1, 2, 0), fnum=3)
+        >>> pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>> for r in range(0, 17):
+        >>>     imgt = radial_fourier_mask(bgr_img, r)
+        >>>     pt.imshow(imgt.transpose(1, 2, 0), pnum=pnum_(), fnum=1)
+        >>> pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>> for r in range(0, 17):
+        >>>     imgt = to_bgr(radial_fourier_mask(to_lab(bgr_img), r)).transpose(1, 2, 0)
+        >>>     imgt = to_bgr(to_lab(bgr_img)).transpose(1, 2, 0)
+        >>>     pt.imshow(imgt, pnum=pnum_(), fnum=2)
+        >>>     #pt.imshow(to_bgr(to_lab(bgr_img)).transpose(1, 2, 0), pnum=pnum_(), fnum=2)
     """
     import cv2
     rows, cols = img_chw.shape[1:3]
+
+    def fourier(s):
+        # note: cv2 functions would probably be faster here
+        return np.fft.fftshift(np.fft.fft2(s))
+
+    def inv_fourier(f):
+        return np.abs(np.fft.ifft2(np.fft.ifftshift(f)))
+
+    diam = radius * 2
+    left = int(np.floor((cols - diam) / 2))
+    right = int(np.ceil((cols - diam) / 2))
+    top = int(np.floor((rows - diam) / 2))
+    bot = int(np.ceil((rows - diam) / 2))
+
+    # element = skimage.morphology.disk(radius)
+    # mask = np.pad(element, ((top, bot), (left, right)), 'constant')
+    if diam > 0:
+        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (diam, diam))
+        mask = cv2.copyMakeBorder(element, top, bot, left, right, cv2.BORDER_CONSTANT, value=0)
+    else:
+        mask = 0
+
+    out = np.empty_like(img_chw)
+    for i, s in enumerate(img_chw):
+        # hadamard product (aka simple element-wise multiplication)
+        out[i] = inv_fourier(fourier(s) * mask)
+    return out
+
     # nrows = cv2.getOptimalDFTSize(rows)
     # ncols = cv2.getOptimalDFTSize(cols)
     # right = ncols - cols
@@ -77,42 +140,13 @@ def radial_fourier_mask(img_chw):
     #     nimg = cv2.copyMakeBorder(img, 0, bottom, 0, right, bordertype, value=0)
     # dft_chans = [cv2.dft(chan, flags=cv2.DFT_COMPLEX_OUTPUT) for chan in img_chw]
     # dft = np.dstack(dft_chans).transpose(2, 0, 1)
-
-    def fourier(s):
-        return np.fft.fftshift(np.fft.fft2(s))
-
-    def inv_fourier(f):
-        return np.abs(np.fft.ifft2(np.fft.ifftshift(f)))
-
-    radius = 11
-    diam = radius * 2
-    element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (diam, diam))
-    left = int(np.floor((cols - diam) / 2))
-    right = int(np.ceil((cols - diam) / 2))
-    top = int(np.floor((rows - diam) / 2))
-    bot = int(np.ceil((rows - diam) / 2))
-    mask = cv2.copyMakeBorder(element, top, bot, left, right, cv2.BORDER_CONSTANT, value=0)
-
-    new_img = []
-    for s in img_chw:
-        f = fourier(s)
-        f2 = np.multiply(f, mask)  # elementwise hadamard product
-        s2 = inv_fourier(f2)
-        new_img.append(s2)
-
-    new_img = np.dstack(new_img)
-
     # dft_mag = np.dstack([(c ** 2).sum(axis=-1) for c in dft_chans]).transpose(2, 0, 1)
-
     # dft_shift = [np.fft.fftshift(c) for c in dft_chans]
-
     # dft_mag = np.dstack([(c ** 2).sum(axis=-1) for c in dft_shift]).transpose(2, 0, 1)
-
     # dft_filt_shift = [c * mask[:, :, None] for c in dft_shift]
     # dft_filt = [np.fft.ifftshift(c) for c in dft_filt_shift]
     # idft_filt = [cv2.idft(c) for c in dft_filt]
     # img_filt = np.dstack([np.linalg.norm(c, axis=-1) for c in idft_filt])
-
     # pt.imshow(dft_mag.transpose(1, 2, 0), norm=True)
     # if False:
     #     pt.imshow(np.log(dft_mag[0]), norm=True, pnum=(1, 3, 1))
