@@ -60,15 +60,25 @@ logging.setLoggerClass(CustomLogger)
 
 
 def _init_logger():
+    """
+    References:
+        https://logmatic.io/blog/python-logging-with-json-steroids/
+    """
     # logfmt = '%(message)s'
     logfmt = '%(levelname)s %(name)s(%(lineno)d): %(message)s'
-    level = logging.DEBUG
+    level = logging.INFO
     if coloredlogs:
         # The colorscheme can be controlled by several environment variables
         # https://coloredlogs.readthedocs.io/en/latest/#environment-variables
         coloredlogs.install(level=level, fmt=logfmt)
     else:
+        # basic logging configures the root logger, we only want to influence
+        # the clab logger.
         logging.basicConfig(format=logfmt, level=level)
+
+    logging.getLogger('PIL').setLevel(logging.INFO)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.INFO)
+    logging.getLogger('parse').setLevel(logging.INFO)
 
 _init_logger()
 
@@ -79,10 +89,6 @@ def getLogger(name):
     return logger
 
 logger = getLogger(__name__)
-
-logging.getLogger('PIL').setLevel(logging.INFO)
-logging.getLogger('PIL.PngImagePlugin').setLevel(logging.INFO)
-logging.getLogger('parse').setLevel(logging.INFO)
 
 
 from clab.util import profiler
