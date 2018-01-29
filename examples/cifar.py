@@ -37,10 +37,121 @@ class Task(object):
             task.labelname_to_id[k] = task.labelname_to_id[v]
 
         task.ignore_labelnames = ignore_labelnames
-        task.ignore_labels = np.array(list(ub.take(task.labelname_to_id, task.ignore_labelnames)))
+        task.ignore_labels = np.array(
+            list(ub.take(task.labelname_to_id, task.ignore_labelnames)))
 
         task.labels = np.arange(len(task.labelnames))
         task.relevant_labels = np.setdiff1d(task.labels, task.ignore_labels)
+
+
+def radial_fourier_mask(img_chw, radius=11):
+    """
+    In [1] they use a radius of 11.0 on CIFAR-10.
+
+    Args:
+        img_chw (ndarray): assumed to be float 01
+
+    References:
+        [1] Jo and Bengio "Measuring the tendency of CNNs to Learn Surface Statistical Regularities" 2017.
+        https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_imgproc/py_transforms/py_fourier_transform/py_fourier_transform.html
+
+    Example:
+        >>> dset = cifar_training_datasets()['test']
+        >>> dset.center_inputs = None
+        >>> img_tensor, label = dset[4]
+        >>> img_chw = img_tensor.numpy()
+        >>> out = radial_fourier_mask(img_chw, radius=11)
+        >>> # xdoc: REQUIRES(--show)
+        >>> import plottool as pt
+        >>> pt.qtensure()
+        >>> def rgb_to_bgr(im):
+        >>>     needs_transpose = (im.shape[0] == 3)
+        >>>     if needs_transpose:
+        >>>         im = im.transpose(1, 2, 0)
+        >>>     out = util.convert_colorspace(im, src_space='rgb', dst_space='bgr')
+        >>>     if needs_transpose:
+        >>>         out = out.transpose(2, 0, 1)
+        >>>     return out
+        >>> def to_lab(im):
+        >>>     needs_transpose = (im.shape[0] == 3)
+        >>>     if needs_transpose:
+        >>>         im = im.transpose(1, 2, 0)
+        >>>     out = util.convert_colorspace(im, src_space='bgr', dst_space='lab')
+        >>>     if needs_transpose:
+        >>>         out = out.transpose(2, 0, 1)
+        >>>     return out
+        >>> def to_bgr(im):
+        >>>     needs_transpose = (im.shape[0] == 3)
+        >>>     if needs_transpose:
+        >>>         im = im.transpose(1, 2, 0)
+        >>>     out = util.convert_colorspace(im, src_space='lab', dst_space='bgr')
+        >>>     if needs_transpose:
+        >>>         out = out.transpose(2, 0, 1)
+        >>>     return out
+        >>> bgr_img = rgb_to_bgr(img_chw)
+        >>> pt.imshow(bgr_img.transpose(1, 2, 0), fnum=3)
+        >>> pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>> for r in range(0, 17):
+        >>>     imgt = radial_fourier_mask(bgr_img, r)
+        >>>     pt.imshow(imgt.transpose(1, 2, 0), pnum=pnum_(), fnum=1)
+        >>> pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>> for r in range(0, 17):
+        >>>     imgt = to_bgr(radial_fourier_mask(to_lab(bgr_img), r)).transpose(1, 2, 0)
+        >>>     imgt = to_bgr(to_lab(bgr_img)).transpose(1, 2, 0)
+        >>>     pt.imshow(imgt, pnum=pnum_(), fnum=2)
+        >>>     #pt.imshow(to_bgr(to_lab(bgr_img)).transpose(1, 2, 0), pnum=pnum_(), fnum=2)
+    """
+    import cv2
+    rows, cols = img_chw.shape[1:3]
+
+    def fourier(s):
+        # note: cv2 functions would probably be faster here
+        return np.fft.fftshift(np.fft.fft2(s))
+
+    def inv_fourier(f):
+        return np.abs(np.fft.ifft2(np.fft.ifftshift(f)))
+
+    diam = radius * 2
+    left = int(np.floor((cols - diam) / 2))
+    right = int(np.ceil((cols - diam) / 2))
+    top = int(np.floor((rows - diam) / 2))
+    bot = int(np.ceil((rows - diam) / 2))
+
+    # element = skimage.morphology.disk(radius)
+    # mask = np.pad(element, ((top, bot), (left, right)), 'constant')
+    if diam > 0:
+        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (diam, diam))
+        mask = cv2.copyMakeBorder(element, top, bot, left, right, cv2.BORDER_CONSTANT, value=0)
+    else:
+        mask = 0
+
+    out = np.empty_like(img_chw)
+    for i, s in enumerate(img_chw):
+        # hadamard product (aka simple element-wise multiplication)
+        out[i] = inv_fourier(fourier(s) * mask)
+    return out
+
+    # nrows = cv2.getOptimalDFTSize(rows)
+    # ncols = cv2.getOptimalDFTSize(cols)
+    # right = ncols - cols
+    # bottom = nrows - rows
+    # if right or bottom:
+    #     bordertype = cv2.BORDER_CONSTANT  # just to avoid line breakup in PDF file
+    #     nimg = cv2.copyMakeBorder(img, 0, bottom, 0, right, bordertype, value=0)
+    # dft_chans = [cv2.dft(chan, flags=cv2.DFT_COMPLEX_OUTPUT) for chan in img_chw]
+    # dft = np.dstack(dft_chans).transpose(2, 0, 1)
+    # dft_mag = np.dstack([(c ** 2).sum(axis=-1) for c in dft_chans]).transpose(2, 0, 1)
+    # dft_shift = [np.fft.fftshift(c) for c in dft_chans]
+    # dft_mag = np.dstack([(c ** 2).sum(axis=-1) for c in dft_shift]).transpose(2, 0, 1)
+    # dft_filt_shift = [c * mask[:, :, None] for c in dft_shift]
+    # dft_filt = [np.fft.ifftshift(c) for c in dft_filt_shift]
+    # idft_filt = [cv2.idft(c) for c in dft_filt]
+    # img_filt = np.dstack([np.linalg.norm(c, axis=-1) for c in idft_filt])
+    # pt.imshow(dft_mag.transpose(1, 2, 0), norm=True)
+    # if False:
+    #     pt.imshow(np.log(dft_mag[0]), norm=True, pnum=(1, 3, 1))
+    #     pt.imshow(np.log(dft_mag[1]), norm=True, pnum=(1, 3, 2))
+    #     pt.imshow(np.log(dft_mag[2]), norm=True, pnum=(1, 3, 3))
 
 
 def zca_whitening_matrix(X):
@@ -104,7 +215,8 @@ class CIFAR10_Task(Task):
         import pickle
         train_dset = cifar.CIFAR10(root=task.root, download=False, train=True)
 
-        fpath = join(train_dset.root, cifar.CIFAR10.base_folder, 'batches.meta')
+        fpath = join(train_dset.root,
+                     cifar.CIFAR10.base_folder, 'batches.meta')
         with open(fpath, 'rb') as fo:
             entry = pickle.load(fo, encoding='latin1')
             labelnames = entry['label_names']
@@ -332,7 +444,8 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
                                      dst_space=dset.output_colorspace)
         # Do centering of inputs
-        im = dset.center_inputs(im)
+        if dset.center_inputs:
+            im = dset.center_inputs(im)
         return im, gt
 
     def __getitem__(dset, index):
@@ -437,14 +550,18 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
     vali_inputs = inputs.take(vali_idxs, tag='vali')
     test_inputs, _ = cifar_inputs(train=False, cifar_num=cifar_num)
     # The dataset name and indices should fully specifiy dependencies
-    train_inputs._set_id_from_dependency(['cifar{}-train'.format(cifar_num), train_idxs])
-    vali_inputs._set_id_from_dependency(['cifar{}-train'.format(cifar_num), vali_idxs])
+    train_inputs._set_id_from_dependency(
+        ['cifar{}-train'.format(cifar_num), train_idxs])
+    vali_inputs._set_id_from_dependency(
+        ['cifar{}-train'.format(cifar_num), vali_idxs])
     test_inputs._set_id_from_dependency(['cifar{}-test'.format(cifar_num)])
 
     workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
 
-    train_dset = CIFAR_Wrapper(train_inputs, task, workdir, output_colorspace=output_colorspace)
-    vali_dset = CIFAR_Wrapper(vali_inputs, task, workdir, output_colorspace=output_colorspace)
+    train_dset = CIFAR_Wrapper(
+        train_inputs, task, workdir, output_colorspace=output_colorspace)
+    vali_dset = CIFAR_Wrapper(
+        vali_inputs, task, workdir, output_colorspace=output_colorspace)
     test_dset = CIFAR_Wrapper(test_inputs, task, workdir,
                               output_colorspace=output_colorspace)
     print('built datasets')
@@ -456,7 +573,8 @@ def cifar_training_datasets(output_colorspace='RGB', norm_mode='independent',
     }
 
     print('computing normalizers')
-    datasets['train'].center_inputs = datasets['train']._make_normalizer(norm_mode)
+    datasets['train'].center_inputs = datasets['train']._make_normalizer(
+        norm_mode)
     for key in datasets.keys():
         datasets[key].center_inputs = datasets['train'].center_inputs
     print('computed normalizers')
@@ -478,11 +596,14 @@ def train():
     cifar_num = 10
 
     if ub.argflag('--lab'):
-        datasets = cifar_training_datasets(output_colorspace='LAB', norm_mode='independent', cifar_num=cifar_num)
+        datasets = cifar_training_datasets(
+            output_colorspace='LAB', norm_mode='independent', cifar_num=cifar_num)
     elif ub.argflag('--rgb-indie'):
-        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='independent', cifar_num=cifar_num)
+        datasets = cifar_training_datasets(
+            output_colorspace='RGB', norm_mode='independent', cifar_num=cifar_num)
     else:
-        datasets = cifar_training_datasets(output_colorspace='RGB', norm_mode='dependant', cifar_num=cifar_num)
+        datasets = cifar_training_datasets(
+            output_colorspace='RGB', norm_mode='dependant', cifar_num=cifar_num)
 
     import clab.models.densenet
 
@@ -507,7 +628,8 @@ def train():
         # Specify anything else that is special about your hyperparams here
         # Especially if you make a custom_batch_runner
         other={
-            'augment': datasets['train'].augment,  # TODO: type of augmentation as a parameter dependency
+            # TODO: type of augmentation as a parameter dependency
+            'augment': datasets['train'].augment,
 
             'colorspace': datasets['train'].output_colorspace,
             'n_classes': datasets['train'].n_classes,
