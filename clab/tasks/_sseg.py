@@ -59,7 +59,7 @@ class SemanticSegmentationTask(object):
         task.labels = np.arange(len(task.classnames))
         task.relevant_labels = np.setdiff1d(task.labels, task.ignore_labels)
         # NOTE: WE ASSUME COLORS ARE IN BGR
-        distinct_colors = colorutil.make_distinct_bgr01_colors(len(task.classnames))
+        distinct_colors = colorutil.make_distinct_bgr255_colors(len(task.classnames))
         task.class_colors = OrderedDict(zip(task.classnames, distinct_colors))
 
         if hasattr(task, 'customize_colors'):

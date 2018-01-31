@@ -2,6 +2,13 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 
 
+def make_distinct_bgr255_colors(num):
+    colors = make_distinct_bgr01_colors(num)
+    colors = (np.array(colors) * 255).astype(np.int)
+    colors = [x.tolist() for x in colors]
+    return colors
+
+
 def make_distinct_bgr01_colors(num):
     import matplotlib as mpl
     import matplotlib._cm  as _cm
@@ -9,7 +16,7 @@ def make_distinct_bgr01_colors(num):
         'gist_rainbow', _cm.datad['gist_rainbow'],
         mpl.rcParams['image.lut'])
     distinct_colors = [
-        (np.array(cm(i / num)) * 255).astype(np.int).tolist()[0:3][::-1]
+        np.array(cm(i / num)).tolist()[0:3][::-1]
         for i in range(num)
     ]
     return distinct_colors
