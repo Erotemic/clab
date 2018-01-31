@@ -79,6 +79,7 @@ def _init_logger():
     logging.getLogger('PIL').setLevel(logging.INFO)
     logging.getLogger('PIL.PngImagePlugin').setLevel(logging.INFO)
     logging.getLogger('parse').setLevel(logging.INFO)
+    logging.getLogger('parso').setLevel(logging.INFO)
 
 _init_logger()
 
