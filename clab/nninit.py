@@ -196,16 +196,25 @@ class VGG16(_BaseInitializer):
 
             rxs, cxs = util.mincost_assignment(cost)
 
+            print('Alignment')
+            print('rxs = {!r}'.format(rxs))
+            print('cxs = {!r}'.format(cxs))
+
             aligned_layers = [
                 (src_layers[rx], dst_layers[cx])
                 for rx, cx in zip(rxs, cxs)
             ]
+            for src, dst in aligned_layers:
+                print('src = {!r}'.format(src))
+                print('dst = {!r}'.format(dst))
+                print('-----')
+                pass
             print('Able to align {} / {} dst layers from {} src layers'.format(len(aligned_layers), len(dst_layers), len(src_layers)))
             if not aligned_layers:
                 raise
 
         # Copy over weights based on the assignment
-        for src, other in aligned_layers:
+        for src, dst in aligned_layers:
             si, so, sh, sw = src.weight.size()
             di, do, dh, dw = dst.weight.size()
 
