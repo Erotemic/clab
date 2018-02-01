@@ -494,9 +494,11 @@ def make_idstr(d):
     """
     if d is None:
         return ''
-    if len(d) == 0:
+    elif isinstance(d, six.string_types):
+        return d
+    elif len(d) == 0:
         return ''
-    if not isinstance(d, ub.odict):
+    elif not isinstance(d, ub.odict):
         d = ub.odict(sorted(d.items()))
     return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True)
 
