@@ -223,8 +223,10 @@ class VGG16(_BaseInitializer):
             # the spatial dimensions should be the same though.
             mo = min(so, do)
             mi = min(si, di)
+
+            # mb = min(dst.bias.size(), src.bias.size())
             dst.weight.data[0:mi, 0:mo, :, :] = src.weight.data[0:mi, 0:mo, :, :]
-            dst.bias.data = src.bias.data
+            dst.bias.data[:] = src.bias.data[:]
 
     def history(self):
         """
