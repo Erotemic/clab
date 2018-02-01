@@ -200,7 +200,7 @@ class VGG16(_BaseInitializer):
                 (src_layers[rx], dst_layers[cx])
                 for rx, cx in zip(rxs, cxs)
             ]
-            print('Able to align {} layers'.format(len(aligned_layers)))
+            print('Able to align {} / {} dst layers from {} src layers'.format(len(aligned_layers), len(dst_layers), len(src_layers)))
             if not aligned_layers:
                 raise
 

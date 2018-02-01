@@ -135,6 +135,7 @@ class FolderStructure(object):
             'link_dpath': link_dpath,
 
             # TODO: add in n_classes if applicable
+            # TODO: add in centering if applicable
 
             # HACKED IN
             'augment': hyper.augment,
