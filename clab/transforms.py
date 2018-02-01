@@ -529,6 +529,7 @@ class RandomWarpAffine(object):
             >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2) * 2000 - 1000
             >>> xdata = [2, 4, 8, 16, 32, 64, 80, 128, 192, 256, 384, 512, 768, 1024, 2048]
             >>> #
+            >>> ub.Timerit.DEFAULT_VERBOSE = False
             >>> ydatas = ub.ddict(list)
             >>> N = 30
             >>> for size in xdata:
