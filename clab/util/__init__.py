@@ -21,14 +21,16 @@ else:
     from clab.util import mplutil
     from clab.util import nputil
     from clab.util import priority_queue
+    from clab.util import profiler
+    from clab.util import util_alg
     from clab.util.colorutil import (colorbar_image, convert_hex_to_255,
                                      lookup_bgr255, make_distinct_bgr01_colors,
-                                     make_heatmask,)
+                                     make_distinct_bgr255_colors, make_heatmask,)
     from clab.util.fnameutil import (align_paths, check_aligned, dumpsafe,
                                      shortest_unique_prefixes,
                                      shortest_unique_suffixes,)
     from clab.util.gpu_util import (find_unused_gpu, gpu_info, have_gpu, num_gpus,)
-    from clab.util.hashutil import (HashableExtensions, hash_data, hash_file,)
+    from clab.util.hashutil import (hash_data, hash_file,)
     from clab.util.imutil import (CV2_INTERPOLATION_TYPES, InternalRunningStats,
                                   RunningStats, absdev, adjust_gamma,
                                   atleast_3channels, convert_colorspace,
@@ -43,10 +45,11 @@ else:
                                     NumpyEncoder, json_numpy_obj_hook, read_json,
                                     walk_json, write_json,)
     from clab.util.misc import (PauseTQDM, cc_locs, clean_tensorboard_protobufs,
-                                compact_idstr, ensure_rng, isiterable, make_idstr,
-                                make_short_idstr, protect_print, random_indices,
-                                read_arr, read_h5arr, roundrobin, super2,
-                                write_arr, write_h5arr,)
+                                compact_idstr, ensure_rng, get_stack_frame,
+                                isiterable, make_idstr, make_short_idstr,
+                                protect_print, random_indices, read_arr,
+                                read_h5arr, roundrobin, super2, write_arr,
+                                write_h5arr,)
     from clab.util.mplutil import (adjust_subplots, axes_extent,
                                    copy_figure_to_clipboard, extract_axes_extents,
                                    figure, pandas_plot_matrix,
@@ -54,4 +57,10 @@ else:
     from clab.util.nputil import (apply_grouping, atleast_nd, group_indices,
                                   group_items, isect_flags, iter_reduce_ufunc,)
     from clab.util.priority_queue import (PriorityQueue, SortedQueue,)
+    from clab.util.profiler import (IS_PROFILING, IS_PROFILING, KernprofParser,
+                                    dump_global_profile_report, dynamic_profile,
+                                    find_parent_class, find_pattern_above_row,
+                                    find_pyclass_above_row, profile, profile,
+                                    profile_onthefly,)
+    from clab.util.util_alg import (mincost_assignment,)
     # </AUTOGEN_INIT>

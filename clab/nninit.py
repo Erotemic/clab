@@ -83,6 +83,169 @@ class Pretrained(_BaseInitializer):
             return '__UNKNOWN__'
 
 
+class VGG16(_BaseInitializer):
+    """
+    Attempts to shoehorn VGG weights into a particular model.
+    Will only work if the structure of the new model somewhat resembles
+
+
+    Attributes:
+        fpath (str): location of the pretrained weights file
+        initializer (_BaseInitializer): backup initializer if the weights can
+            only be partially applied
+
+    Example:
+        >>> from clab.nninit import *
+        >>> import clab
+        >>> model = clab.models.segnet.SegNet(n_classes=5)
+        >>> self = VGG16()
+
+    """
+    def __init__(self, initializer='KaimingUniform'):
+        if isinstance(initializer, str):
+            from clab import nninit
+            initializer = getattr(nninit, initializer)()
+        self.initializer = initializer
+
+    def forward(self, model):
+        import torchvision
+
+        # do backup initialization first
+        self.initializer(model)
+
+        print('extracting VGG-16 params.')
+        print('Note your model should partially agree with VGG structure')
+        vgg16 = torchvision.models.vgg16(pretrained=True)
+        vgg_layers = [_layer for _layer in vgg16.features.children()
+                      if isinstance(_layer, nn.Conv2d)]
+
+        # see how the model best lines up
+        model_layers = [_layer for _layer in trainable_layers(model)
+                        if isinstance(_layer, nn.Conv2d)]
+
+        src_layers = vgg_layers
+        dst_layers = model_layers
+
+        def layer_incompatibility(src, dst):
+            """
+            Measure how compatible two layers are
+            """
+            si, so, sh, sw = src.weight.size()
+            di, do, dh, dw = dst.weight.size()
+
+            incompatibility = 0
+
+            # determine if the two layers are compatible
+            compatible = True
+            compatible &= (src.stride == dst.stride)
+            compatible &= (src.padding == dst.padding)
+            compatible &= (src.output_padding == dst.output_padding)
+            compatible &= (src.groups == dst.groups)
+            compatible &= (src.dilation == dst.dilation)
+            compatible &= (src.transposed == dst.transposed)
+            compatible &= src.bias.size() == dst.bias.size()
+
+            if si == di and so <= do and sh == dh and sw == dw:
+                # compatible = False
+                incompatibility = abs(so - do)
+            else:
+                compatible = False
+
+            if not compatible:
+                incompatibility = float('inf')
+
+            return incompatibility
+
+        try:
+            aligned_layers = []
+            for src, dst in zip(src_layers, dst_layers):
+
+                incompatibility = layer_incompatibility(src, dst)
+
+                if incompatibility != 0:
+                    raise AssertionError('VGG16 is not perfectly compatible')
+
+                aligned_layers.append((src, dst))
+        except AssertionError:
+            print('VGG initialization is not perfect')
+
+            # TODO: solve a matching problem to get a partial assignment
+            src_idxs = list(range(len(src_layers)))
+            dst_idxs = list(range(len(dst_layers)))
+
+            cost = np.full((len(src_idxs), len(dst_idxs)), np.inf)
+
+            import itertools as it
+            for sx, dx in it.product(src_idxs, dst_idxs):
+                src = src_layers[sx]
+                dst = dst_layers[dx]
+                incompatibility = layer_incompatibility(src, dst)
+                cost[sx, dx] = incompatibility
+
+        def mincost_assignment(cost):
+            """
+            Does linear_sum_assignment, but can handle non-square matrices
+            """
+            import scipy
+            import scipy.optimize
+            partial = cost.copy()
+            finite_vals = partial[np.isfinite(partial)]
+            if len(finite_vals) == 0:
+                finite_vals  = np.array([1])
+            # find numbers that are effective infinities
+            effective_posinf = +(abs(finite_vals.max()) + 1) * (partial.size ** 2)
+            effective_neginf = -(abs(finite_vals.min()) + 1) * (partial.size ** 2)
+
+            partial[np.isposinf(partial)] = effective_posinf
+            partial[np.isneginf(partial)] = effective_neginf
+
+            # make the matrix square
+            extra_rows = []
+            extra_cols = []
+            nrows, ncols = partial.shape
+            ndim = max(nrows, ncols)
+
+            extra_rows = np.full((max(ncols - nrows, 0), ndim), effective_posinf)
+            extra_cols = np.full((ndim, max(nrows - ncols, 0)), effective_posinf)
+
+            cost_matrix = partial.copy()
+            cost_matrix = np.vstack([cost_matrix, extra_rows])
+            cost_matrix = np.hstack([cost_matrix, extra_cols])
+
+            rxs, cxs = scipy.optimize.linear_sum_assignment(cost_matrix)
+
+            # Remove solutions that lie in extra rows / columns
+            flags = (rxs < nrows) & (cxs < ncols)
+
+            valid_rxs = rxs[flags]
+            valid_cxs = cxs[flags]
+            return valid_rxs, valid_cxs
+
+        # Copy over weights based on the assignment
+        for src, other in aligned_layers:
+            si, so, sh, sw = src.weight.size()
+            di, do, dh, dw = dst.weight.size()
+
+            # we can handle different size input output channels by just
+            # copying over as much as we can. We should probably assert that
+            # the spatial dimensions should be the same though.
+            mo = min(so, do)
+            mi = min(si, di)
+            dst.weight.data[0:mi, 0:mo, :, :] = src.weight.data[0:mi, 0:mo, :, :]
+            dst.bias.data = src.bias.data
+
+    def history(self):
+        """
+        if available return the history of the model as well
+        """
+        info_dpath = dirname(dirname(ub.truepath(self.fpath)))
+        info_fpath = join(info_dpath, 'train_info.json')
+        if exists(info_fpath):
+            return util.read_json(info_fpath)
+        else:
+            return 'VGG16'
+
+
 class NoOp(_BaseInitializer):
     """
     Example:

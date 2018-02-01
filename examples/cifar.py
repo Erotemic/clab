@@ -1,7 +1,7 @@
 import numpy as np
 import ubelt as ub
 import torch
-import torchvision
+# import torchvision
 import pandas as pd
 from torchvision.datasets import cifar
 from clab import xpu_device
@@ -44,7 +44,7 @@ class Task(object):
         task.relevant_labels = np.setdiff1d(task.labels, task.ignore_labels)
 
 
-def radial_fourier_mask(img_chw, radius=11):
+def radial_fourier_mask(img_chw, radius=11, axis=None, clip=None):
     """
     In [1] they use a radius of 11.0 on CIFAR-10.
 
@@ -55,51 +55,76 @@ def radial_fourier_mask(img_chw, radius=11):
         [1] Jo and Bengio "Measuring the tendency of CNNs to Learn Surface Statistical Regularities" 2017.
         https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_imgproc/py_transforms/py_fourier_transform/py_fourier_transform.html
 
+    CommandLine:
+        python examples/cifar.py radial_fourier_mask --show
+
     Example:
         >>> dset = cifar_training_datasets()['test']
         >>> dset.center_inputs = None
-        >>> img_tensor, label = dset[4]
+        >>> img_tensor, label = dset[7]
         >>> img_chw = img_tensor.numpy()
         >>> out = radial_fourier_mask(img_chw, radius=11)
         >>> # xdoc: REQUIRES(--show)
         >>> import plottool as pt
         >>> pt.qtensure()
+        >>> def keepdim(func):
+        >>>     def _wrap(im):
+        >>>         needs_transpose = (im.shape[0] == 3)
+        >>>         if needs_transpose:
+        >>>             im = im.transpose(1, 2, 0)
+        >>>         out = func(im)
+        >>>         if needs_transpose:
+        >>>             out = out.transpose(2, 0, 1)
+        >>>         return out
+        >>>     return _wrap
+        >>> @keepdim
         >>> def rgb_to_bgr(im):
-        >>>     needs_transpose = (im.shape[0] == 3)
-        >>>     if needs_transpose:
-        >>>         im = im.transpose(1, 2, 0)
-        >>>     out = util.convert_colorspace(im, src_space='rgb', dst_space='bgr')
-        >>>     if needs_transpose:
-        >>>         out = out.transpose(2, 0, 1)
-        >>>     return out
-        >>> def to_lab(im):
-        >>>     needs_transpose = (im.shape[0] == 3)
-        >>>     if needs_transpose:
-        >>>         im = im.transpose(1, 2, 0)
-        >>>     out = util.convert_colorspace(im, src_space='bgr', dst_space='lab')
-        >>>     if needs_transpose:
-        >>>         out = out.transpose(2, 0, 1)
-        >>>     return out
-        >>> def to_bgr(im):
-        >>>     needs_transpose = (im.shape[0] == 3)
-        >>>     if needs_transpose:
-        >>>         im = im.transpose(1, 2, 0)
-        >>>     out = util.convert_colorspace(im, src_space='lab', dst_space='bgr')
-        >>>     if needs_transpose:
-        >>>         out = out.transpose(2, 0, 1)
-        >>>     return out
-        >>> bgr_img = rgb_to_bgr(img_chw)
-        >>> pt.imshow(bgr_img.transpose(1, 2, 0), fnum=3)
-        >>> pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
-        >>> for r in range(0, 17):
-        >>>     imgt = radial_fourier_mask(bgr_img, r)
-        >>>     pt.imshow(imgt.transpose(1, 2, 0), pnum=pnum_(), fnum=1)
-        >>> pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
-        >>> for r in range(0, 17):
-        >>>     imgt = to_bgr(radial_fourier_mask(to_lab(bgr_img), r)).transpose(1, 2, 0)
-        >>>     imgt = to_bgr(to_lab(bgr_img)).transpose(1, 2, 0)
-        >>>     pt.imshow(imgt, pnum=pnum_(), fnum=2)
-        >>>     #pt.imshow(to_bgr(to_lab(bgr_img)).transpose(1, 2, 0), pnum=pnum_(), fnum=2)
+        >>>     return util.convert_colorspace(im, src_space='rgb', dst_space='bgr')
+        >>> @keepdim
+        >>> def bgr_to_lab(im):
+        >>>     return util.convert_colorspace(im, src_space='bgr', dst_space='lab')
+        >>> @keepdim
+        >>> def lab_to_bgr(im):
+        >>>     return util.convert_colorspace(im, src_space='lab', dst_space='bgr')
+        >>> @keepdim
+        >>> def bgr_to_yuv(im):
+        >>>     return util.convert_colorspace(im, src_space='bgr', dst_space='yuv')
+        >>> @keepdim
+        >>> def yuv_to_bgr(im):
+        >>>     return util.convert_colorspace(im, src_space='yuv', dst_space='bgr')
+        >>> dpath = ub.ensuredir('./fouriertest')
+        >>> for x in ub.ProgIter(range(100)):
+        >>>     img_tensor, label = dset[x]
+        >>>     img_chw = img_tensor.numpy()
+        >>>     bgr_img = rgb_to_bgr(img_chw)
+        >>>     pt.imshow(bgr_img.transpose(1, 2, 0), fnum=1)
+        >>>     pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>>     for r in range(0, 17):
+        >>>         imgt = radial_fourier_mask(bgr_img, r, clip=(0, 1))
+        >>>         pt.imshow(imgt.transpose(1, 2, 0), pnum=pnum_(), fnum=2)
+        >>>         pt.gca().set_title('r = {}'.format(r))
+        >>>     pt.set_figtitle('BGR')
+        >>>     pt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('bgr', x)))
+        >>>     pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>>     for r in range(0, 17):
+        >>>         imgt = lab_to_bgr(radial_fourier_mask(bgr_to_lab(bgr_img), r)).transpose(1, 2, 0)
+        >>>         pt.imshow(imgt, pnum=pnum_(), fnum=3)
+        >>>         pt.gca().set_title('r = {}'.format(r))
+        >>>         #imgt = lab_to_bgr(to_lab(bgr_img)).transpose(1, 2, 0)
+        >>>         #pt.imshow(lab_to_bgr(to_lab(bgr_img)).transpose(1, 2, 0), pnum=pnum_(), fnum=2)
+        >>>     pt.set_figtitle('LAB')
+        >>>     pt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('lab', x)))
+        >>>     pnum_ = pt.make_pnum_nextgen(nRows=4, nCols=5)
+        >>>     for r in range(0, 17):
+        >>>         imgt = yuv_to_bgr(radial_fourier_mask(bgr_to_yuv(bgr_img), r, clip=(0., 1.))).transpose(1, 2, 0)
+        >>>         pt.imshow(imgt, pnum=pnum_(), fnum=4)
+        >>>         pt.gca().set_title('r = {}'.format(r))
+        >>>     pt.set_figtitle('YUV')
+        >>>     pt.gcf().savefig(join(dpath, '{}_{:08d}.png'.format('yuv', x)))
+        >>> pt.show_if_requested()
+
+    Ignore:
+        im_chw = bgr_to_lab(bgr_img)
     """
     import cv2
     rows, cols = img_chw.shape[1:3]
@@ -109,7 +134,8 @@ def radial_fourier_mask(img_chw, radius=11):
         return np.fft.fftshift(np.fft.fft2(s))
 
     def inv_fourier(f):
-        return np.abs(np.fft.ifft2(np.fft.ifftshift(f)))
+        # use real because LAB has negative components
+        return np.real(np.fft.ifft2(np.fft.ifftshift(f)))
 
     diam = radius * 2
     left = int(np.floor((cols - diam) / 2))
@@ -126,9 +152,19 @@ def radial_fourier_mask(img_chw, radius=11):
         mask = 0
 
     out = np.empty_like(img_chw)
-    for i, s in enumerate(img_chw):
-        # hadamard product (aka simple element-wise multiplication)
-        out[i] = inv_fourier(fourier(s) * mask)
+    if axis is None:
+        for i, s in enumerate(img_chw):
+            # hadamard product (aka simple element-wise multiplication)
+            out[i] = inv_fourier(fourier(s) * mask)
+    else:
+        for i, s in enumerate(img_chw):
+            if i in axis:
+                # hadamard product (aka simple element-wise multiplication)
+                out[i] = inv_fourier(fourier(s) * mask)
+            else:
+                out[i] = s
+    if clip:
+        out = np.clip(out, *clip)
     return out
 
     # nrows = cv2.getOptimalDFTSize(rows)
