@@ -99,7 +99,11 @@ class VGG16(_BaseInitializer):
         >>> import clab
         >>> model = clab.models.segnet.SegNet(n_classes=5)
         >>> self = VGG16()
+        >>> self(model)
 
+        >>> model = clab.models.UNet(n_classes=5, feature_scale=1)
+        >>> self = VGG16()
+        >>> self(model)
     """
     def __init__(self, initializer='KaimingUniform'):
         if isinstance(initializer, str):
@@ -116,15 +120,12 @@ class VGG16(_BaseInitializer):
         print('extracting VGG-16 params.')
         print('Note your model should partially agree with VGG structure')
         vgg16 = torchvision.models.vgg16(pretrained=True)
-        vgg_layers = [_layer for _layer in vgg16.features.children()
+        src_layers = [_layer for _layer in vgg16.features.children()
                       if isinstance(_layer, nn.Conv2d)]
 
         # see how the model best lines up
-        model_layers = [_layer for _layer in trainable_layers(model)
-                        if isinstance(_layer, nn.Conv2d)]
-
-        src_layers = vgg_layers
-        dst_layers = model_layers
+        dst_layers = [_layer for _layer in trainable_layers(model)
+                      if isinstance(_layer, nn.Conv2d)]
 
         def layer_incompatibility(src, dst):
             """
@@ -137,19 +138,29 @@ class VGG16(_BaseInitializer):
 
             # determine if the two layers are compatible
             compatible = True
-            compatible &= (src.stride == dst.stride)
-            compatible &= (src.padding == dst.padding)
-            compatible &= (src.output_padding == dst.output_padding)
             compatible &= (src.groups == dst.groups)
             compatible &= (src.dilation == dst.dilation)
             compatible &= (src.transposed == dst.transposed)
             compatible &= src.bias.size() == dst.bias.size()
+            compatible &= (sh == dh and sw == dw)
 
-            if si == di and so <= do and sh == dh and sw == dw:
+            def _tuplediff(t1, t2):
+                return (np.array(t1) - np.array(t2)).sum()
+
+            incompat = []
+            incompat.append(_tuplediff(src.stride, dst.stride))
+            incompat.append(_tuplediff(src.padding, dst.padding))
+            incompat.append(_tuplediff(src.output_padding, dst.output_padding))
+
+            if si != di or so != do:
                 # compatible = False
-                incompatibility = abs(so - do)
+                incompat.append(abs(so - do))
+                incompat.append(abs(si - di))
+
+            if incompat:
+                incompatibility = np.prod([s + 1 for s in incompat if s > 0])
             else:
-                compatible = False
+                incompatibility = 0
 
             if not compatible:
                 incompatibility = float('inf')
@@ -157,6 +168,7 @@ class VGG16(_BaseInitializer):
             return incompatibility
 
         try:
+            # check for a perfect ordered alignment
             aligned_layers = []
             for src, dst in zip(src_layers, dst_layers):
 
@@ -167,6 +179,7 @@ class VGG16(_BaseInitializer):
 
                 aligned_layers.append((src, dst))
         except AssertionError:
+            import itertools as it
             print('VGG initialization is not perfect')
 
             # TODO: solve a matching problem to get a partial assignment
@@ -175,51 +188,21 @@ class VGG16(_BaseInitializer):
 
             cost = np.full((len(src_idxs), len(dst_idxs)), np.inf)
 
-            import itertools as it
             for sx, dx in it.product(src_idxs, dst_idxs):
                 src = src_layers[sx]
                 dst = dst_layers[dx]
                 incompatibility = layer_incompatibility(src, dst)
                 cost[sx, dx] = incompatibility
 
-        def mincost_assignment(cost):
-            """
-            Does linear_sum_assignment, but can handle non-square matrices
-            """
-            import scipy
-            import scipy.optimize
-            partial = cost.copy()
-            finite_vals = partial[np.isfinite(partial)]
-            if len(finite_vals) == 0:
-                finite_vals  = np.array([1])
-            # find numbers that are effective infinities
-            effective_posinf = +(abs(finite_vals.max()) + 1) * (partial.size ** 2)
-            effective_neginf = -(abs(finite_vals.min()) + 1) * (partial.size ** 2)
+            rxs, cxs = util.mincost_assignment(cost)
 
-            partial[np.isposinf(partial)] = effective_posinf
-            partial[np.isneginf(partial)] = effective_neginf
-
-            # make the matrix square
-            extra_rows = []
-            extra_cols = []
-            nrows, ncols = partial.shape
-            ndim = max(nrows, ncols)
-
-            extra_rows = np.full((max(ncols - nrows, 0), ndim), effective_posinf)
-            extra_cols = np.full((ndim, max(nrows - ncols, 0)), effective_posinf)
-
-            cost_matrix = partial.copy()
-            cost_matrix = np.vstack([cost_matrix, extra_rows])
-            cost_matrix = np.hstack([cost_matrix, extra_cols])
-
-            rxs, cxs = scipy.optimize.linear_sum_assignment(cost_matrix)
-
-            # Remove solutions that lie in extra rows / columns
-            flags = (rxs < nrows) & (cxs < ncols)
-
-            valid_rxs = rxs[flags]
-            valid_cxs = cxs[flags]
-            return valid_rxs, valid_cxs
+            aligned_layers = [
+                (src_layers[rx], dst_layers[cx])
+                for rx, cx in zip(rxs, cxs)
+            ]
+            print('Able to align {} layers'.format(len(aligned_layers)))
+            if not aligned_layers:
+                raise
 
         # Copy over weights based on the assignment
         for src, other in aligned_layers:

@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def mincost_assignment(cost):
+def mincost_assignment(cost, infok=False):
     """
     Does linear_sum_assignment, but can handle non-square matrices and infinite
     values.
@@ -32,17 +32,22 @@ def mincost_assignment(cost):
         >>> print(ub.repr2(dict(zip(rxs, cxs)), nl=0))
         {2: 1, 3: 0}
 
-    Example:
         >>> cost = np.array([[np.inf, -np.inf]])
-        >>> rxs, cxs = mincost_assignment(cost)
+        >>> rxs, cxs = mincost_assignment(cost, infok=True)
         >>> print(ub.repr2(dict(zip(rxs, cxs)), nl=0))
         {0: 1}
-
-    Example:
+        >>> cost = np.array([[np.inf, np.inf, np.inf]]).T
+        >>> rxs, cxs = mincost_assignment(cost, infok=True)
+        >>> print(ub.repr2(dict(zip(rxs, cxs)), nl=0))
+        {2: 0}
         >>> cost = np.array([[np.inf, np.inf, np.inf]]).T
         >>> rxs, cxs = mincost_assignment(cost)
         >>> print(ub.repr2(dict(zip(rxs, cxs)), nl=0))
-        {2: 0}
+        {}
+        >>> cost = np.array([[9000, np.inf, np.inf]]).T
+        >>> rxs, cxs = mincost_assignment(cost)
+        >>> print(ub.repr2(dict(zip(rxs, cxs)), nl=0))
+        {0: 0}
 
     Example:
         >>> cost = np.array([[]])
@@ -90,6 +95,10 @@ def mincost_assignment(cost):
 
     # Remove solutions that lie in extra rows / columns
     flags = (rxs < nrows) & (cxs < ncols)
+
+    if not infok:
+        # positive infinite assignments are not ok
+        flags &= (cost_matrix[rxs, cxs] < posinf_1)
 
     valid_rxs = rxs[flags]
     valid_cxs = cxs[flags]
