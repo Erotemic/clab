@@ -154,11 +154,13 @@ class VGG16(_BaseInitializer):
 
             if si != di or so != do:
                 # compatible = False
-                incompat.append(abs(so - do))
                 incompat.append(abs(si - di))
+                incompat.append(abs(so - do))
 
-            if incompat:
-                incompatibility = np.prod([s + 1 for s in incompat if s > 0])
+            incompat_ = [s for s in incompat if s > 0]
+
+            if incompat_:
+                incompatibility = np.prod([s + 1 for s in incompat_])
             else:
                 incompatibility = 0
 
