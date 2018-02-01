@@ -221,12 +221,7 @@ class VGG16(_BaseInitializer):
         """
         if available return the history of the model as well
         """
-        info_dpath = dirname(dirname(ub.truepath(self.fpath)))
-        info_fpath = join(info_dpath, 'train_info.json')
-        if exists(info_fpath):
-            return util.read_json(info_fpath)
-        else:
-            return 'VGG16'
+        return 'torchvision.models.vgg16(pretrained=True)'
 
 
 class NoOp(_BaseInitializer):
