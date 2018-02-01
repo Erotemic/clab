@@ -498,7 +498,7 @@ def make_idstr(d):
         return d
     elif len(d) == 0:
         return ''
-    elif not isinstance(d, ub.odict):
+    if not isinstance(d, ub.odict):
         d = ub.odict(sorted(d.items()))
     return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True)
 
