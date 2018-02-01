@@ -8,6 +8,7 @@ from clab.util import imutil
 from clab import util
 try:
     import skimage
+    import skimage.transform
 except ImportError:
     pass
 
@@ -199,7 +200,7 @@ class AffineWarp(object):
         >>> img = img_orig.astype(np.float32) / 255
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix, mode='float01')
+        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix=matrix, mode='float01')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _assert_range(results, 0, 1)
@@ -215,7 +216,7 @@ class AffineWarp(object):
         >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2)
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix, mode='float01')
+        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix=matrix, mode='float01')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _compare_results(results, scale=1, thresh=.02)
@@ -231,7 +232,7 @@ class AffineWarp(object):
         >>> img = ((img_orig.astype(np.float32) / 255).mean(axis=2) * 255).astype(np.uint8)
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix, mode='uint8')
+        >>>     _warper = aff.make_warper(backend=back, shape=img.shape, matrix=matrix, mode='uint8')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _compare_results(results, scale=255, thresh=.02)
@@ -246,7 +247,7 @@ class AffineWarp(object):
         >>> img = img_orig.copy()
         >>> results = ub.odict()
         >>> for back in aff.backends:
-        >>>     _warper = aff.make_warper(img.shape, matrix, backend=back, mode='uint8')
+        >>>     _warper = aff.make_warper(shape=img.shape, matrix=matrix, backend=back, mode='uint8')
         >>>     results[back] = _warper(img)
         >>>     ub.Timerit(N, verbose=1, label=back).call(_warper, img)
         >>> _compare_results(results, scale=255, thresh=.02)
@@ -268,10 +269,10 @@ class AffineWarp(object):
 
     Ignore:
         >>> # +SKIP
-        >>> %timeit aff.make_warper(img.shape, matrix, backend='ski')(img)
-        >>> %timeit aff.make_warper(img.shape, matrix, backend='pil')(img)
-        >>> %timeit aff.make_warper(img.shape, matrix, backend='cv2')(img)
-        >>> %timeit aff.make_warper(img.shape, matrix, backend='cv2_inv')(img)
+        >>> %timeit aff.make_warper(shape=img.shape, matrix=matrix, backend='ski')(img)
+        >>> %timeit aff.make_warper(shape=img.shape, matrix=matrix, backend='pil')(img)
+        >>> %timeit aff.make_warper(shape=img.shape, matrix=matrix, backend='cv2')(img)
+        >>> %timeit aff.make_warper(shape=img.shape, matrix=matrix, backend='cv2_inv')(img)
         10 loops, best of 3: 22.6 ms per loop
         100 loops, best of 3: 7.97 ms per loop
         1000 loops, best of 3: 1.41 ms per loop
@@ -520,8 +521,60 @@ class RandomWarpAffine(object):
             >>> print(ut.get_stats(RandomWarpAffine(0, backend='cv2')(img)))
             >>> _test_all_backends(img)
 
-        Ignore:
+        SpeedPlots:
+            >>> from clab.transforms import *
+            >>> import plottool as pt
+            >>> pt.qtensure()
+            >>> img_orig = util.imread(ut.grab_test_imgpath('lena.png'))
             >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2) * 2000 - 1000
+            >>> xdata = [2, 4, 8, 16, 32, 64, 80, 128, 192, 256, 384, 512, 768, 1024, 2048]
+            >>> #
+            >>> ydatas = ub.ddict(list)
+            >>> N = 30
+            >>> for size in xdata:
+            >>>     img = cv2.resize(img_orig, (size, size))
+            >>>     ydatas['ski'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='skimage'), img).min()]
+            >>>     ydatas['pil'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='pil'), img).min()]
+            >>>     ydatas['cv2'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='cv2'), img).min()]
+            >>> pt.multi_plot(xdata, ydatas, title='affine warp speed (RGB uint8)', xlabel='image size', ylabel='seconds', fnum=99, ymax=.1)
+            >>> pt.gca().set_yscale('log')
+            >>> pt.gca().set_ylim(5e-5, 1e-1)
+            >>> pt.gcf().savefig('rgb_uint8.png')
+            >>> #
+            >>> ydatas_f32 = ub.ddict(list)
+            >>> for size in xdata:
+            >>>     img = cv2.resize(img_orig, (size, size)).astype(np.float32).mean(axis=2)
+            >>>     ydatas_f32['ski'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='skimage'), img).min()]
+            >>>     ydatas_f32['pil'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='pil'), img).min()]
+            >>>     ydatas_f32['cv2'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='cv2'), img).min()]
+            >>> pt.multi_plot(xdata, ydatas_f32, title='affine warp speed (GRAY float32)', xlabel='image size', ylabel='seconds', fnum=100, ymax=.1)
+            >>> pt.gca().set_yscale('log')
+            >>> pt.gca().set_ylim(5e-5, 1e-1)
+            >>> pt.gcf().savefig('gray_float32.png')
+            >>> #
+            >>> ydatas_f64 = ub.ddict(list)
+            >>> for size in xdata:
+            >>>     img = cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2)
+            >>>     ydatas_f64['ski'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='skimage'), img).min()]
+            >>>     ydatas_f64['pil'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='pil'), img).min()]
+            >>>     ydatas_f64['cv2'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='cv2'), img).min()]
+            >>> pt.multi_plot(xdata, ydatas_f64, title='affine warp speed (GRAY float64)', xlabel='image size', ylabel='seconds', fnum=101, ymax=.1)
+            >>> pt.gca().set_yscale('log')
+            >>> pt.gca().set_ylim(5e-5, 1e-1)
+            >>> pt.gcf().savefig('gray_float64.png')
+            >>> #
+            >>> ydatas_f64 = ub.ddict(list)
+            >>> for size in xdata:
+            >>>     img = (cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2) * 255).astype(np.uint8)
+            >>>     ydatas_f64['ski'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='skimage'), img).min()]
+            >>>     ydatas_f64['pil'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='pil'), img).min()]
+            >>>     ydatas_f64['cv2'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='cv2'), img).min()]
+            >>> pt.multi_plot(xdata, ydatas_f64, title='affine warp speed (GRAY uint8)', xlabel='image size', ylabel='seconds', fnum=102, ymax=.1)
+            >>> pt.gca().set_yscale('log')
+            >>> pt.gca().set_ylim(5e-5, 1e-1)
+            >>> pt.gcf().savefig('gray_uint8.png')
+
+        Ignore:
             >>> %timeit RandomWarpAffine(0, backend='skimage')(img)
             4.76 ms ± 86.8 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)
             >>> %timeit RandomWarpAffine(0, backend='pil')(img)
@@ -541,50 +594,6 @@ class RandomWarpAffine(object):
             >>> ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)
             >>> ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)
             >>> ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)
-
-            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-            ydatas = ub.ddict(list)
-            for size in xdata:
-                img = cv2.resize(img_orig, (size, size))
-                ydatas['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
-                ydatas['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
-                ydatas['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
-            pt.multi_plot(xdata, ydatas, title='affine warp speed (RGB uint8)', xlabel='image size', ylabel='seconds', fnum=99, ymax=.1)
-            pt.gca().set_yscale('log')
-            pt.gca().set_ylim(5e-5, 1e-1)
-
-            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-            ydatas_f32 = ub.ddict(list)
-            for size in xdata:
-                img = cv2.resize(img_orig, (size, size)).astype(np.float32).mean(axis=2)
-                ydatas_f32['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
-                ydatas_f32['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
-                ydatas_f32['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
-            pt.multi_plot(xdata, ydatas_f32, title='affine warp speed (GRAY float32)', xlabel='image size', ylabel='seconds', fnum=100, ymax=.1)
-            pt.gca().set_yscale('log')
-            pt.gca().set_ylim(5e-5, 1e-1)
-
-            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-            ydatas_f64 = ub.ddict(list)
-            for size in xdata:
-                img = cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2)
-                ydatas_f64['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
-                ydatas_f64['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
-                ydatas_f64['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
-            pt.multi_plot(xdata, ydatas_f64, title='affine warp speed (GRAY float32)', xlabel='image size', ylabel='seconds', fnum=101, ymax=.1)
-            pt.gca().set_yscale('log')
-            pt.gca().set_ylim(5e-5, 1e-1)
-
-            xdata = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-            ydatas_f64 = ub.ddict(list)
-            for size in xdata:
-                img = (cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2) * 255).astype(np.uint8)
-                ydatas_f64['ski'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='skimage'), img)]
-                ydatas_f64['pil'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='pil'), img)]
-                ydatas_f64['cv2'] += [ub.Timerit(100, bestof=10).call(RandomWarpAffine(0, backend='cv2'), img)]
-            pt.multi_plot(xdata, ydatas_f64, title='affine warp speed (GRAY uint8)', xlabel='image size', ylabel='seconds', fnum=102, ymax=.1)
-            pt.gca().set_yscale('log')
-            pt.gca().set_ylim(5e-5, 1e-1)
 
 
         """
