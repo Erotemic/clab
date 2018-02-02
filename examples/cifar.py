@@ -646,6 +646,8 @@ def train():
 
     import clab.models.densenet
 
+    batch_size = (128 // 3) * 3
+
     hyper = hyperparams.HyperParams(
         model=(clab.models.densenet.DenseNet, {
             'cifar': True,
@@ -669,7 +671,7 @@ def train():
         other={
             # TODO: type of augmentation as a parameter dependency
             'augment': datasets['train'].augment,
-
+            'batch_size': batch_size,
             'colorspace': datasets['train'].output_colorspace,
             'n_classes': datasets['train'].n_classes,
         },
@@ -678,7 +680,6 @@ def train():
         hyper.other['norm'] = 'dependant'
     hyper.input_ids['train'] = datasets['train'].input_id
 
-    batch_size = (128 // 3) * 3
     data_kw = {'batch_size': batch_size}
     if xpu.is_gpu():
         data_kw.update({'num_workers': 8, 'pin_memory': True})
