@@ -222,7 +222,7 @@ class FitHarness(object):
                 harn.scheduler = harn.hyper.make_scheduler(harn.optimizer)
 
             harn.log('There are {} existing snapshots'.format(len(prev_states)))
-            if prev_states:
+            if prev_states and not ub.argflag('--reset'):
                 harn.log('Loading previous states')
                 harn.load_snapshot(prev_states[-1])
 
