@@ -135,6 +135,9 @@ class XPU(ub.NiceRepr):
         else:
             if gpu_num.lower() == 'none':
                 xpu = XPU(None)
+            if isinstance(gpu_num, six.string_types) and ',' in gpu_num:
+                devices = list(map(int, gpu_num.split(',')))
+                xpu = XPU(devices)
             else:
                 xpu = XPU(int(gpu_num))
         return xpu
