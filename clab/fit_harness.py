@@ -193,18 +193,17 @@ class FitHarness(object):
             else:
                 harn.log('No Scheduler')
 
-            harn.log('Fitting {} model on {}'.format(model_name, harn.xpu))
+            n_params = number_of_parameters(harn.model)
+            harn.log('Model has {!r} parameters'.format(n_params))
+            harn.log('There are {} existing snapshots'.format(len(prev_states)))
+            harn.log('Mounting {} model on {}'.format(model_name, harn.xpu))
 
             harn.model = harn.hyper.make_model()
             harn.initializer = harn.hyper.make_initializer()
 
             harn.initializer(harn.model)
 
-            n_params = number_of_parameters(harn.model)
-            print('Model has {!r} parameters'.format(n_params))
-
-            harn.log('There are {} existing snapshots'.format(len(prev_states)))
-            harn.xpu.move(harn.model)
+            harn.model = harn.xpu.mount(harn.model)
 
             # more than one criterion? Wrap it in a single criterion OR
             # specify a custom batch runner.
