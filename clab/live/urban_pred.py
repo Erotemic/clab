@@ -782,7 +782,7 @@ class PredictHarness(object):
         else:
             raise NotImplementedError(snapshot['model_class_name'])
 
-        pharn.model = pharn.xpu.to_xpu(pharn.model)
+        pharn.model = pharn.xpu.move(pharn.model)
         pharn.model.load_state_dict(snapshot['model_state_dict'])
 
     def hack_dump_path(pharn, load_path):
@@ -949,7 +949,7 @@ class PredictHarness(object):
                 if not isinstance(inputs_, (list, tuple)):
                     inputs_ = [inputs_]
 
-                inputs_ = pharn.xpu.to_xpu_var(*inputs_)
+                inputs_ = pharn.xpu.variable(*inputs_)
                 outputs = pharn.model.forward(inputs_)
 
                 for ox in range(len(outputs)):

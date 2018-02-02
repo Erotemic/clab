@@ -204,7 +204,7 @@ class FitHarness(object):
             print('Model has {!r} parameters'.format(n_params))
 
             harn.log('There are {} existing snapshots'.format(len(prev_states)))
-            harn.xpu.to_xpu(harn.model)
+            harn.xpu.move(harn.model)
 
             # more than one criterion? Wrap it in a single criterion OR
             # specify a custom batch runner.
@@ -212,7 +212,7 @@ class FitHarness(object):
                 harn.criterion = harn.hyper.criterion_cls(
                     **harn.hyper.criterion_params)
 
-                harn.criterion = harn.xpu.to_xpu(harn.criterion)
+                harn.criterion = harn.xpu.move(harn.criterion)
             else:
                 pass
 
@@ -397,8 +397,8 @@ class FitHarness(object):
                     labels = [labels]
 
                 # note volatile is depricated
-                inputs = harn.xpu.to_xpu_var(*inputs)
-                labels = harn.xpu.to_xpu_var(*labels)
+                inputs = harn.xpu.variable(*inputs)
+                labels = harn.xpu.variable(*labels)
 
                 # Core learning / backprop
                 outputs, loss = harn.run_batch(inputs, labels, learn=learn)

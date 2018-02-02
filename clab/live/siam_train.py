@@ -619,7 +619,7 @@ def comparable_vamp():
     print('Preparing to predict {} on {}'.format(model.__class__.__name__,
                                                  xpu))
 
-    xpu.to_xpu(model)
+    xpu.move(model)
 
     train_dpath = ub.truepath(
         '~/remote/aretha/data/work/siam-ibeis2/GZ_Master1/arch/SiameseLP/train/'
@@ -647,7 +647,7 @@ def comparable_vamp():
     for aid1, aid2 in ub.ProgIter(pblm_test.samples.index, label='predicting'):
         inputs = dataset.from_edge(aid1, aid2)
         # img1, img2 = [torch.autograd.Variable(item.cpu()) for item in inputs]
-        img1, img2 = xpu.to_xpu_var(*inputs)
+        img1, img2 = xpu.variable(*inputs)
         dist_tensor = model(img1[None, :], img2[None, :])
         dist = dist_tensor.data.cpu().numpy()
         dists.append(dist)

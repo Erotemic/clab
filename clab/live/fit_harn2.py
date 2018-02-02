@@ -341,13 +341,13 @@ class FitHarness(object):
             harn.log('There are {} existing snapshots'.format(len(prev_states)))
 
             harn.log('Fitting {} model on {}'.format(model_name, harn.xpu))
-            # harn.xpu.to_xpu(harn.model)
+            # harn.xpu.move(harn.model)
 
             weight = harn.criterion_params.get('weight', None)
             if weight is not None:
                 harn.log('Casting weights')
                 weight = torch.FloatTensor(harn.criterion_params['weight'])
-                # weight = harn.xpu.to_xpu(weight)
+                # weight = harn.xpu.move(weight)
                 harn.criterion_params['weight'] = weight
 
             harn.log('Criterion: {}'.format(harn.criterion_cls.__name__))
@@ -356,7 +356,7 @@ class FitHarness(object):
             # TODO: port this to main test harness and have hyperparams know to
             # convert tensors to lists before they use repr2
             # if hasattr(harn, 'criterion2'):
-            #     harn.criterion2 = harn.xpu.to_xpu(harn.criterion2)
+            #     harn.criterion2 = harn.xpu.move(harn.criterion2)
 
             # harn.log('Optimizer: {}'.format(harn.optimizer_cls.__name__))
             # if harn.lr_scheduler:
@@ -373,13 +373,13 @@ class FitHarness(object):
             else:
                 print('harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
 
-    def move_model_to_xpu(harn):
+    def move_model_move(harn):
         if not harn.dry:
             harn.log('Moving model and criterion to {}'.format(harn.xpu))
-            harn.xpu.to_xpu(harn.model)
-            harn.criterion = harn.xpu.to_xpu(harn.criterion)
+            harn.xpu.move(harn.model)
+            harn.criterion = harn.xpu.move(harn.criterion)
             if hasattr(harn, 'criterion2'):
-                harn.criterion2 = harn.xpu.to_xpu(harn.criterion2)
+                harn.criterion2 = harn.xpu.move(harn.criterion2)
 
             harn.log('Optimizer: {}'.format(harn.optimizer_cls.__name__))
             if harn.lr_scheduler:
@@ -404,7 +404,7 @@ class FitHarness(object):
             harn.log('Maximum harn.epoch already reached.')
             return
 
-        harn.move_model_to_xpu()
+        harn.move_model_move()
 
         # train loop
         import tqdm
@@ -527,8 +527,8 @@ class FitHarness(object):
             if not isinstance(labels, (list, tuple)):
                 labels = [labels]
 
-            inputs = harn.xpu.to_xpu_var(*inputs)
-            labels = harn.xpu.to_xpu_var(*labels)
+            inputs = harn.xpu.variable(*inputs)
+            labels = harn.xpu.variable(*labels)
 
             # Core learning / backprop
             outputs, loss = harn.run_batch(inputs, labels, learn=learn)

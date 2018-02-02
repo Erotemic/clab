@@ -76,7 +76,7 @@ def dump_task_inference(task, inputs, load_path):
     elif snapshot['model_class_name'] == 'SegNet':
         model = models.SegNet(in_channels=n_channels, n_classes=n_classes)
 
-    model = xpu.to_xpu(model)
+    model = xpu.move(model)
     model.load_state_dict(snapshot['model_state_dict'])
 
     print('Preparing to predict {} on {}'.format(model.__class__.__name__, xpu))
@@ -85,7 +85,7 @@ def dump_task_inference(task, inputs, load_path):
     for ix in ub.ProgIter(range(len(eval_dataset)), label='dumping'):
         inputs_ = eval_dataset[ix][None, :]
 
-        inputs_ = xpu.to_xpu(inputs_)
+        inputs_ = xpu.move(inputs_)
         inputs_ = torch.autograd.Variable(inputs_)
 
         output_tensor = model(inputs_)

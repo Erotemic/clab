@@ -183,7 +183,7 @@
         #         if not isinstance(inputs_, (list, tuple)):
         #             inputs_ = [inputs_]
 
-        #         inputs_ = pharn.xpu.to_xpu_var(*inputs_)
+        #         inputs_ = pharn.xpu.variable(*inputs_)
         #         outputs = pharn.model.forward(inputs_)
 
         #         if not isinstance(outputs, (list, tuple)):
