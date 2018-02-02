@@ -237,7 +237,7 @@ class FitHarness(object):
                     for group in harn.optimizer.param_groups:
                         group.setdefault('initial_lr', group['lr'])
 
-            harn.log('New snapshots will save harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
+            harn.log('Snapshots will save to harn.snapshot_dpath = {!r}'.format(harn.snapshot_dpath))
 
     def current_lrs(harn):
         if harn.scheduler is None:
