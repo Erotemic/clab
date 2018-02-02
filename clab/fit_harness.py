@@ -79,9 +79,9 @@ class FitHarness(object):
         harn.train_dpath = train_dpath
 
         if harn.dry:
-            harn.xpu = xpu_device.XPU(None)
+            harn.xpu = xpu_device.XPU.cast(None)
         else:
-            harn.xpu = xpu_device.XPU(xpu)
+            harn.xpu = xpu_device.XPU.cast(xpu)
 
         harn.datasets = datasets
         if loaders is None:
@@ -397,8 +397,8 @@ class FitHarness(object):
                     labels = [labels]
 
                 # note volatile is depricated
-                inputs = harn.xpu.variable(*inputs)
-                labels = harn.xpu.variable(*labels)
+                inputs = list(harn.xpu.variable(*inputs))
+                labels = list(harn.xpu.variable(*labels))
 
                 # Core learning / backprop
                 outputs, loss = harn.run_batch(inputs, labels, learn=learn)
