@@ -630,7 +630,7 @@ def train():
     random.seed(2497950049 % 4294967295)
 
     xpu = xpu_device.XPU.from_argv()
-    print('CHOSEN xpu = {!r}'.format(xpu))
+    print('Chosen xpu = {!r}'.format(xpu))
 
     cifar_num = 10
 
