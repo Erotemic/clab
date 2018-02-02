@@ -1,9 +1,7 @@
 """
 Abstracted processing device
 
-The `X` currently stands for: X ∈ {C, P}.
-
-Creates a common API for dynamically choosing a device to process on
+Creates a common API for dynamically running on CPU, GPU, or many GPUs
 """
 from __future__ import absolute_import, division, print_function
 import ubelt as ub
