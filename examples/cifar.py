@@ -629,6 +629,9 @@ def train():
     torch.manual_seed(137852547 % 4294967295)
     random.seed(2497950049 % 4294967295)
 
+    xpu = xpu_device.XPU.from_argv()
+    print('CHOSEN xpu = {!r}'.format(xpu))
+
     cifar_num = 10
 
     if ub.argflag('--lab'):
@@ -674,8 +677,6 @@ def train():
     if ub.argflag('--rgb-indie'):
         hyper.other['norm'] = 'dependant'
     hyper.input_ids['train'] = datasets['train'].input_id
-
-    xpu = xpu_device.XPU.from_argv()
 
     batch_size = 128
     data_kw = {'batch_size': batch_size}
