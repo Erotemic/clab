@@ -678,7 +678,7 @@ def train():
         hyper.other['norm'] = 'dependant'
     hyper.input_ids['train'] = datasets['train'].input_id
 
-    batch_size = 128
+    batch_size = (128 // 3) * 3
     data_kw = {'batch_size': batch_size}
     if xpu.is_gpu():
         data_kw.update({'num_workers': 8, 'pin_memory': True})
