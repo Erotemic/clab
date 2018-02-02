@@ -193,15 +193,14 @@ class FitHarness(object):
             else:
                 harn.log('No Scheduler')
 
-            harn.log('There are {} existing snapshots'.format(len(prev_states)))
-            harn.log('Mounting {} model on {}'.format(model_name, harn.xpu))
-
             harn.model = harn.hyper.make_model()
             harn.initializer = harn.hyper.make_initializer()
 
             harn.initializer(harn.model)
 
+            harn.log('Mounting {} model on {}'.format(model_name, harn.xpu))
             harn.model = harn.xpu.mount(harn.model)
+
             n_params = number_of_parameters(harn.model)
             harn.log('Model has {!r} parameters'.format(n_params))
 
@@ -210,17 +209,21 @@ class FitHarness(object):
             if harn.hyper.criterion_cls:
                 harn.criterion = harn.hyper.criterion_cls(
                     **harn.hyper.criterion_params)
-
+                harn.log('Move {} model to {}'.format(harn.criterion, harn.xpu))
                 harn.criterion = harn.xpu.move(harn.criterion)
             else:
                 pass
 
+            harn.log('Make optimizer')
             harn.optimizer = harn.hyper.make_optimizer(harn.model.parameters())
 
             if harn.hyper.scheduler_cls:
+                harn.log('Make scheduler')
                 harn.scheduler = harn.hyper.make_scheduler(harn.optimizer)
 
+            harn.log('There are {} existing snapshots'.format(len(prev_states)))
             if prev_states:
+                harn.log('Loading previous states')
                 harn.load_snapshot(prev_states[-1])
 
                 for i, group in enumerate(harn.optimizer.param_groups):
@@ -229,6 +232,7 @@ class FitHarness(object):
                                        "in param_groups[{}] when resuming an optimizer".format(i))
 
             else:
+                harn.log('Initializing new model')
                 if not harn.dry:
                     for group in harn.optimizer.param_groups:
                         group.setdefault('initial_lr', group['lr'])
