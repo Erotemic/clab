@@ -731,14 +731,14 @@ def train():
 
         cfsn = confusion_matrix(y_pred, y_true, labels=all_labels)
 
-        global_tpr = pixel_accuracy_from_confusion(cfsn)  # same as tpr
+        global_acc = pixel_accuracy_from_confusion(cfsn)  # same as acc
         perclass_acc = perclass_accuracy_from_confusion(cfsn)
         # class_accuracy = perclass_acc.fillna(0).mean()
         class_accuracy = np.nan_to_num(perclass_acc).mean()
 
         metrics_dict = ub.odict()
-        metrics_dict['global_tpr'] = global_tpr
-        metrics_dict['class_tpr'] = class_accuracy
+        metrics_dict['global_acc'] = global_acc
+        metrics_dict['class_acc'] = class_accuracy
         return metrics_dict
 
     workdir = ub.ensuredir('train_cifar_work')

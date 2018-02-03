@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
-# import numpy as np
+import numpy as np
 import sys
 import shutil
 import tqdm
@@ -299,6 +299,9 @@ class FitHarness(object):
         try:
             for harn.epoch in it.count(harn.epoch):
 
+                harn.log_value('epoch lr', np.mean(harn.current_lrs()),
+                               harn.epoch)
+
                 # Run training epoch
                 harn.run_epoch(train_loader, tag='train', learn=True)
 
@@ -324,7 +327,6 @@ class FitHarness(object):
                         # Copy the best snapshot the the main directory
                         shutil.copy2(save_path, join(harn.train_dpath,
                                      'best_snapshot.pt'))
-
 
                 harn.main_prog.update(1)
 
