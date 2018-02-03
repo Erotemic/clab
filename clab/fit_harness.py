@@ -299,7 +299,7 @@ class FitHarness(object):
         try:
             for harn.epoch in it.count(harn.epoch):
 
-                harn.log_value('epoch lr', np.mean(harn.current_lrs()),
+                harn.log_value('epoch lr', np.mean(list(harn.current_lrs())),
                                harn.epoch)
 
                 # Run training epoch
@@ -631,9 +631,10 @@ class FitHarness(object):
         return False
 
     def _close_prog(harn):
-        harn.main_prog.close()
-        harn.main_prog = None
-        sys.stdout.write('\n\n\n\n')  # fixes progress bar formatting
+        if harn.main_prog is not None:
+            harn.main_prog.close()
+            harn.main_prog = None
+            sys.stdout.write('\n\n\n\n')  # fixes progress bar formatting
 
     # def _tensorboard_inputs(harn, inputs, iter_idx, tag):
     #     """
