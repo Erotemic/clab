@@ -423,8 +423,8 @@ class FitHarness(object):
                                          loader.batch_size)
                     prog.set_description(tag + ' ' + msg)
 
-                    for key, value in ave_metrics.items():
-                        harn.log_value(tag + ' iter ' + key, value, iter_idx)
+                    # for key, value in ave_metrics.items():
+                    #     harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
                     prog.update(harn.intervals['display_' + tag])
                     prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
