@@ -55,13 +55,15 @@ class CropTo(imgaug.augmenters.Augmenter):
         random_state = ia.new_random_state(seed)
 
         h, w = self.shape
+        assert h < height
+        assert w < width
         space_h = max(height - h, 0)
         space_w = max(width - w, 0)
 
-        top = random_state.randint(0, space_h + 1)
+        top = random_state.randint(0, space_h)
         bot = h - (space_h - top)
 
-        left = random_state.randint(0, space_w + 1)
+        left = random_state.randint(0, space_w)
         right = w - (space_w - top)
 
         return top, right, bot, left
