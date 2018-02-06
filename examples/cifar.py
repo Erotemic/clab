@@ -12,6 +12,7 @@ from clab import fit_harness
 from clab.transforms import (ImageCenterScale,)
 from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 import imgaug
+from imgaug.augmenters.size import sm
 from clab import util
 
 
