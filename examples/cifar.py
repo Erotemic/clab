@@ -58,10 +58,10 @@ class CropTo(imgaug.augmenters.Augmenter):
         space_h = height - h
         space_w = width - w
 
-        top = random_state.randint(0, space_h)
+        top = random_state.randint(0, space_h + 1)
         bot = space_h - top
 
-        left = random_state.randint(0, space_w)
+        left = random_state.randint(0, space_w + 1)
         right = space_w - top
 
         return top, right, bot, left
