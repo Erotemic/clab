@@ -31,6 +31,7 @@ class CropTo(imgaug.augmenters.Augmenter):
             top, bot, left, right = self._draw_samples_image(seed, height, width)
 
             image_cr = images[i][top:bot, left:right]
+            image_cr = np.pad(image_cr, ((1, 1), (1, 1)), mode='constant')
 
             result.append(image_cr)
         return result
