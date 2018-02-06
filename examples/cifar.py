@@ -30,9 +30,6 @@ class CropTo(imgaug.augmenters.Augmenter):
             height, width = images[i].shape[0:2]
             top, bot, left, right = self._draw_samples_image(seed, height, width)
 
-            import utool
-            utool.embed()
-
             image_cr = images[i][top:bot, left:right]
             image_cr = np.pad(image_cr, ((1, 1), (1, 1)), mode='constant')
 
@@ -487,9 +484,9 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
 
         augmentors = [
             iaa.Fliplr(),
-            CropTo((30, 30)),
+            # CropTo((30, 30)),
             iaa.ContrastNormalization((0.2, 1.8)),
-            # iaa.Affine(translate_px={'x': (-1, 1), 'y': (-1, 1)})
+            iaa.Affine(translate_px={'x': (-1, 1), 'y': (-1, 1)})
             # iaa.Crop(px=(1, 1, 1, 1)),
             # imgaug.Brightness(63),
             # imgaug.RandomCrop((30, 30)),
