@@ -730,6 +730,8 @@ def train():
     elif ub.argflag('--rgb-dep'):
         datasets = cifar_training_datasets(
             output_colorspace='RGB', norm_mode='dependant', cifar_num=cifar_num)
+    else:
+        raise AssertionError('specify --rgb / --lab')
 
     import clab.models.densenet
 
@@ -765,7 +767,7 @@ def train():
             'batch_size': batch_size,
             'colorspace': datasets['train'].output_colorspace,
             'n_classes': datasets['train'].n_classes,
-            'center_inputs': datasets['center_inputs'],
+            'center_inputs': datasets['train'].center_inputs,
         },
     )
     # if ub.argflag('--rgb-indie'):
