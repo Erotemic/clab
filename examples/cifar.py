@@ -28,9 +28,9 @@ class CropTo(imgaug.augmenters.Augmenter):
         for i in sm.xrange(nb_images):
             seed = seeds[i]
             height, width = images[i].shape[0:2]
-            top, right, bot, left = self._draw_samples_image(seed, height, width)
+            top, bot, left, right = self._draw_samples_image(seed, height, width)
 
-            image_cr = images[i][top:bot, left:right, :]
+            image_cr = images[i][top:bot, left:right]
 
             result.append(image_cr)
         return result
@@ -42,7 +42,7 @@ class CropTo(imgaug.augmenters.Augmenter):
         for i, keypoints_on_image in enumerate(keypoints_on_images):
             seed = seeds[i]
             height, width = keypoints_on_image.shape[0:2]
-            top, right, bot, left = self._draw_samples_image(seed, height, width)
+            top, bot, left, right = self._draw_samples_image(seed, height, width)
             shifted = keypoints_on_image.shift(x=-left, y=-top)
             shifted.shape = (
                 height - top - bot,
@@ -52,9 +52,15 @@ class CropTo(imgaug.augmenters.Augmenter):
         return result
 
     def _draw_samples_image(self, seed, height, width):
+        """
+        height = 32
+        width = 32
+        h, w = shape = (30, 30)
+        random_state = np.random
+        """
         random_state = ia.new_random_state(seed)
-
         h, w = self.shape
+
         assert w <= width, '{} {}'.format(w, width)
         assert h <= height, '{} {}'.format(h, height)
         space_h = height - h
@@ -64,9 +70,10 @@ class CropTo(imgaug.augmenters.Augmenter):
         bot = height - (space_h - top)
 
         left = random_state.randint(0, space_w + 1)
-        right = width - (space_w - top)
+        right = width - (space_w - left)
 
-        return top, right, bot, left
+        sub = [top, bot, left, right]
+        return sub
 
     def get_parameters(self):
         return [self.shape]
