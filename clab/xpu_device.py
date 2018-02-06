@@ -287,7 +287,7 @@ class XPU(ub.NiceRepr):
         Loads data from a filepath onto this XPU
 
         Args:
-            fpath (str): path to torch data file
+            fpath (str or file): path to torch data file or file-like object
 
         Example:
             >>> fpath = 'foo.pt'

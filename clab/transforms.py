@@ -525,12 +525,14 @@ class RandomWarpAffine(object):
             >>> from clab.transforms import *
             >>> import plottool as pt
             >>> pt.qtensure()
+            >>> import utool as ut
             >>> img_orig = util.imread(ut.grab_test_imgpath('lena.png'))
             >>> img = (img_orig.astype(np.float32) / 255).mean(axis=2) * 2000 - 1000
             >>> xdata = [2, 4, 8, 16, 32, 64, 80, 128, 192, 256, 384, 512, 768, 1024, 2048]
             >>> #
             >>> ub.Timerit.DEFAULT_VERBOSE = False
             >>> ydatas = ub.ddict(list)
+            >>> print('uint8')
             >>> N = 30
             >>> for size in xdata:
             >>>     img = cv2.resize(img_orig, (size, size))
@@ -542,6 +544,7 @@ class RandomWarpAffine(object):
             >>> pt.gca().set_ylim(5e-5, 1e-1)
             >>> pt.gcf().savefig('rgb_uint8.png')
             >>> #
+            >>> print('gray-float32')
             >>> ydatas_f32 = ub.ddict(list)
             >>> for size in xdata:
             >>>     img = cv2.resize(img_orig, (size, size)).astype(np.float32).mean(axis=2)
@@ -553,6 +556,7 @@ class RandomWarpAffine(object):
             >>> pt.gca().set_ylim(5e-5, 1e-1)
             >>> pt.gcf().savefig('gray_float32.png')
             >>> #
+            >>> print('gray-float64')
             >>> ydatas_f64 = ub.ddict(list)
             >>> for size in xdata:
             >>>     img = cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2)
@@ -564,13 +568,14 @@ class RandomWarpAffine(object):
             >>> pt.gca().set_ylim(5e-5, 1e-1)
             >>> pt.gcf().savefig('gray_float64.png')
             >>> #
-            >>> ydatas_f64 = ub.ddict(list)
+            >>> print('gray-uint8')
+            >>> ydatas_u8 = ub.ddict(list)
             >>> for size in xdata:
             >>>     img = (cv2.resize(img_orig, (size, size)).astype(np.float64).mean(axis=2) * 255).astype(np.uint8)
-            >>>     ydatas_f64['ski'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='skimage'), img).min()]
-            >>>     ydatas_f64['pil'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='pil'), img).min()]
-            >>>     ydatas_f64['cv2'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='cv2'), img).min()]
-            >>> pt.multi_plot(xdata, ydatas_f64, title='affine warp speed (GRAY uint8)', xlabel='image size', ylabel='seconds', fnum=102, ymax=.1)
+            >>>     ydatas_u8['ski'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='skimage'), img).min()]
+            >>>     ydatas_u8['pil'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='pil'), img).min()]
+            >>>     ydatas_u8['cv2'] += [ub.Timerit(N, bestof=3).call(RandomWarpAffine(0, backend='cv2'), img).min()]
+            >>> pt.multi_plot(xdata, ydatas_u8, title='affine warp speed (GRAY uint8)', xlabel='image size', ylabel='seconds', fnum=102, ymax=.1)
             >>> pt.gca().set_yscale('log')
             >>> pt.gca().set_ylim(5e-5, 1e-1)
             >>> pt.gcf().savefig('gray_uint8.png')
