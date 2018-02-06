@@ -733,7 +733,8 @@ def train():
 
     import clab.models.densenet
 
-    batch_size = (128 // 3) * 3
+    # batch_size = (128 // 3) * 3
+    batch_size = 128
 
     hyper = hyperparams.HyperParams(
         model=(clab.models.densenet.DenseNet, {
@@ -747,6 +748,7 @@ def train():
             'lr': 0.01,
         }),
         scheduler=(torch.optim.lr_scheduler.ReduceLROnPlateau, {
+            'factor': .5,
         }),
         initializer=(nninit.KaimingNormal, {
             'nonlinearity': 'relu',
@@ -763,16 +765,16 @@ def train():
             'batch_size': batch_size,
             'colorspace': datasets['train'].output_colorspace,
             'n_classes': datasets['train'].n_classes,
+            'center_inputs': datasets['center_inputs'],
         },
     )
-    if ub.argflag('--rgb-indie'):
-        hyper.other['norm'] = 'dependant'
+    # if ub.argflag('--rgb-indie'):
+    #     hyper.other['norm'] = 'dependant'
     hyper.input_ids['train'] = datasets['train'].input_id
 
     xpu = xpu_device.XPU.cast('auto')
     print('xpu = {}'.format(xpu))
 
-    batch_size = 128
     data_kw = {'batch_size': batch_size}
     if xpu.is_gpu():
         data_kw.update({'num_workers': 8, 'pin_memory': True})
