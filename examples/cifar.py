@@ -747,7 +747,7 @@ def train():
         augment=str(datasets['train'].augmenter),
         other={
             # TODO: type of augmentation as a parameter dependency
-            'augmenter': str(datasets['train'].augmenter),
+            # 'augmenter': str(datasets['train'].augmenter),
             'augment': datasets['train'].augment,
             'batch_size': batch_size,
             'colorspace': datasets['train'].output_colorspace,
