@@ -66,7 +66,7 @@ class CropTo(imgaug.augmenters.Augmenter):
         return top, right, bot, left
 
     def get_parameters(self):
-        return [self.all_sides, self.top, self.right, self.bottom, self.left, self.pad_mode, self.pad_cval]
+        return [self.shape]
 
 
 
