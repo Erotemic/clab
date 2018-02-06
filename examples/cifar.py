@@ -551,7 +551,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             # params = dset.rand_aff.random_params()
             # im = dset.rand_aff.warp(im, params, interp='cubic', backend='cv2')
 
-            im = dset.augmenter(im)
+            im = dset.augmenter.augment_images(im)
 
         im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
                                      dst_space=dset.output_colorspace)
