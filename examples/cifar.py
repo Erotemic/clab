@@ -472,7 +472,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         import imgaug.augmenters as iaa
 
         augmentors = [
-            imgaug.Fliplr(),
+            iaa.Fliplr(),
             CropTo((30, 30)),
             iaa.ContrastNormalization((0.2, 1.8)),
             # iaa.Affine(translate_px={'x': (-1, 1), 'y': (-1, 1)})
