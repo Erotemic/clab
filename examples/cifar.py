@@ -481,7 +481,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             # imgaug.RandomCrop((30, 30)),
             # imgaug.MeanVarianceNormalize(all_channel=True)
         ]
-        dset.aug = iaa.Sequential(augmentors)
+        dset.augmenter = iaa.Sequential(augmentors)
         # iaa.Sequential([
         #     iaa.Affine(translate_px={"x":-40}),
         #     iaa.AdditiveGaussianNoise(scale=0.1*255)
@@ -551,7 +551,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             # params = dset.rand_aff.random_params()
             # im = dset.rand_aff.warp(im, params, interp='cubic', backend='cv2')
 
-            im = dset.aug(im)
+            im = dset.augmenter(im)
 
         im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
                                      dst_space=dset.output_colorspace)
@@ -744,8 +744,10 @@ def train():
         }),
         # Specify anything else that is special about your hyperparams here
         # Especially if you make a custom_batch_runner
+        augment=datasets['train'].augmenter
         other={
             # TODO: type of augmentation as a parameter dependency
+            'augmenter': str(datasets['train'].augmenter),
             'augment': datasets['train'].augment,
             'batch_size': batch_size,
             'colorspace': datasets['train'].output_colorspace,
