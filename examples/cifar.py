@@ -744,7 +744,7 @@ def train():
         }),
         # Specify anything else that is special about your hyperparams here
         # Especially if you make a custom_batch_runner
-        augment=datasets['train'].augmenter,
+        augment=str(datasets['train'].augmenter),
         other={
             # TODO: type of augmentation as a parameter dependency
             'augmenter': str(datasets['train'].augmenter),
