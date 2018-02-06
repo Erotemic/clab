@@ -692,6 +692,10 @@ def train():
         hyper.other['norm'] = 'dependant'
     hyper.input_ids['train'] = datasets['train'].input_id
 
+    xpu = xpu_device.XPU.cast('auto')
+    print('xpu = {}'.format(xpu))
+
+    batch_size = 128
     data_kw = {'batch_size': batch_size}
     if xpu.is_gpu():
         data_kw.update({'num_workers': 8, 'pin_memory': True})
@@ -766,5 +770,6 @@ if __name__ == '__main__':
         python examples/cifar.py train --lab
         python examples/cifar.py train --rgb-indie
     """
-    import xdoctest
-    xdoctest.doctest_module(__file__)
+    train()
+    # import xdoctest
+    # xdoctest.doctest_module(__file__)

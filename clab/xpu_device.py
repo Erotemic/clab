@@ -107,8 +107,28 @@ class XPU(ub.NiceRepr):
             return XPU.from_auto(**kwargs)
         elif item == 'argv':
             return XPU.from_argv(**kwargs)
-        else:
+        if item == 'cpu' or item is None:
+            return XPU(None)
+        elif item == 'cpu' or item is None:
+            return XPU(None)
+        elif isinstance(item, XPU):
+            return item
+        elif isinstance(item, six.string_types):
+            item = item.lower()
+            item = item.replace('cpu', '')
+            item = item.replace('gpu', '')
+            item = item.replace('cuda', '')
+            if ',' in item:
+                item = list(map(int, ','.split(item)))
+            if item == '':
+                item = 0
+            if item == 'none':
+                item = None
+            else:
+                item = int(item)
             return XPU(item)
+        else:
+            raise ValueError('cannot cast {}'.format(item))
 
     @classmethod
     def from_auto(XPU, min_memory=6000):

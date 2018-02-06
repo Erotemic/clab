@@ -79,7 +79,7 @@ class FitHarness(object):
         harn.train_dpath = train_dpath
 
         if harn.dry:
-            harn.xpu = xpu_device.XPU.cast(None)
+            harn.xpu = xpu_device.XPU.cast('cpu')
         else:
             harn.xpu = xpu_device.XPU.cast(xpu)
 
