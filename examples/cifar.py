@@ -30,7 +30,7 @@ class CropTo(imgaug.augmenters.Augmenter):
             height, width = images[i].shape[0:2]
             top, right, bot, left = self._draw_samples_image(seed, height, width)
 
-            image_cr = images[i][top:-bot, left:-right, :]
+            image_cr = images[i][top:bot, left:right, :]
 
             result.append(image_cr)
         return result
@@ -55,14 +55,14 @@ class CropTo(imgaug.augmenters.Augmenter):
         random_state = ia.new_random_state(seed)
 
         h, w = self.shape
-        space_h = height - h
-        space_w = width - w
+        space_h = max(height - h, 0)
+        space_w = max(width - w, 0)
 
         top = random_state.randint(0, space_h + 1)
-        bot = space_h - top
+        bot = h - (space_h - top)
 
         left = random_state.randint(0, space_w + 1)
-        right = space_w - top
+        right = w - (space_w - top)
 
         return top, right, bot, left
 
