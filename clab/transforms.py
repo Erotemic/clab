@@ -135,7 +135,7 @@ class ImageCenterScale(ub.NiceRepr):
 
     def __nice__(self):
         try:
-            return '{:g}, {:g}'.format(self.im_mean, self.im_scale)
+            return '{:.4g}, {:.4g}'.format(self.im_mean, self.im_scale)
         except:
             return '{}, {}'.format(self.im_mean, self.im_scale)
 

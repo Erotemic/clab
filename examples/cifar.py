@@ -11,6 +11,7 @@ from clab import hyperparams
 from clab import fit_harness
 from clab.transforms import (ImageCenterScale,)
 from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+import imgaug
 from clab import util
 
 
@@ -413,6 +414,18 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         # ])
         # dset.rand_aff = RandomWarpAffine(dset.rng)
 
+        # augmentors = [
+        #     imgaug.RandomCrop((30, 30)),
+        #     imgaug.Flip(horiz=True),
+        #     imgaug.Brightness(63),
+        #     imgaug.Contrast((0.2, 1.8)),
+        #     imgaug.MeanVarianceNormalize(all_channel=True)
+        # ]
+        # iaa.Sequential([
+        #     iaa.Affine(translate_px={"x":-40}),
+        #     iaa.AdditiveGaussianNoise(scale=0.1*255)
+        # ])
+
         dset.rand_aff = RandomWarpAffine(
             dset.rng, tx_pdf=(-4, 4), ty_pdf=(-4, 4), flip_lr_prob=.5,
             zoom_pdf=None, shear_pdf=None, flip_ud_prob=None,
@@ -420,12 +433,12 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
 
         dset.center_inputs = None
 
-    def _make_normalizer(dset, mode='dependant'):
+    def _make_normalizer(dset, mode='independent'):
         """
         Example:
-            >>> inputs, task = cifar_inputs(train=False)
+            >>> inputs, task = cifar_inputs(train=True)
             >>> workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
-            >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'LAB')
+            >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'RGB')
             >>> center_inputs = dset._make_normalizer('independent')
         """
         if len(dset.inputs):
@@ -451,7 +464,6 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
 
     def load_inputs(dset, index):
         """
-
         Ignore:
             >>> inputs, task = cifar_inputs(train=False)
             >>> workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
@@ -637,10 +649,10 @@ def train():
     if ub.argflag('--lab'):
         datasets = cifar_training_datasets(
             output_colorspace='LAB', norm_mode='independent', cifar_num=cifar_num)
-    elif ub.argflag('--rgb-indie'):
+    elif ub.argflag('--rgb'):
         datasets = cifar_training_datasets(
             output_colorspace='RGB', norm_mode='independent', cifar_num=cifar_num)
-    else:
+    elif ub.argflag('--rgb-dep'):
         datasets = cifar_training_datasets(
             output_colorspace='RGB', norm_mode='dependant', cifar_num=cifar_num)
 
