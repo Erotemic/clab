@@ -15,6 +15,61 @@ import imgaug
 from clab import util
 
 
+class CropTo(imgaug.augmenters.Augmenter):
+    def __init__(self, shape,  name=None, deterministic=False, random_state=None):
+        super(CropTo, self).__init__(name=name, deterministic=deterministic, random_state=random_state)
+        self.shape = shape
+
+    def _augment_images(self, images, random_state, parents, hooks):
+        result = []
+        nb_images = len(images)
+        seeds = random_state.randint(0, 10**6, (nb_images,))
+        for i in sm.xrange(nb_images):
+            seed = seeds[i]
+            height, width = images[i].shape[0:2]
+            top, right, bot, left = self._draw_samples_image(seed, height, width)
+
+            image_cr = images[i][top:-bot, left:-right, :]
+
+            result.append(image_cr)
+        return result
+
+    def _augment_keypoints(self, keypoints_on_images, random_state, parents, hooks):
+        result = []
+        nb_images = len(keypoints_on_images)
+        seeds = random_state.randint(0, 10**6, (nb_images,))
+        for i, keypoints_on_image in enumerate(keypoints_on_images):
+            seed = seeds[i]
+            height, width = keypoints_on_image.shape[0:2]
+            top, right, bot, left = self._draw_samples_image(seed, height, width)
+            shifted = keypoints_on_image.shift(x=-left, y=-top)
+            shifted.shape = (
+                height - top - bot,
+                width - left - right
+            ) + shifted.shape[2:]
+            result.append(shifted)
+        return result
+
+    def _draw_samples_image(self, seed, height, width):
+        random_state = ia.new_random_state(seed)
+
+        h, w = self.shape
+        space_h = height - h
+        space_w = width - w
+
+        top = random_state.randint(0, space_h)
+        bot = space_h - top
+
+        left = random_state.randint(0, space_w)
+        right = space_w - top
+
+        return top, right, bot, left
+
+    def get_parameters(self):
+        return [self.all_sides, self.top, self.right, self.bottom, self.left, self.pad_mode, self.pad_cval]
+
+
+
 class Task(object):
     def __init__(task, labelnames=None, ignore_labelnames=[], alias={}):
         if labelnames is not None:
@@ -413,21 +468,27 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         #     RandomBlur(rng=dset.rng),
         # ])
         # dset.rand_aff = RandomWarpAffine(dset.rng)
+        import imgaug
+        import imgaug.augmenters as iaa
 
-        # augmentors = [
-        #     imgaug.RandomCrop((30, 30)),
-        #     imgaug.Flip(horiz=True),
-        #     imgaug.Brightness(63),
-        #     imgaug.Contrast((0.2, 1.8)),
-        #     imgaug.MeanVarianceNormalize(all_channel=True)
-        # ]
+        augmentors = [
+            imgaug.Fliplr(),
+            CropTo((30, 30)),
+            iaa.ContrastNormalization((0.2, 1.8)),
+            # iaa.Affine(translate_px={'x': (-1, 1), 'y': (-1, 1)})
+            # iaa.Crop(px=(1, 1, 1, 1)),
+            # imgaug.Brightness(63),
+            # imgaug.RandomCrop((30, 30)),
+            # imgaug.MeanVarianceNormalize(all_channel=True)
+        ]
+        dset.aug = iaa.Sequential(augmentors)
         # iaa.Sequential([
         #     iaa.Affine(translate_px={"x":-40}),
         #     iaa.AdditiveGaussianNoise(scale=0.1*255)
         # ])
 
         dset.rand_aff = RandomWarpAffine(
-            dset.rng, tx_pdf=(-4, 4), ty_pdf=(-4, 4), flip_lr_prob=.5,
+            dset.rng, tx_pdf=(-2, 2), ty_pdf=(-2, 2), flip_lr_prob=.5,
             zoom_pdf=None, shear_pdf=None, flip_ud_prob=None,
             enable_stretch=None, default_distribution='uniform')
 
@@ -486,8 +547,11 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             # Augment intensity independently
             # im = dset.im_augment(im)
             # Augment geometry consistently
-            params = dset.rand_aff.random_params()
-            im = dset.rand_aff.warp(im, params, interp='cubic', backend='cv2')
+
+            # params = dset.rand_aff.random_params()
+            # im = dset.rand_aff.warp(im, params, interp='cubic', backend='cv2')
+
+            im = dset.aug(im)
 
         im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
                                      dst_space=dset.output_colorspace)
