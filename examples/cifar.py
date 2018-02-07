@@ -480,7 +480,7 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         # dset.rand_aff = RandomWarpAffine(dset.rng)
 
         augmentors = [
-            iaa.Sometimes(.8, iaa.ContrastNormalization((0.2, 1.8))),
+            # iaa.Sometimes(.8, iaa.ContrastNormalization((0.2, 1.8))),
             iaa.Fliplr(p=.5),
             iaa.Affine(translate_px={'x': (-1, 1), 'y': (-1, 1)}),
 
