@@ -765,12 +765,12 @@ def train():
         model=(clab.models.densenet.DenseNet, {
             'cifar': True,
             'num_classes': datasets['train'].n_classes,
-            # 'drop_rate': .1,
+            'drop_rate': float(ub.argval('--drop_rate', default=0)),
             'groups': 1,
         }),
         optimizer=(torch.optim.SGD, {
             # 'weight_decay': .0005,
-            'weight_decay': 0,
+            'weight_decay': float(ub.argval('--weight_decay', default=.0005)),
             'momentum': 0.9,
             'nesterov': True,
             'lr': 0.01,
