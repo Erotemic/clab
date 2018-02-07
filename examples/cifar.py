@@ -11,12 +11,12 @@ from clab import hyperparams
 from clab import fit_harness
 from clab.transforms import (ImageCenterScale,)
 # from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
-import imgaug
-from imgaug.augmenters.size import sm, ia
+import imgaug as ia
+import imgaug.augmenters as iaa
 from clab import util
 
 
-class CropTo(imgaug.augmenters.Augmenter):
+class CropTo(iaa.Augmenter):
     def __init__(self, shape,  name=None, deterministic=False, random_state=None):
         super(CropTo, self).__init__(name=name, deterministic=deterministic, random_state=random_state)
         self.shape = shape
@@ -25,7 +25,7 @@ class CropTo(imgaug.augmenters.Augmenter):
         result = []
         nb_images = len(images)
         seeds = random_state.randint(0, 10**6, (nb_images,))
-        for i in sm.xrange(nb_images):
+        for i in range(nb_images):
             seed = seeds[i]
             height, width = images[i].shape[0:2]
             top, bot, left, right = self._draw_samples_image(seed, height, width)
@@ -78,7 +78,6 @@ class CropTo(imgaug.augmenters.Augmenter):
 
     def get_parameters(self):
         return [self.shape]
-
 
 
 class Task(object):
@@ -479,14 +478,13 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         #     RandomBlur(rng=dset.rng),
         # ])
         # dset.rand_aff = RandomWarpAffine(dset.rng)
-        import imgaug
-        import imgaug.augmenters as iaa
 
         augmentors = [
-            iaa.Fliplr(),
+            iaa.Sometimes(.8, iaa.ContrastNormalization((0.2, 1.8))),
+            iaa.Fliplr(p=.5),
+            iaa.Affine(translate_px={'x': (-1, 1), 'y': (-1, 1)}),
+
             # CropTo((30, 30)),
-            iaa.ContrastNormalization((0.2, 1.8)),
-            iaa.Affine(translate_px={'x': (-1, 1), 'y': (-1, 1)})
             # iaa.Crop(px=(1, 1, 1, 1)),
             # imgaug.Brightness(63),
             # imgaug.RandomCrop((30, 30)),
@@ -543,6 +541,24 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             >>> dset._make_normalizer('independent')
             >>> index = 0
             >>> im, gt = dset.load_inputs(index)
+
+        Example:
+            >>> inputs, task = cifar_inputs(train=False)
+            >>> workdir = ub.ensuredir(ub.truepath('~/data/work/cifar'))
+            >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'RGB')
+            >>> index = 0
+            >>> im, gt = dset.load_inputs(index)
+            >>> from clab.util import mplutil
+            >>> mplutil.qtensure()
+            >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'RGB')
+            >>> dset.augment = True
+            >>> im, gt = dset.load_inputs(index)
+            >>> mplutil.imshow(im, colorspace='rgb')
+
+            >>> dset = CIFAR_Wrapper(inputs, task, workdir, 'LAB')
+            >>> dset.augment = True
+            >>> im, gt = dset.load_inputs(index)
+            >>> mplutil.imshow(im, colorspace='LAB')
         """
         assert dset.inputs.colorspace.lower() == 'rgb', (
             'we must be in rgb for augmentation')
@@ -562,10 +578,17 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
             # params = dset.rand_aff.random_params()
             # im = dset.rand_aff.warp(im, params, interp='cubic', backend='cv2')
 
+            im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
+                                         dst_space='rgb')
+            # Do augmentation in uint8 RGB
+            im = (im * 255).astype(np.uint8)
             im = dset.augmenter.augment_image(im)
-
-        im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
-                                     dst_space=dset.output_colorspace)
+            im = (im / 255).astype(np.float32)
+            im = util.convert_colorspace(im, src_space='rgb',
+                                         dst_space=dset.output_colorspace)
+        else:
+            im = util.convert_colorspace(im, src_space=dset.inputs.colorspace,
+                                         dst_space=dset.output_colorspace)
         # Do centering of inputs
         if dset.center_inputs:
             im = dset.center_inputs(im)

@@ -1606,6 +1606,503 @@ def qtensure():
             ipython.magic('pylab qt5 --no-import-all')
 
 
+def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
+           interpolation='nearest', cmap=None, heatmap=False,
+           data_colorbar=False, xlabel=None, redraw_image=True,
+           colorspace='bgr', ax=None, alpha=None, norm=None, **kwargs):
+    r"""
+    Args:
+        img (ndarray): image data
+        fnum (int): figure number
+        colorspace (str): if the data is 3-4 channels, this indicates the colorspace
+            1 channel data is assumed grayscale. 4 channels assumes alpha.
+        title (str):
+        figtitle (None):
+        pnum (tuple): plot number
+        interpolation (str): other interpolations = nearest, bicubic, bilinear
+        cmap (None):
+        heatmap (bool):
+        data_colorbar (bool):
+        darken (None):
+        redraw_image (bool): used when calling imshow over and over. if false
+                                doesnt do the image part.
+
+    Returns:
+        tuple: (fig, ax)
+
+    Kwargs:
+        docla, doclf, projection
+
+    Returns:
+        tuple: (fig, ax)
+
+    CommandLine:
+        python -m plottool.draw_func2 --exec-imshow --show
+
+    Example:
+        >>> # ENABLE_DOCTEST
+        >>> from plottool.draw_func2 import *  # NOQA
+        >>> import vtool as vt
+        >>> img_fpath = ut.grab_test_imgpath('carl.jpg')
+        >>> img = vt.imread(img_fpath)
+        >>> (fig, ax) = imshow(img)
+        >>> result = ('(fig, ax) = %s' % (str((fig, ax)),))
+        >>> print(result)
+        >>> ut.show_if_requested()
+    """
+    import matplotlib.pyplot as plt
+    if ax is not None:
+        fig = ax.figure
+        nospecial = True
+    else:
+        fig = figure(fnum=fnum, pnum=pnum, title=title, figtitle=figtitle, **kwargs)
+        ax = plt.gca()
+        nospecial = False
+        #ax.set_xticks([])
+        #ax.set_yticks([])
+        #return fig, ax
+
+    if not redraw_image:
+        return fig, ax
+
+    if isinstance(img, six.string_types):
+        # Allow for path to image to be specified
+        from clab import util
+        img_fpath = img
+        img = util.imread(img_fpath)
+
+    plt_imshow_kwargs = {
+        'interpolation': interpolation,
+        #'cmap': plt.get_cmap('gray'),
+    }
+    if alpha is not None:
+        plt_imshow_kwargs['alpha'] = alpha
+
+    if norm is not None:
+        if norm is True:
+            norm = mpl.colors.Normalize()
+        plt_imshow_kwargs['norm'] = norm
+    else:
+        if cmap is None and not heatmap and not nospecial:
+            plt_imshow_kwargs['vmin'] = 0
+            plt_imshow_kwargs['vmax'] = 255
+    if heatmap:
+        cmap = 'hot'
+    try:
+        if len(img.shape) == 3 and (img.shape[2] == 3 or img.shape[2] == 4):
+            # img is in a color format
+            from clab import util
+
+            dst_space = 'rgb'
+            if img.shape[2] == 4:
+                colorspace += 'a'
+                dst_space += 'a'
+
+            imgRGB = util.convert_colorspace(img, dst_space=dst_space,
+                                             src_space=colorspace)
+            if imgRGB.dtype.kind == 'f':
+                maxval = imgRGB.max()
+                if maxval > 1.01 and maxval < 256:
+                    imgRGB = np.array(imgRGB, dtype=np.uint8)
+            ax.imshow(imgRGB, **plt_imshow_kwargs)
+
+        elif len(img.shape) == 2 or (len(img.shape) == 3 and img.shape[2] == 1):
+            # img is in grayscale
+            if len(img.shape) == 3:
+                imgGRAY = img.reshape(img.shape[0:2])
+            else:
+                imgGRAY = img
+            if cmap is None:
+                cmap = plt.get_cmap('gray')
+            if isinstance(cmap, six.string_types):
+                cmap = plt.get_cmap(cmap)
+            # for some reason gray floats aren't working right
+            if imgGRAY.max() <= 1.01 and imgGRAY.min() >= -1E-9:
+                imgGRAY = (imgGRAY * 255).astype(np.uint8)
+            ax.imshow(imgGRAY, cmap=cmap, **plt_imshow_kwargs)
+        else:
+            raise AssertionError(
+                'unknown image format. img.dtype=%r, img.shape=%r' %
+                (img.dtype, img.shape))
+    except TypeError as te:
+        print('[df2] imshow ERROR %r' % (te,))
+        raise
+    except Exception as ex:
+        print('!!!!!!!!!!!!!!WARNING!!!!!!!!!!!')
+        print('[df2] type(img) = %r' % type(img))
+        if not isinstance(img, np.ndarray):
+            print('!!!!!!!!!!!!!!ERRROR!!!!!!!!!!!')
+            pass
+            #print('img = %r' % (img,))
+        print('[df2] img.dtype = %r' % (img.dtype,))
+        print('[df2] type(img) = %r' % (type(img),))
+        print('[df2] img.shape = %r' % (img.shape,))
+        print('[df2] imshow ERROR %r' % ex)
+        raise
+    #plt.set_cmap('gray')
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    if data_colorbar is True:
+        scores = np.unique(img.flatten())
+        if cmap is None:
+            cmap = 'hot'
+        colors = scores_to_color(scores, cmap)
+        colorbar(scores, colors)
+
+    if xlabel is not None:
+        ax.set_xlabel(xlabel)
+
+    if figtitle is not None:
+        set_figtitle(figtitle)
+    return fig, ax
+
+
+def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
+             float_format='%.2f', **kwargs):
+    """
+    adds a color bar next to the axes based on specific scalars
+
+    Args:
+        scalars (ndarray):
+        colors (ndarray):
+        custom (bool): use custom ticks
+
+    Kwargs:
+        See plt.colorbar
+
+    Returns:
+        cb : matplotlib colorbar object
+
+    CommandLine:
+        python -m plottool.draw_func2 --exec-colorbar --show
+        python -m plottool.draw_func2 --exec-colorbar:1 --show
+
+    Example:
+        >>> # ENABLE_DOCTEST
+        >>> from plottool.draw_func2 import *  # NOQA
+        >>> from plottool import draw_func2 as df2
+        >>> from plottool.draw_func2 import *  # NOQA
+        >>> scalars = np.array([-1, -2, 1, 1, 2, 7, 10])
+        >>> cmap_ = 'plasma'
+        >>> logscale = False
+        >>> custom = True
+        >>> reverse_cmap = True
+        >>> val2_customcolor  = {
+        ...        -1: UNKNOWN_PURP,
+        ...        -2: LIGHT_BLUE,
+        ...    }
+        >>> colors = scores_to_color(scalars, cmap_=cmap_, logscale=logscale, reverse_cmap=reverse_cmap, val2_customcolor=val2_customcolor)
+        >>> colorbar(scalars, colors, custom=custom)
+        >>> df2.present()
+        >>> import plottool as pt
+        >>> pt.show_if_requested()
+
+    Example:
+        >>> # ENABLE_DOCTEST
+        >>> from plottool.draw_func2 import *  # NOQA
+        >>> from plottool import draw_func2 as df2
+        >>> from plottool.draw_func2 import *  # NOQA
+        >>> import plottool as pt
+        >>> scalars = np.linspace(0, 1, 100)
+        >>> cmap_ = 'plasma'
+        >>> logscale = False
+        >>> custom = False
+        >>> reverse_cmap = False
+        >>> colors = scores_to_color(scalars, cmap_=cmap_, logscale=logscale,
+        >>>                          reverse_cmap=reverse_cmap)
+        >>> colors = [pt.lighten_rgb(c, .3) for c in colors]
+        >>> colorbar(scalars, colors, custom=custom)
+        >>> df2.present()
+        >>> import plottool as pt
+        >>> pt.show_if_requested()
+    """
+    import matplotlib.pyplot as plt
+    assert len(scalars) == len(colors), 'scalars and colors must be corresponding'
+    if len(scalars) == 0:
+        return None
+    # Parameters
+    ax = plt.gca()
+    divider = ensure_divider(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+
+    xy, width, height = get_axis_xy_width_height(ax)
+    #orientation = ['vertical', 'horizontal'][0]
+    TICK_FONTSIZE = 8
+    #
+    # Create scalar mappable with cmap
+    if custom:
+        # FIXME: clean this code up and change the name custom
+        # to be meaningful. It is more like: display unique colors
+        unique_scalars, unique_idx = np.unique(scalars, return_index=True)
+        unique_colors = np.array(colors)[unique_idx]
+        #max_, min_ = unique_scalars.max(), unique_scalars.min()
+        #extent_ = max_ - min_
+        #bounds = np.linspace(min_, max_ + 1, extent_ + 2)
+        listed_cmap = mpl.colors.ListedColormap(unique_colors)
+        #norm = mpl.colors.BoundaryNorm(bounds, listed_cmap.N)
+        #sm = mpl.cm.ScalarMappable(cmap=listed_cmap, norm=norm)
+        sm = mpl.cm.ScalarMappable(cmap=listed_cmap)
+        sm.set_array(np.linspace(0, 1, len(unique_scalars) + 1))
+    else:
+        sorted_scalars = sorted(scalars)
+        listed_cmap = scores_to_cmap(scalars, colors)
+        sm = plt.cm.ScalarMappable(cmap=listed_cmap)
+        sm.set_array(sorted_scalars)
+    # Use mapable object to create the colorbar
+    #COLORBAR_SHRINK = .42  # 1
+    #COLORBAR_PAD = .01  # 1
+    #COLORBAR_ASPECT = np.abs(20 * height / (width))  # 1
+
+    cb = plt.colorbar(sm, cax=cax, **kwargs)
+
+    ## Add the colorbar to the correct label
+    #axis = cb.ax.yaxis  # if orientation == 'horizontal' else cb.ax.yaxis
+    #position = 'bottom' if orientation == 'horizontal' else 'right'
+    #axis.set_ticks_position(position)
+
+    # This line alone removes data
+    # axis.set_ticks([0, .5, 1])
+    if custom:
+        ticks = np.linspace(0, 1, len(unique_scalars) + 1)
+        if len(ticks) < 2:
+            ticks += .5
+        else:
+            # SO HACKY
+            ticks += (ticks[1] - ticks[0]) / 2
+
+        if isinstance(unique_scalars, np.ndarray) and unique_scalars.dtype.kind == 'f':
+            ticklabels = [float_format % scalar for scalar in unique_scalars]
+        else:
+            ticklabels = unique_scalars
+        cb.set_ticks(ticks)  # tick locations
+        cb.set_ticklabels(ticklabels)  # tick labels
+    elif ticklabels is not None:
+        ticks_ = cb.ax.get_yticks()
+        mx = ticks_.max()
+        mn = ticks_.min()
+        ticks = np.linspace(mn, mx, len(ticklabels))
+        cb.set_ticks(ticks)  # tick locations
+        cb.set_ticklabels(ticklabels)
+        #cb.ax.get_yticks()
+        #cb.set_ticks(ticks)  # tick locations
+        #cb.set_ticklabels(ticklabels)  # tick labels
+    # set_plotdat(cb.ax, 'viztype', 'colorbar-%s' % (lbl,))
+    # set_plotdat(cb.ax, 'sm', sm)
+    # FIXME: Figure out how to make a maximum number of ticks
+    # and to enforce them to be inside the data bounds
+    cb.ax.tick_params(labelsize=TICK_FONTSIZE)
+    # Sets current axis
+    plt.sca(ax)
+    if lbl is not None:
+        cb.set_label(lbl)
+    return cb
+
+
+DF2_DIVIDER_KEY = '_df2_divider'
+
+
+def get_plotdat(ax, key, default=None):
+    """ returns internal property from a matplotlib axis """
+    _plotdat = get_plotdat_dict(ax)
+    val = _plotdat.get(key, default)
+    return val
+
+
+def set_plotdat(ax, key, val):
+    """ sets internal property to a matplotlib axis """
+    _plotdat = get_plotdat_dict(ax)
+    _plotdat[key] = val
+
+
+def del_plotdat(ax, key):
+    """ sets internal property to a matplotlib axis """
+    _plotdat = get_plotdat_dict(ax)
+    if key in _plotdat:
+        del _plotdat[key]
+
+
+def get_plotdat_dict(ax):
+    """ sets internal property to a matplotlib axis """
+    if '_plotdat' not in ax.__dict__:
+        ax.__dict__['_plotdat'] = {}
+    plotdat_dict = ax.__dict__['_plotdat']
+    return plotdat_dict
+
+
+def ensure_divider(ax):
+    """ Returns previously constructed divider or creates one """
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    divider = get_plotdat(ax, DF2_DIVIDER_KEY, None)
+    if divider is None:
+        divider = make_axes_locatable(ax)
+        set_plotdat(ax, DF2_DIVIDER_KEY, divider)
+        orig_append_axes = divider.append_axes
+        def df2_append_axes(divider, position, size, pad=None, add_to_figure=True, **kwargs):
+            """ override divider add axes to register the divided axes """
+            div_axes = get_plotdat(ax, 'df2_div_axes', [])
+            new_ax = orig_append_axes(position, size, pad=pad, add_to_figure=add_to_figure, **kwargs)
+            div_axes.append(new_ax)
+            set_plotdat(ax, 'df2_div_axes', div_axes)
+            return new_ax
+        new_method = df2_append_axes.__get__(divider, divider.__class__)
+        setattr(divider, 'append_axes', new_method)
+        # ut.inject_func_as_method(divider, df2_append_axes, 'append_axes', allow_override=True)
+    return divider
+
+
+def scores_to_cmap(scores, colors=None, cmap_='hot'):
+    if colors is None:
+        colors = scores_to_color(scores, cmap_=cmap_)
+    scores = np.array(scores)
+    colors = np.array(colors)
+    sortx = scores.argsort()
+    sorted_colors = colors[sortx]
+    # Make a listed colormap and mappable object
+    listed_cmap = mpl.colors.ListedColormap(sorted_colors)
+    return listed_cmap
+
+
+def scores_to_color(score_list, cmap_='hot', logscale=False, reverse_cmap=False,
+                    custom=False, val2_customcolor=None, score_range=None,
+                    cmap_range=(.1, .9)):
+    """
+    Other good colormaps are 'spectral', 'gist_rainbow', 'gist_ncar', 'Set1',
+    'Set2', 'Accent'
+    # TODO: plasma
+
+    Args:
+        score_list (list):
+        cmap_ (str): defaults to hot
+        logscale (bool):
+        cmap_range (tuple): restricts to only a portion of the cmap to avoid extremes
+
+    Returns:
+        <class '_ast.ListComp'>
+
+    SeeAlso:
+        python -m plottool.color_funcs --test-show_all_colormaps --show --type "Perceptually Uniform Sequential"
+
+    CommandLine:
+        python -m plottool.draw_func2 scores_to_color --show
+
+    Example1:
+        >>> # ENABLE_DOCTEST
+        >>> from plottool.draw_func2 import *  # NOQA
+        >>> import plottool as pt
+        >>> ut.exec_funckw(pt.scores_to_color, globals())
+        >>> score_list = np.array([-1, -2, 1, 1, 2, 10])
+        >>> # score_list = np.array([0, .1, .11, .12, .13, .8])
+        >>> # score_list = np.linspace(0, 1, 100)
+        >>> cmap_ = 'plasma'
+        >>> colors = pt.scores_to_color(score_list, cmap_)
+        >>> import vtool as vt
+        >>> imgRGB = vt.atleast_nd(np.array(colors)[:, 0:3], 3, tofront=True)
+        >>> imgRGB = imgRGB.astype(np.float32)
+        >>> imgBGR = vt.convert_colorspace(imgRGB, 'BGR', 'RGB')
+        >>> pt.imshow(imgBGR)
+        >>> pt.show_if_requested()
+
+    Example:
+        >>> from plottool.draw_func2 import *  # NOQA
+        >>> score_list = np.array([-1, -2, 1, 1, 2, 10])
+        >>> cmap_ = 'hot'
+        >>> logscale = False
+        >>> reverse_cmap = True
+        >>> custom = True
+        >>> val2_customcolor  = {
+        ...        -1: UNKNOWN_PURP,
+        ...        -2: LIGHT_BLUE,
+        ...    }
+    """
+    import matplotlib.pyplot as plt
+    assert len(score_list.shape) == 1, 'score must be 1d'
+    if len(score_list) == 0:
+        return []
+
+    def apply_logscale(scores):
+        scores = np.array(scores)
+        above_zero = scores >= 0
+        scores_ = scores.copy()
+        scores_[above_zero] = scores_[above_zero] + 1
+        scores_[~above_zero] = scores_[~above_zero] - 1
+        scores_ = np.log2(scores_)
+        return scores_
+
+    if logscale:
+        # Hack
+        score_list = apply_logscale(score_list)
+        #if loglogscale
+        #score_list = np.log2(np.log2(score_list + 2) + 1)
+    #if isinstance(cmap_, six.string_types):
+    cmap = plt.get_cmap(cmap_)
+    #else:
+    #    cmap = cmap_
+    if reverse_cmap:
+        cmap = reverse_colormap(cmap)
+    #if custom:
+    #    base_colormap = cmap
+    #    data = score_list
+    #    cmap = customize_colormap(score_list, base_colormap)
+    if score_range is None:
+        min_ = score_list.min()
+        max_ = score_list.max()
+    else:
+        min_ = score_range[0]
+        max_ = score_range[1]
+        if logscale:
+            min_, max_ = apply_logscale([min_, max_])
+    if cmap_range is None:
+        cmap_scale_min, cmap_scale_max = 0., 1.
+    else:
+        cmap_scale_min, cmap_scale_max = cmap_range
+    extent_ = max_ - min_
+    if extent_ == 0:
+        colors = [cmap(.5) for fx in range(len(score_list))]
+    else:
+        if False and logscale:
+            # hack
+            def score2_01(score):
+                return np.log2(
+                    1 + cmap_scale_min + cmap_scale_max *
+                    (float(score) - min_) / (extent_))
+            score_list = np.array(score_list)
+            #rank_multiplier = score_list.argsort() / len(score_list)
+            #normscore = np.array(list(map(score2_01, score_list))) * rank_multiplier
+            normscore = np.array(list(map(score2_01, score_list)))
+            colors =  list(map(cmap, normscore))
+        else:
+            def score2_01(score):
+                return cmap_scale_min + cmap_scale_max * (float(score) - min_) / (extent_)
+        colors = [cmap(score2_01(score)) for score in score_list]
+        if val2_customcolor is not None:
+            colors = [
+                np.array(val2_customcolor.get(score, color))
+                for color, score in zip(colors, score_list)]
+    return colors
+
+
+def reverse_colormap(cmap):
+    """
+    References:
+        http://nbviewer.ipython.org/github/kwinkunks/notebooks/blob/master/Matteo_colourmaps.ipynb
+    """
+    if isinstance(cmap,  mpl.colors.ListedColormap):
+        return mpl.colors.ListedColormap(cmap.colors[::-1])
+    else:
+        reverse = []
+        k = []
+        for key, channel in six.iteritems(cmap._segmentdata):
+            data = []
+            for t in channel:
+                data.append((1 - t[0], t[1], t[2]))
+            k.append(key)
+            reverse.append(sorted(data))
+        cmap_reversed = mpl.colors.LinearSegmentedColormap(
+            cmap.name + '_reversed', dict(zip(k, reverse)))
+        return cmap_reversed
+
+
 if __name__ == '__main__':
     r"""
     CommandLine:
