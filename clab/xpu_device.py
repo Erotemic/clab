@@ -206,7 +206,8 @@ class XPU(ub.NiceRepr):
 
     def is_gpu(xpu):
         """ True if running in single or parallel gpu mode """
-        return 'gpu' in xpu.mode
+        return xpu.main_device is not None
+        # return 'gpu' in xpu.mode
 
     def mount(xpu, model):
         """
@@ -277,7 +278,7 @@ class XPU(ub.NiceRepr):
             cukw['async'] = kw.pop('async')
         for item in args:
             item = xpu.move(item, **cukw)
-            item = torch.autograd.Variable(item)
+            item = torch.autograd.Variable(item, **kw)
             yield item
 
     def set_as_default(xpu):
