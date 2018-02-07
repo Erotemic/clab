@@ -770,8 +770,7 @@ def train():
         }),
         optimizer=(torch.optim.SGD, {
             # 'weight_decay': .0005,
-            # 'weight_decay': 0,
-            'weight_decay': .0005,
+            'weight_decay': 0,
             'momentum': 0.9,
             'nesterov': True,
             'lr': 0.01,
@@ -787,15 +786,15 @@ def train():
         # Specify anything else that is special about your hyperparams here
         # Especially if you make a custom_batch_runner
         augment=str(datasets['train'].augmenter),
-        other={
+        other=ub.dict_union({
             # TODO: type of augmentation as a parameter dependency
             # 'augmenter': str(datasets['train'].augmenter),
             'augment': datasets['train'].augment,
             'batch_size': batch_size,
             'colorspace': datasets['train'].output_colorspace,
             'n_classes': datasets['train'].n_classes,
-            'center_inputs': datasets['train'].center_inputs,
-        },
+            # 'center_inputs': datasets['train'].center_inputs,
+        }, datasets['train'].center_inputs.__dict__),
     )
     # if ub.argflag('--rgb-indie'):
     #     hyper.other['norm'] = 'dependant'
