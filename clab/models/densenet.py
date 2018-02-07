@@ -23,7 +23,7 @@ class DenseNet(nn.Module):
 
     def __init__(self, growth_rate=12, block_config=(16, 16, 16), compression=0.5,
                  num_init_features=24, bn_size=4, drop_rate=0,
-                 num_classes=10, cifar=True):
+                 num_classes=10, cifar=True, groups=1):
 
         super(DenseNet, self).__init__()
         assert 0 < compression <= 1, 'compression of densenet should be between 0 and 1'
@@ -33,7 +33,8 @@ class DenseNet(nn.Module):
         if cifar:
             self.features = nn.Sequential(OrderedDict([
                 ('conv0', nn.Conv2d(3, num_init_features,
-                                    kernel_size=3, stride=1, padding=1, bias=False)),
+                                    kernel_size=3, stride=1, padding=1,
+                                    bias=False, groups=groups)),
             ]))
         else:
             self.features = nn.Sequential(OrderedDict([
