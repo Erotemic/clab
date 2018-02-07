@@ -34,7 +34,7 @@ def online_affine_perterb_np(np_images, rng, interp='cubic',
         >>> import numpy as np
         >>> import plottool as pt
         >>> rng = np.random
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> img = imutil.imread(fpath)
         >>> np_images = [img]
         >>> kw = {}
@@ -93,7 +93,7 @@ def online_intensity_augment_np(img, rng):
     """
         >>> from clab.augment.augment_numpy_online import *
         >>> import ubelt as ub
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> img = imutil.imread(fpath)
         >>> imaug = online_intensity_augment_np(img, rng)
         >>> pt.imshow(np.array(imaug))

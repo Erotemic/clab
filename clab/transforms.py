@@ -175,7 +175,7 @@ class AffineWarp(object):
     Benchmark:
         >>> from clab.transforms import *
         >>> import itertools as it
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> img_orig = util.imread(fpath)
         >>> shape = img_orig.shape
         >>> aff = AffineWarp()

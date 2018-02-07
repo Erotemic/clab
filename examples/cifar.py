@@ -10,7 +10,7 @@ from clab import nninit
 from clab import hyperparams
 from clab import fit_harness
 from clab.transforms import (ImageCenterScale,)
-from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
+# from clab.transforms import (RandomWarpAffine, RandomGamma, RandomBlur,)
 import imgaug
 from imgaug.augmenters.size import sm, ia
 from clab import util
@@ -498,10 +498,10 @@ class CIFAR_Wrapper(torch.utils.data.Dataset):  # cifar.CIFAR10):
         #     iaa.AdditiveGaussianNoise(scale=0.1*255)
         # ])
 
-        dset.rand_aff = RandomWarpAffine(
-            dset.rng, tx_pdf=(-2, 2), ty_pdf=(-2, 2), flip_lr_prob=.5,
-            zoom_pdf=None, shear_pdf=None, flip_ud_prob=None,
-            enable_stretch=None, default_distribution='uniform')
+        # dset.rand_aff = RandomWarpAffine(
+        #     dset.rng, tx_pdf=(-2, 2), ty_pdf=(-2, 2), flip_lr_prob=.5,
+        #     zoom_pdf=None, shear_pdf=None, flip_ud_prob=None,
+        #     enable_stretch=None, default_distribution='uniform')
 
         dset.center_inputs = None
 

@@ -20,7 +20,7 @@ def online_affine_perterb(pil_images, rng, **kw):
         >>> import numpy as np
         >>> import plottool as pt
         >>> rng = np.random
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> img = Image.open(fpath)
         >>> kw = {}
         >>> imaug, = online_affine_perterb([img], rng)
@@ -55,7 +55,7 @@ def online_intensity_augment(img, rng):
     """
         >>> from clab.augment import *
         >>> import ubelt as ub
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> img = Image.open(fpath)
         >>> imaug = online_intensity_augment(img, rng)
         >>> pt.imshow(np.array(imaug)[:, :, ::-1])

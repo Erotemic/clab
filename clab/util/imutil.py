@@ -90,7 +90,7 @@ def adjust_gamma(img, gamma=1.0):
     Ignore:
         >>> from clab.util.imutil import *
         >>> import ubelt as ub
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> img = imread(fpath)
         >>> gamma = .5
         >>> imgf = ensure_float01(img)
@@ -507,7 +507,7 @@ def imread(fpath, **kw):
     Example:
         >>> from clab.util.imutil import *
         >>> import tempfile
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> fpath = ub.grabdata('http://www.topcoder.com/contest/problem/UrbanMapper3D/JAX_Tile_043_DTM.tif')
         >>> ext = splitext(fpath)[1]
         >>> img1 = imread(fpath)

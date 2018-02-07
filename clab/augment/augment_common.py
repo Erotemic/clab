@@ -106,7 +106,7 @@ def random_affine_args(zoom_pdf=None,
         matrix = np.array(affine_around_mat2x3(cx, cy, *params) + [[0, 0, 1]])
         skaff = skimage.transform.AffineTransform(matrix=matrix)
 
-        img = util.imread(ut.grab_test_imgpath('lena.png'))
+        img = util.imread(ut.grab_test_imgpath('carl.png'))
         cx, cy = img.shape[1] / 2, img.shape[0] / 2
         img2 = skimage.transform.warp(
             img, skaff, output_shape=img.shape, order=3, mode='constant',

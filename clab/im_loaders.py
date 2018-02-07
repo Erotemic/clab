@@ -6,7 +6,7 @@ import numpy as np
 
 # def accimage_loader(path):
 #     """
-#     >>> path = ut.grab_test_imgpath('lena.png')
+#     >>> path = ut.grab_test_imgpath('carl.png')
 #     """
 #     import accimage
 #     acc_img = accimage.Image(path)
@@ -41,7 +41,7 @@ def pil_loader(fpath, colorspace=None):
     Example:
         >>> from clab.im_loaders import *
         >>> assert int(Image.PILLOW_VERSION.split('.')[0]) >= 4
-        >>> fpath = ub.grabdata('http://i.imgur.com/JGrqMnV.png', fname='lena.png')
+        >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
         >>> pil_img = pil_loader(fpath)
         >>> print('pil_img = {!r}'.format(pil_img))
         >>> fpath = ub.grabdata('http://i.imgur.com/iXNf4Me.png', fname='ada.png')
