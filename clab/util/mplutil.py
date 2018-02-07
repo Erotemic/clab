@@ -5,7 +5,7 @@ import six
 import matplotlib as mpl
 import ubelt as ub
 from six.moves import zip_longest
-from os.path import basename, splitext, join, dirname
+from os.path import join, dirname
 
 
 def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
@@ -1099,7 +1099,7 @@ def distinct_colors(N, brightness=.878, randomize=True, hue_range=(0.0, 1.0), cm
 
     Example:
         >>> # build test data
-        >>> N = ub.smartcast(ut.get_argval('--N', default=2), int)
+        >>> N = ub.smartcast(ub.get_argval('--N', default=2), int)
         >>> randomize = not ub.argflag('--no-randomize')
         >>> brightness = 0.878
         >>> # execute function
@@ -1149,7 +1149,7 @@ def distinct_colors(N, brightness=.878, randomize=True, hue_range=(0.0, 1.0), cm
         cmap_str = rng.choice(choices, 1)[0]
         #print('cmap_str = %r' % (cmap_str,))
         cmap = plt.cm.get_cmap(cmap_str)
-        #ut.hashstr27(cmap_seed)
+        #.hashstr27(cmap_seed)
         #cmap_seed = 0
         #pass
         jitter = (rng.randn(N) / (rng.randn(100).max() / 2)).clip(-1, 1) * ((1 / (N ** 2)))
@@ -1203,7 +1203,7 @@ def distinct_markers(num, style='astrisk', total=None, offset=0):
 
     Example:
         >>> # ENABLE_DOCTEST
-        >>> style = ut.get_argval('--style', type_=str, default='astrisk')
+        >>> style = ub.get_argval('--style', type_=str, default='astrisk')
         >>> marker_list = distinct_markers(10, style)
         >>> x_data = np.arange(0, 3)
         >>> for count, (marker) in enumerate(marker_list):
@@ -1270,7 +1270,7 @@ def ensure_fnum(fnum):
 
 def _save_requested(fpath_, save_parts):
     raise NotImplementedError('havent done this yet')
-    # dpi = ut.get_argval('--dpi', type_=int, default=200)
+    # dpi = ub.argval('--dpi', type_=int, default=200)
     from os.path import expanduser
     from matplotlib import pyplot as plt
     dpi = 200
@@ -1304,9 +1304,9 @@ def _save_requested(fpath_, save_parts):
 
     fpath_strict = ub.truepath(fpath)
     CLIP_WHITE = ub.argflag('--clipwhite')
+    from clab import util
 
     if save_parts:
-        import os
         # TODO: call save_parts instead, but we still need to do the
         # special grouping.
 
@@ -1314,17 +1314,17 @@ def _save_requested(fpath_, save_parts):
         atomic_axes = []
         seen_ = set([])
         for ax in fig.axes:
-            # div = pt.get_plotdat(ax, DF2_DIVIDER_KEY, None)
-            # if div is not None:
-            #     df2_div_axes = pt.get_plotdat_dict(ax).get('df2_div_axes', [])
-            #     seen_.add(ax)
-            #     seen_.update(set(df2_div_axes))
-            #     atomic_axes.append([ax] + df2_div_axes)
-            #     # TODO: pad these a bit
-            # else:
-            if ax not in seen_:
-                atomic_axes.append([ax])
+            div = get_plotdat(ax, DF2_DIVIDER_KEY, None)
+            if div is not None:
+                df2_div_axes = get_plotdat_dict(ax).get('df2_div_axes', [])
                 seen_.add(ax)
+                seen_.update(set(df2_div_axes))
+                atomic_axes.append([ax] + df2_div_axes)
+                # TODO: pad these a bit
+            else:
+                if ax not in seen_:
+                    atomic_axes.append([ax])
+                    seen_.add(ax)
 
         hack_axes_group_row = ub.argflag('--grouprows')
         if hack_axes_group_row:
@@ -1343,13 +1343,11 @@ def _save_requested(fpath_, save_parts):
         subpath_list = save_parts(fig=fig, fpath=fpath_strict,
                                   grouped_axes=atomic_axes, dpi=dpi)
         absfpath_ = subpath_list[-1]
-        fpath_list = [os.path.relpath(_, dpath) for _ in subpath_list]
 
         if CLIP_WHITE:
             for subpath in subpath_list:
                 # remove white borders
-                pass
-                # vt.clipwhite_ondisk(subpath, subpath)
+                util.clipwhite_ondisk(subpath, subpath)
     else:
         savekw = {}
         # savekw['transparent'] = fpath.endswith('.png') and not noalpha
@@ -1360,103 +1358,14 @@ def _save_requested(fpath_, save_parts):
         absfpath_ = ub.truepath(fpath)
         fig.savefig(absfpath_, **savekw)
 
-        # if CLIP_WHITE:
-        #     # remove white borders
-        #     fpath_in = fpath_out = absfpath_
-        #     vt.clipwhite_ondisk(fpath_in, fpath_out)
-
-        fpath_list = [fpath_]
-
-    # Print out latex info
-    default_caption = '\n% ---\n' + basename(fpath).replace('_', ' ') + '\n% ---\n'
-    default_label = splitext(basename(fpath))[0]  # [0].replace('_', '')
-    caption_list = ub.argval('--caption', type_=str,
-                             default=default_caption)
-    if isinstance(caption_list, six.string_types):
-        caption_str = caption_list
-    else:
-        caption_str = ' '.join(caption_list)
-    #caption_str = ut.get_argval('--caption', type_=str,
-    #default=basename(fpath).replace('_', ' '))
-    label_str   = ub.get_argval('--label', default=default_label)
-    width_str = ub.get_argval('--width', default=r'\textwidth')
-    width_str = ub.get_argval('--width', default=r'\textwidth')
-    print('width_str = %r' % (width_str,))
-    height_str  = ub.argval('--height', type_=str, default=None)
-    caplbl_str =  label_str
-
-    RESHAPE = ub.argval('--reshape', type_=tuple, default=None)
-    if RESHAPE:
-        raise NotImplementedError('fixme')
-        def list_reshape(list_, new_shape):
-            for dim in reversed(new_shape):
-                list_ = list(map(list, zip(*[list_[i::dim] for i in range(dim)])))
-            return list_
-        newshape = (2,)
-        ut = None
-        unflat_fpath_list = ut.list_reshape(fpath_list, newshape, trail=True)
-        fpath_list = ut.flatten(ut.list_transpose(unflat_fpath_list))
-
-    caption_str = '\caplbl{' + caplbl_str + '}' + caption_str
-    figure_str  = ut.util_latex.get_latex_figure_str(fpath_list,
-                                                     label_str=label_str,
-                                                     caption_str=caption_str,
-                                                     width_str=width_str,
-                                                     height_str=height_str)
-    #import sys
-    #print(sys.argv)
-    latex_block = figure_str
-    latex_block = ut.latex_newcommand(label_str, latex_block)
-    #latex_block = ut.codeblock(
-    #    r'''
-    #    \newcommand{\%s}{
-    #    %s
-    #    }
-    #    '''
-    #) % (label_str, latex_block,)
-    try:
-        import os
-        import psutil
-        import pipes
-        #import shlex
-        # TODO: separate into get_process_cmdline_str
-        # TODO: replace home with ~
-        proc = psutil.Process(pid=os.getpid())
-        home = os.path.expanduser('~')
-        cmdline_str = ' '.join([
-            pipes.quote(_).replace(home, '~')
-            for _ in proc.cmdline()])
-        latex_block = ut.codeblock(
-            r'''
-            \begin{comment}
-            %s
-            \end{comment}
-            '''
-        ) % (cmdline_str,) + '\n' + latex_block
-    except OSError:
-        pass
-
-    #latex_indent = ' ' * (4 * 2)
-    latex_indent = ' ' * (0)
-
-    latex_block_ = (ut.indent(latex_block, latex_indent))
-    ut.print_code(latex_block_, 'latex')
-
-    if 'append' in arg_dict:
-        append_fpath = arg_dict['append']
-        ut.write_to(append_fpath, '\n\n' + latex_block_, mode='a')
+        if CLIP_WHITE:
+            # remove white borders
+            fpath_in = fpath_out = absfpath_
+            util.clipwhite_ondisk(fpath_in, fpath_out)
 
     if ub.argflag(('--diskshow', '--ds')):
         # show what we wrote
-        ut.startfile(absfpath_)
-
-    # Hack write the corresponding logfile next to the output
-    log_fpath = ut.get_current_log_fpath()
-    if ub.argflag('--savelog'):
-        if log_fpath is not None:
-            ut.copy(log_fpath, splitext(absfpath_)[0] + '.txt')
-        else:
-            print('Cannot copy log file because none exists')
+        ub.startfile(absfpath_)
 
 
 def show_if_requested(N=1):
@@ -1478,7 +1387,7 @@ def show_if_requested(N=1):
 
     # def update_figsize():
     #     """ updates figsize based on command line """
-    #     figsize = ut.get_argval('--figsize', type_=list, default=None)
+    #     figsize = ub.argval('--figsize', type_=list, default=None)
     #     if figsize is not None:
     #         # Enforce inches and DPI
     #         fig = plt.gcf()
@@ -1553,8 +1462,8 @@ def save_parts(fig, fpath, grouped_axes=None, dpi=None):
         >>> adjust_subplots(fig=fig, wspace=.3, hspace=.3, top=.9)
         >>> subpaths = save_parts(fig, fpath, dpi=300)
         >>> fig.savefig(fpath)
-        >>> ut.startfile(subpaths[0])
-        >>> ut.startfile(fpath)
+        >>> ub.startfile(subpaths[0])
+        >>> ub.startfile(fpath)
     """
     if dpi:
         # Need to set figure dpi before we draw
@@ -1636,15 +1545,9 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
     Returns:
         tuple: (fig, ax)
 
-    CommandLine:
-        python -m plottool.draw_func2 --exec-imshow --show
-
     Example:
-        >>> # ENABLE_DOCTEST
-        >>> from plottool.draw_func2 import *  # NOQA
-        >>> import vtool as vt
         >>> img_fpath = ut.grab_test_imgpath('carl.jpg')
-        >>> img = vt.imread(img_fpath)
+        >>> img = util.imread(img_fpath)
         >>> (fig, ax) = imshow(img)
         >>> result = ('(fig, ax) = %s' % (str((fig, ax)),))
         >>> print(result)
@@ -1774,15 +1677,7 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
     Returns:
         cb : matplotlib colorbar object
 
-    CommandLine:
-        python -m plottool.draw_func2 --exec-colorbar --show
-        python -m plottool.draw_func2 --exec-colorbar:1 --show
-
     Example:
-        >>> # ENABLE_DOCTEST
-        >>> from plottool.draw_func2 import *  # NOQA
-        >>> from plottool import draw_func2 as df2
-        >>> from plottool.draw_func2 import *  # NOQA
         >>> scalars = np.array([-1, -2, 1, 1, 2, 7, 10])
         >>> cmap_ = 'plasma'
         >>> logscale = False
@@ -1795,15 +1690,10 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
         >>> colors = scores_to_color(scalars, cmap_=cmap_, logscale=logscale, reverse_cmap=reverse_cmap, val2_customcolor=val2_customcolor)
         >>> colorbar(scalars, colors, custom=custom)
         >>> df2.present()
-        >>> import plottool as pt
-        >>> pt.show_if_requested()
+        >>> show_if_requested()
 
     Example:
         >>> # ENABLE_DOCTEST
-        >>> from plottool.draw_func2 import *  # NOQA
-        >>> from plottool import draw_func2 as df2
-        >>> from plottool.draw_func2 import *  # NOQA
-        >>> import plottool as pt
         >>> scalars = np.linspace(0, 1, 100)
         >>> cmap_ = 'plasma'
         >>> logscale = False
@@ -1811,11 +1701,10 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
         >>> reverse_cmap = False
         >>> colors = scores_to_color(scalars, cmap_=cmap_, logscale=logscale,
         >>>                          reverse_cmap=reverse_cmap)
-        >>> colors = [pt.lighten_rgb(c, .3) for c in colors]
+        >>> colors = [lighten_rgb(c, .3) for c in colors]
         >>> colorbar(scalars, colors, custom=custom)
         >>> df2.present()
-        >>> import plottool as pt
-        >>> pt.show_if_requested()
+        >>> show_if_requested()
     """
     import matplotlib.pyplot as plt
     assert len(scalars) == len(colors), 'scalars and colors must be corresponding'
@@ -1980,31 +1869,20 @@ def scores_to_color(score_list, cmap_='hot', logscale=False, reverse_cmap=False,
     Returns:
         <class '_ast.ListComp'>
 
-    SeeAlso:
-        python -m plottool.color_funcs --test-show_all_colormaps --show --type "Perceptually Uniform Sequential"
-
-    CommandLine:
-        python -m plottool.draw_func2 scores_to_color --show
-
     Example1:
-        >>> # ENABLE_DOCTEST
-        >>> from plottool.draw_func2 import *  # NOQA
-        >>> import plottool as pt
-        >>> ut.exec_funckw(pt.scores_to_color, globals())
+        >>> ut.exec_funckw(scores_to_color, globals())
         >>> score_list = np.array([-1, -2, 1, 1, 2, 10])
         >>> # score_list = np.array([0, .1, .11, .12, .13, .8])
         >>> # score_list = np.linspace(0, 1, 100)
         >>> cmap_ = 'plasma'
-        >>> colors = pt.scores_to_color(score_list, cmap_)
-        >>> import vtool as vt
-        >>> imgRGB = vt.atleast_nd(np.array(colors)[:, 0:3], 3, tofront=True)
+        >>> colors = scores_to_color(score_list, cmap_)
+        >>> imgRGB = util.atleast_nd(np.array(colors)[:, 0:3], 3, tofront=True)
         >>> imgRGB = imgRGB.astype(np.float32)
-        >>> imgBGR = vt.convert_colorspace(imgRGB, 'BGR', 'RGB')
-        >>> pt.imshow(imgBGR)
-        >>> pt.show_if_requested()
+        >>> imgBGR = util.convert_colorspace(imgRGB, 'BGR', 'RGB')
+        >>> imshow(imgBGR)
+        >>> show_if_requested()
 
     Example:
-        >>> from plottool.draw_func2 import *  # NOQA
         >>> score_list = np.array([-1, -2, 1, 1, 2, 10])
         >>> cmap_ = 'hot'
         >>> logscale = False
@@ -2101,6 +1979,184 @@ def reverse_colormap(cmap):
         cmap_reversed = mpl.colors.LinearSegmentedColormap(
             cmap.name + '_reversed', dict(zip(k, reverse)))
         return cmap_reversed
+
+
+class PlotNums(object):
+    """
+    Convinience class for dealing with plot numberings (pnums)
+
+    Example:
+        >>> pnum_ = PlotNums(nRows=2, nCols=2)
+        >>> # Indexable
+        >>> print(pnum_[0])
+        (2, 2, 1)
+        >>> # Iterable
+        >>> print(ub.repr2(list(pnum_), nl=0, nobr=True))
+        (2, 2, 1), (2, 2, 2), (2, 2, 3), (2, 2, 4)
+        >>> # Callable (iterates through a default iterator)
+        >>> print(pnum_())
+        (2, 2, 1)
+        >>> print(pnum_())
+        (2, 2, 2)
+    """
+
+    def __init__(self, nRows=None, nCols=None, nSubplots=None, start=0):
+        nRows, nCols = self._get_num_rc(nSubplots, nRows, nCols)
+        self.nRows = nRows
+        self.nCols = nCols
+        base = 0
+        self.offset = 0 if base == 1 else 1
+        self.start = start
+        self._iter = None
+
+    def __getitem__(self, px):
+        return (self.nRows, self.nCols, px + self.offset)
+
+    def __call__(self):
+        """
+        replacement for make_pnum_nextgen
+
+        Example:
+            >>> import itertools as it
+            >>> pnum_ = PlotNums(nSubplots=9)
+            >>> pnum_list = list( (pnum_() for _ in it.count()) )
+            >>> print((nRows, nCols, nSubplots))
+            >>> result = ('pnum_list = %s' % (ub.repr2(pnum_list),))
+            >>> print(result)
+
+        Example:
+            >>> for nRows, nCols, nSubplots in it.product([None, 3], [None, 3], [None, 9]):
+            >>>     start = 0
+            >>>     pnum_ = PlotNums(nRows, nCols, nSubplots, start)
+            >>>     pnum_list = list( (pnum_() for _ in it.count()) )
+            >>>     print((nRows, nCols, nSubplots))
+            >>>     result = ('pnum_list = %s' % (ub.repr2(pnum_list),))
+            >>>     print(result)
+        """
+        if self._iter is None:
+            self._iter = iter(self)
+        return six.next(self._iter)
+
+    def __iter__(self):
+        r"""
+        Yields:
+            tuple : pnum
+
+        Example:
+            >>> pnum_ = iter(PlotNums(nRows=3, nCols=2))
+            >>> result = ub.repr2(list(pnum_), nl=1, nobr=True)
+            >>> print(result)
+            (3, 2, 1),
+            (3, 2, 2),
+            (3, 2, 3),
+            (3, 2, 4),
+            (3, 2, 5),
+            (3, 2, 6),
+
+        Example:
+            >>> nRows = 3
+            >>> nCols = 2
+            >>> pnum_ = iter(PlotNums(nRows, nCols, start=3))
+            >>> result = ub.repr2(list(pnum_), nl=1, nobr=True)
+            >>> print(result)
+            (3, 2, 4),
+            (3, 2, 5),
+            (3, 2, 6),
+        """
+        for px in range(self.start, len(self)):
+            yield self[px]
+
+    def __len__(self):
+        total_plots = self.nRows * self.nCols
+        return total_plots
+
+    @classmethod
+    def _get_num_rc(cls, nSubplots=None, nRows=None, nCols=None):
+        r"""
+        Gets a constrained row column plot grid
+
+        Args:
+            nSubplots (None): (default = None)
+            nRows (None): (default = None)
+            nCols (None): (default = None)
+
+        Returns:
+            tuple: (nRows, nCols)
+
+        Example:
+            >>> cases = [
+            >>>     dict(nRows=None, nCols=None, nSubplots=None),
+            >>>     dict(nRows=2, nCols=None, nSubplots=5),
+            >>>     dict(nRows=None, nCols=2, nSubplots=5),
+            >>>     dict(nRows=None, nCols=None, nSubplots=5),
+            >>> ]
+            >>> for kw in cases:
+            >>>     print('----')
+            >>>     size = PlotNums._get_num_rc(**kw)
+            >>>     if kw['nSubplots'] is not None:
+            >>>         assert size[0] * size[1] >= kw['nSubplots']
+            >>>     print('**kw = %s' % (ub.repr2(kw),))
+            >>>     print('size = %r' % (size,))
+        """
+        if nSubplots is None:
+            if nRows is None:
+                nRows = 1
+            if nCols is None:
+                nCols = 1
+        else:
+            if nRows is None and nCols is None:
+                nRows, nCols = PlotNums._get_square_row_cols(nSubplots)
+            elif nRows is not None:
+                nCols = int(np.ceil(nSubplots / nRows))
+            elif nCols is not None:
+                nRows = int(np.ceil(nSubplots / nCols))
+        return nRows, nCols
+
+    def _get_square_row_cols(nSubplots, max_cols=None, fix=False, inclusive=True):
+        r"""
+        Args:
+            nSubplots (int):
+            max_cols (int):
+
+        Returns:
+            tuple: (int, int)
+
+        Example:
+            >>> nSubplots = 9
+            >>> nSubplots_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            >>> max_cols = None
+            >>> rc_list = [PlotNums._get_square_row_cols(nSubplots, fix=True) for nSubplots in nSubplots_list]
+            >>> print(repr(np.array(rc_list).T))
+            array([[1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3],
+                   [1, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4]])
+        """
+        if nSubplots == 0:
+            return 0, 0
+        if inclusive:
+            rounder = np.ceil
+        else:
+            rounder = np.floor
+        if fix:
+            # This function is very broken, but it might have dependencies
+            # this is the correct version
+            nCols = int(rounder(np.sqrt(nSubplots)))
+            nRows = int(rounder(nSubplots / nCols))
+            return nRows, nCols
+        else:
+            # This is the clamped num cols version
+            # probably used in ibeis.viz
+            if max_cols is None:
+                max_cols = 5
+                if nSubplots in [4]:
+                    max_cols = 2
+                if nSubplots in [5, 6, 7]:
+                    max_cols = 3
+                if nSubplots in [8]:
+                    max_cols = 4
+            nCols = int(min(nSubplots, max_cols))
+            #nCols = int(min(rounder(np.sqrt(nrids)), 5))
+            nRows = int(rounder(nSubplots / nCols))
+        return nRows, nCols
 
 
 if __name__ == '__main__':
