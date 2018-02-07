@@ -10,6 +10,18 @@ import torch
 import six
 
 
+class DataSerial(torch.nn.Module):
+    """
+    Wraper to create consistent API with DataParallel
+    """
+    def __init__(self, module):
+        super(DataSerial, self).__init__()
+        self.module = module
+
+    def forward(self, *inputs, **kwargs):
+        return self.module.forward(*inputs, **kwargs)
+
+
 class XPU(ub.NiceRepr):
     """
     A processing device or devices: either a CPU, GPU, or multiple GPUS.
@@ -207,12 +219,15 @@ class XPU(ub.NiceRepr):
             >>> model = torch.nn.Conv2d(1, 1, 1)
             >>> xpu = XPU()
         """
-        if isinstance(model, torch.nn.DataParallel):
-            raise ValueError('Model is already in parallel mode.')
+        if isinstance(model, (torch.nn.DataParallel, DataSerial)):
+            # raise ValueError('Model is already in parallel mode.')
+            model = model.module
         model = xpu.move(model)
         if xpu.devices:
             model = torch.nn.DataParallel(model, device_ids=xpu.devices,
                                           output_device=xpu.main_device)
+        else:
+            model = DataSerial(model)
         return model
 
     def move(xpu, data, **kwargs):
