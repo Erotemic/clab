@@ -99,7 +99,7 @@ class Monitor(object):
 
         improved_keys = monitor._improved(smooth_metrics, monitor.best_smooth_metrics)
         if improved_keys:
-            if not monitor.best_smooth_metrics:
+            if monitor.best_smooth_metrics is None:
                 monitor.best_smooth_metrics = smooth_metrics
                 monitor.best_raw_metrics = raw_metrics
             else:
@@ -146,6 +146,7 @@ class Monitor(object):
         improved_flags = (sign1 * current) < (sign2 * best) * rel_epsilon
 
         improved_keys = list(ub.compress(keys, improved_flags))
+        print('\n\nimproved_keys = {!r}\n\n'.format(improved_keys))
         return improved_keys
 
     def is_done(monitor):
