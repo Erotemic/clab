@@ -114,7 +114,7 @@ def train_mnist():
     rng = np.random.RandomState(0)
     rng.shuffle(learn_idx)
 
-    reduction = 20
+    reduction = 1
     valid_idx = torch.LongTensor(learn_idx[:n_vali][::reduction])
     train_idx = torch.LongTensor(learn_idx[n_vali:][::reduction])
 
