@@ -5,7 +5,7 @@ import torch
 import pandas as pd
 from torchvision.datasets import cifar
 from clab import xpu_device
-from clab import early_stop
+from clab import monitor
 from clab import nninit
 from clab import hyperparams
 from clab import fit_harness
@@ -823,7 +823,10 @@ def train():
         hyper=hyper, datasets=datasets, xpu=xpu,
         loaders=loaders,
     )
-    harn.monitor = early_stop.EarlyStop(patience=40)
+    # harn.monitor = early_stop.EarlyStop(patience=40)
+    harn.monitor = monitor.Monitor(min_keys=['loss'],
+                                   max_keys=['global_acc', 'class_acc'],
+                                   patience=40)
 
     @harn.set_batch_runner
     def batch_runner(harn, inputs, labels):
