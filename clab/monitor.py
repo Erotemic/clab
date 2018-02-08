@@ -38,8 +38,6 @@ class Monitor(object):
         monitor.best_smooth_metrics = None
         monitor.best_epoch = None
 
-        monitor.rel_threshold = 1e-4
-
         # early stopping
 
         monitor.patience = patience
@@ -142,8 +140,10 @@ class Monitor(object):
         best, sign2 = _as_minimization(best_metrics)
 
         # only use threshold rel mode
-        rel_epsilon = 1.0 - monitor.rel_threshold
-        improved_flags = (sign1 * current) < (sign2 * best) * rel_epsilon
+        # monitor.rel_threshold = 1e-4
+        # rel_epsilon = 1.0 - monitor.rel_threshold
+        improved_flags = (sign1 * current) < (sign2 * best)
+        # * rel_epsilon
 
         improved_keys = list(ub.compress(keys, improved_flags))
         print('\n\nimproved_keys = {!r}\n\n'.format(improved_keys))
