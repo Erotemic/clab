@@ -662,6 +662,11 @@ class FitHarness(object):
         #     print(line)
         # print('line = {!r}'.format(line))
 
+    def debug(harn, msg):
+        # TODO: add in a file logging mechanism here
+        # print(msg)
+        pass
+
     def log_value(harn, key, value, n_iter):
         if harn.tlogger:
             harn.tlogger.log_value(key, value, n_iter)
