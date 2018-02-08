@@ -542,7 +542,7 @@ def make_short_idstr(params, precision=None):
         # Note: we are not using sort=True, because repr2 sorts sets and dicts
         # by default.
         return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True,
-                        precision=precision)
+                        precision=precision).replace(' ', '')
     short_idstr = make_idstr(d)
     return short_idstr
 
