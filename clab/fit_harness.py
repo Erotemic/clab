@@ -603,7 +603,10 @@ class FitHarness(object):
         load_path = join(harn.snapshot_dpath,
                          '_epoch_{:08d}.pt'.format(epoch))
         snapshot = harn.xpu.load(load_path)
-        harn.debug('Backtracking to weights from previous state: {}'.format(load_path))
+
+        print('\n\n\n\n')
+        harn.log('Backtracking to weights from previous state: {}'.format(load_path))
+        # harn.log('Backtracking to weights from previous state: {}'.format(load_path))
         # only load the model state, the optimizer and other state items stay
         # as is.
         harn.model.load_state_dict(snapshot['model_state_dict'])

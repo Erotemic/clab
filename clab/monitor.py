@@ -147,13 +147,13 @@ class Monitor(object):
         improved_flags = (sign1 * current) < (rel_epsilon * sign2 * best)
         # * rel_epsilon
 
-        print('\n\n\n')
-        print('current = {!r}'.format(current))
-        print('best    = {!r}'.format(best))
+        # print('\n\n\n')
+        # print('current = {!r}'.format(current))
+        # print('best    = {!r}'.format(best))
         improved_keys = list(ub.compress(keys, improved_flags))
-        print('improved_flags = {!r}'.format(improved_flags))
-        print('improved_keys = {!r}'.format(improved_keys))
-        print('\n\n\n')
+        # print('improved_flags = {!r}'.format(improved_flags))
+        # print('improved_keys = {!r}'.format(improved_keys))
+        # print('\n\n\n')
         return improved_keys
 
     def is_done(monitor):
