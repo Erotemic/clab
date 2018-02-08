@@ -150,6 +150,7 @@ class Monitor(object):
         print('best = {!r}'.format(best))
         improved_keys = list(ub.compress(keys, improved_flags))
         print('improved_flags = {!r}'.format(improved_flags))
+        print('improved_keys = {!r}'.format(improved_keys))
         print('\n\n\n')
         return improved_keys
 
