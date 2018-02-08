@@ -97,10 +97,15 @@ class Monitor(object):
         smooth_metrics = monitor.ewma.average()
         monitor.smooth_metrics.append(smooth_metrics.copy())
 
-        improved = monitor._improved(smooth_metrics, monitor.best_smooth_metrics)
+        improved_flags = monitor._improved(smooth_metrics, monitor.best_smooth_metrics)
+        improved = np.any(improved_flags)
         if improved:
-            monitor.best_smooth_metrics = smooth_metrics
-            monitor.best_raw_metrics = raw_metrics
+            if np.all(improved_flags):
+                monitor.best_smooth_metrics = smooth_metrics
+                monitor.best_raw_metrics = raw_metrics
+            else:
+                monitor.best_smooth_metrics[improved_flags] = smooth_metrics[improved_flags]
+                monitor.best_raw_metrics[improved_flags] = raw_metrics[improved_flags]
             monitor.best_epoch = epoch
             monitor.n_bad_epochs = 0
         else:
@@ -126,17 +131,18 @@ class Monitor(object):
             chosen = np.array(max_metrics + min_metrics)
             return chosen, sign
 
-        if not best_metrics:
-            return True
-
         current, sign1 = _as_minimization(metrics)
+
+        if not best_metrics:
+            improved_flags = (sign1 == sign1)
+            return improved_flags
+
         best, sign2 = _as_minimization(best_metrics)
 
         # only use threshold rel mode
         rel_epsilon = 1.0 - monitor.rel_threshold
         improved_flags = (sign1 * current) < (sign2 * best) * rel_epsilon
-        improved = np.any(improved_flags)
-        return improved
+        return improved_flags
 
     def is_done(monitor):
         return monitor.n_bad_epochs >= monitor.patience
