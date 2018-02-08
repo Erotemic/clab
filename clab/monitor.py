@@ -149,7 +149,7 @@ class Monitor(object):
 
         print('\n\n\n')
         print('current = {!r}'.format(current))
-        print('best = {!r}'.format(best))
+        print('best    = {!r}'.format(best))
         improved_keys = list(ub.compress(keys, improved_flags))
         print('improved_flags = {!r}'.format(improved_flags))
         print('improved_keys = {!r}'.format(improved_keys))
