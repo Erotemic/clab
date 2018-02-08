@@ -2,7 +2,6 @@ from __future__ import absolute_import, division, print_function
 import cv2
 import numpy as np
 import six
-import matplotlib as mpl
 import ubelt as ub
 from six.moves import zip_longest
 from os.path import join, dirname
@@ -172,6 +171,7 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
         >>> fig2 = multi_plot([1, 2, 3], [4, 5, 6], fnum=4)
         >>> show_if_requested()
     """
+    import matplotlib as mpl
     from matplotlib import pyplot as plt
 
     if isinstance(ydata_list, dict):
@@ -913,6 +913,7 @@ def dark_background(ax=None, doubleit=False, force=False):
         >>> dark_background()
         >>> show_if_requested()
     """
+    import matplotlib as mpl
     from matplotlib import pyplot as plt
 
     def is_using_style(style):
@@ -1553,6 +1554,7 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
         >>> print(result)
         >>> ut.show_if_requested()
     """
+    import matplotlib as mpl
     import matplotlib.pyplot as plt
     if ax is not None:
         fig = ax.figure
@@ -1706,6 +1708,7 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
         >>> df2.present()
         >>> show_if_requested()
     """
+    import matplotlib as mpl
     import matplotlib.pyplot as plt
     assert len(scalars) == len(colors), 'scalars and colors must be corresponding'
     if len(scalars) == 0:
@@ -1841,6 +1844,7 @@ def ensure_divider(ax):
 
 
 def scores_to_cmap(scores, colors=None, cmap_='hot'):
+    import matplotlib as mpl
     if colors is None:
         colors = scores_to_color(scores, cmap_=cmap_)
     scores = np.array(scores)
@@ -1965,6 +1969,7 @@ def reverse_colormap(cmap):
     References:
         http://nbviewer.ipython.org/github/kwinkunks/notebooks/blob/master/Matteo_colourmaps.ipynb
     """
+    import matplotlib as mpl
     if isinstance(cmap,  mpl.colors.ListedColormap):
         return mpl.colors.ListedColormap(cmap.colors[::-1])
     else:

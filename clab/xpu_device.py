@@ -106,6 +106,22 @@ class XPU(ub.NiceRepr):
             raise TypeError(type(item))
 
     @classmethod
+    def from_data(xpu, item, **kwargs):
+        """
+        Example:
+            >>> xpu = XPU(torch.randn(3))
+            >>> assert not xpu.is_gpu()
+            >>> xpu = XPU(torch.randn(3).cuda())
+            >>> assert xpu.is_gpu()
+            >>> xpu = XPU(torch.randn(3).cuda(1))
+            >>> assert xpu.main_device == 1
+        """
+        if item.is_cuda:
+            return XPU(item.get_device())
+        else:
+            return XPU(None)
+
+    @classmethod
     def cast(xpu, item, **kwargs):
         """
         Converts objects of many different types into an XPU.
@@ -115,32 +131,37 @@ class XPU(ub.NiceRepr):
         """
         if isinstance(item, XPU):
             return item
-        elif item == 'auto':
-            return XPU.from_auto(**kwargs)
-        elif item == 'argv':
-            return XPU.from_argv(**kwargs)
-        if item == 'cpu' or item is None:
-            return XPU(None)
-        elif item == 'cpu' or item is None:
-            return XPU(None)
-        elif isinstance(item, XPU):
-            return item
-        elif isinstance(item, six.string_types):
-            item = item.lower()
-            item = item.replace('cpu', '')
-            item = item.replace('gpu', '')
-            item = item.replace('cuda', '')
-            if ',' in item:
-                item = list(map(int, ','.split(item)))
-            if item == '':
-                item = 0
-            if item == 'none':
-                item = None
-            else:
-                item = int(item)
+        elif isinstance(item, (torch._TensorBase, torch.autograd.Variable)):
+            return XPU.from_data(item)
+        elif isinstance(item, int):
             return XPU(item)
+        elif isinstance(item, (list, tuple)):
+            return XPU(item)
+        elif isinstance(item, six.string_types):
+            if item == 'auto':
+                return XPU.from_auto(**kwargs)
+            elif item == 'argv':
+                return XPU.from_argv(**kwargs)
+            if item == 'cpu' or item is None:
+                return XPU(None)
+            elif item == 'cpu' or item is None:
+                return XPU(None)
+            else:
+                item = item.lower()
+                item = item.replace('cpu', '')
+                item = item.replace('gpu', '')
+                item = item.replace('cuda', '')
+                if ',' in item:
+                    item = list(map(int, ','.split(item)))
+                if item == '':
+                    item = 0
+                if item == 'none':
+                    item = None
+                else:
+                    item = int(item)
+                return XPU(item)
         else:
-            raise ValueError('cannot cast {}'.format(item))
+            raise ValueError('cannot cast to XPU. item={}'.format(item))
 
     @classmethod
     def from_auto(XPU, min_memory=6000):
