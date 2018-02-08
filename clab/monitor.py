@@ -97,19 +97,21 @@ class Monitor(object):
         smooth_metrics = monitor.ewma.average()
         monitor.smooth_metrics.append(smooth_metrics.copy())
 
-        improved_flags = monitor._improved(smooth_metrics, monitor.best_smooth_metrics)
-        improved = np.any(improved_flags)
-        if improved:
-            if np.all(improved_flags):
+        improved_keys = monitor._improved(smooth_metrics, monitor.best_smooth_metrics)
+        if improved_keys:
+            if not monitor.best_smooth_metrics:
                 monitor.best_smooth_metrics = smooth_metrics
                 monitor.best_raw_metrics = raw_metrics
             else:
-                monitor.best_smooth_metrics[improved_flags] = smooth_metrics[improved_flags]
-                monitor.best_raw_metrics[improved_flags] = raw_metrics[improved_flags]
+                for key in improved_keys:
+                    monitor.best_smooth_metrics[key] = smooth_metrics[key]
+                    monitor.best_raw_metrics[key] = raw_metrics[key]
             monitor.best_epoch = epoch
             monitor.n_bad_epochs = 0
         else:
             monitor.n_bad_epochs += 1
+
+        improved = len(improved_keys) > 0
         monitor.is_good.append(improved)
         return improved
 
@@ -123,26 +125,28 @@ class Monitor(object):
             >>> metrics = {'loss': 5, 'acc': .99}
             >>> best_metrics = {'loss': 4, 'acc': .98}
         """
+        keys = monitor.max_keys + monitor.min_keys
+
         def _as_minimization(metrics):
             # convert to a minimization problem
-            max_metrics = list(ub.take(metrics, monitor.max_keys))
-            min_metrics = list(ub.take(metrics, monitor.min_keys))
-            sign = np.array(([-1] * len(max_metrics)) + ([1] * len(min_metrics)))
-            chosen = np.array(max_metrics + min_metrics)
+            sign = np.array(([-1] * len(monitor.max_keys)) +
+                            ([1] * len(monitor.min_keys)))
+            chosen = np.array(list(ub.take(metrics, keys)))
             return chosen, sign
 
         current, sign1 = _as_minimization(metrics)
 
         if not best_metrics:
-            improved_flags = (sign1 == sign1)
-            return improved_flags
+            return keys
 
         best, sign2 = _as_minimization(best_metrics)
 
         # only use threshold rel mode
         rel_epsilon = 1.0 - monitor.rel_threshold
         improved_flags = (sign1 * current) < (sign2 * best) * rel_epsilon
-        return improved_flags
+
+        improved_keys = list(ub.compress(keys, improved_flags))
+        return improved_keys
 
     def is_done(monitor):
         return monitor.n_bad_epochs >= monitor.patience
