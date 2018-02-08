@@ -139,10 +139,12 @@ class Monitor(object):
 
         best, sign2 = _as_minimization(best_metrics)
 
+        # TODO: also need to see if anything got significantly worse
+
         # only use threshold rel mode
-        # monitor.rel_threshold = 1e-4
-        # rel_epsilon = 1.0 - monitor.rel_threshold
-        improved_flags = (sign1 * current) < (sign2 * best)
+        monitor.rel_threshold = 1e-4
+        rel_epsilon = 1.0 - monitor.rel_threshold
+        improved_flags = (sign1 * current) < (rel_epsilon * sign2 * best)
         # * rel_epsilon
 
         print('\n\n\n')
