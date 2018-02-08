@@ -16,7 +16,7 @@ import torchvision  # NOQA
 import itertools as it
 from clab import metrics
 from clab import xpu_device
-from clab import early_stop
+from clab import monitor
 from clab import util  # NOQA
 from clab import getLogger
 import time
@@ -64,7 +64,8 @@ class grad_context(object):
 
 class FitHarness(object):
     def __init__(harn, datasets, batch_size=None, hyper=None, xpu=None,
-                 loaders=None, train_dpath='./train', dry=False):
+                 loaders=None, train_dpath='./train', dry=False,
+                 max_keys=[], min_keys=['loss']):
 
         harn.datasets = None
         harn.loaders = None
@@ -107,7 +108,8 @@ class FitHarness(object):
         harn.scheduler = None
         # should this be a hyperparam? YES, maybe it doesn't change the
         # directory output, but it should be configuarble.
-        harn.monitor = early_stop.EarlyStop(patience=30)
+        # harn.monitor = monitor.EarlyStop(patience=30)
+        harn.monitor = monitor.Monitor(min_keys, max_keys, patience=40)
 
         # this is optional and is designed for default solvers
         # can be overriden by a custom_run_batch
@@ -307,11 +309,13 @@ class FitHarness(object):
 
                 # Run validation epoch
                 vali_metrics = None
+                improved = False
                 if vali_loader:
                     if harn.check_interval('vali', harn.epoch):
                         vali_metrics = harn.run_epoch(
                             vali_loader, tag='vali', learn=False)
-                        harn.monitor.update(harn.epoch, vali_metrics['loss'])
+                        improved = harn.monitor.update(harn.epoch,
+                                                       vali_metrics)
 
                     harn.update_prog_description()
 
@@ -322,7 +326,7 @@ class FitHarness(object):
 
                 # if harn.check_interval('snapshot', harn.epoch):
                 save_path = harn.save_snapshot()
-                if harn.monitor.is_improved():
+                if improved:
                     if save_path:
                         # Copy the best snapshot the the main directory
                         shutil.copy2(save_path, join(harn.train_dpath,
@@ -335,7 +339,7 @@ class FitHarness(object):
                     raise StopIteration()
 
                 # change learning rate (modified optimizer inplace)
-                harn._step_scheduler(vali_metrics)
+                harn._step_scheduler(improved)
 
                 harn.update_prog_description()
         except StopIteration:
@@ -348,10 +352,10 @@ class FitHarness(object):
         harn.log('\n\n\n')
         harn.log('Training completed')
         harn.log('Current LRs: {}'.format(harn.current_lrs()))
-        harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.monitor.memory), nl=1)))
+        # harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.monitor.memory), nl=1)))
         harn.log('Exiting harness.')
 
-    def _step_scheduler(harn, vali_metrics):
+    def _step_scheduler(harn, improved):
         """
         Helper function to change the learning rate that handles the way that
         different schedulers might be used.
@@ -359,9 +363,48 @@ class FitHarness(object):
         if harn.scheduler is None:
             pass
         elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
-            assert vali_metrics is not None, (
-                'must validate for ReduceLROnPlateau schedule')
-            harn.scheduler.step(vali_metrics['loss'])
+            assert improved is not None, 'must validate for ReduceLROnPlateau schedule'
+            # assert vali_metrics is not None, (
+            #     'must validate for ReduceLROnPlateau schedule')
+
+            # old_lrs = set(harn.current_lrs())
+            # Feed reduce on plateau dummy data from the monitor
+            # harn.scheduler.step(vali_metrics['loss'])
+
+            # harn.scheduler.step(vali_metrics['loss'], epoch=harn.epoch)
+            def hack_lr_step(self, improved, epoch=None):
+                if epoch is None:
+                    epoch = self.last_epoch = self.last_epoch + 1
+                self.last_epoch = epoch
+
+                if improved:
+                    self.num_bad_epochs = 0
+                else:
+                    self.num_bad_epochs += 1
+
+                if self.in_cooldown:
+                    self.cooldown_counter -= 1
+                    self.num_bad_epochs = 0  # ignore any bad epochs in cooldown
+
+                if self.num_bad_epochs > self.patience:
+                    self._reduce_lr(epoch)
+                    self.cooldown_counter = self.cooldown
+                    self.num_bad_epochs = 0
+
+                    # TODO: Make a pytorch PR where there is a callback on
+                    # lr_reduction.
+                    # The scheduler has stepped, we should now backtrack the
+                    # weights to the previous best state
+                    harn.backtrack_weights(harn.monitor.best_epoch)
+
+            # # Hack to determine if the RLROP scheduler stepped
+            hack_lr_step(harn.scheduler, improved)
+
+            # new_lrs = set(harn.current_lrs())
+            # if old_lrs != new_lrs:
+            #     # The scheduler has stepped, we should now backtrack the
+            #     # weights to the previous best state
+            #     harn.backtrack_weights(harn.monitor.best_epoch)
         else:
             harn.scheduler.step()
 
@@ -391,7 +434,7 @@ class FitHarness(object):
 
         with grad_context(learn):
             for bx, (inputs, labels) in enumerate(loader):
-                iter_idx = (harn.epoch * len(loader) + bx)
+                # iter_idx = (harn.epoch * len(loader) + bx)
 
                 # The dataset should return a inputs/target 2-tuple of lists.
                 # In most cases each list will be length 1, unless there are
@@ -552,6 +595,18 @@ class FitHarness(object):
         ub.ensuredir(harn.snapshot_dpath)
         prev_states = sorted(glob.glob(join(harn.snapshot_dpath, '_epoch_*.pt')))
         return prev_states
+
+    def backtrack_weights(harn, epoch):
+        """
+        Reset the weights to a previous good state
+        """
+        load_path = join(harn.snapshot_dpath,
+                         '_epoch_{:08d}.pt'.format(epoch))
+        snapshot = harn.xpu.load(load_path)
+        harn.debug('Backtracking to weights from previous state: {}'.format(load_path))
+        # only load the model state, the optimizer and other state items stay
+        # as is.
+        harn.model.load_state_dict(snapshot['model_state_dict'])
 
     def load_snapshot(harn, load_path):
         """

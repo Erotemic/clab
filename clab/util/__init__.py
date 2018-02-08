@@ -23,6 +23,7 @@ else:
     from clab.util import priority_queue
     from clab.util import profiler
     from clab.util import util_alg
+    from clab.util import util_averages
     from clab.util.colorutil import (colorbar_image, convert_hex_to_255,
                                      lookup_bgr255, make_distinct_bgr01_colors,
                                      make_distinct_bgr255_colors, make_heatmask,)
@@ -50,10 +51,21 @@ else:
                                 protect_print, random_indices, read_arr,
                                 read_h5arr, roundrobin, super2, write_arr,
                                 write_h5arr,)
-    from clab.util.mplutil import (adjust_subplots, axes_extent,
-                                   copy_figure_to_clipboard, extract_axes_extents,
-                                   figure, pandas_plot_matrix,
-                                   render_figure_to_image, savefig2,)
+    from clab.util.mplutil import (BASE_FNUM, DF2_DIVIDER_KEY, LEGEND_LOCATION,
+                                   PlotNums, adjust_subplots, axes_extent,
+                                   colorbar, copy_figure_to_clipboard,
+                                   dark_background, del_plotdat,
+                                   deterministic_shuffle, dict_intersection,
+                                   distinct_colors, distinct_markers,
+                                   ensure_divider, ensure_fnum,
+                                   extract_axes_extents, figure,
+                                   get_axis_xy_width_height, get_plotdat,
+                                   get_plotdat_dict, imshow, legend, multi_plot,
+                                   next_fnum, pandas_plot_matrix, qtensure,
+                                   render_figure_to_image, reverse_colormap,
+                                   save_parts, savefig2, scores_to_cmap,
+                                   scores_to_color, set_figtitle, set_plotdat,
+                                   show_if_requested,)
     from clab.util.nputil import (apply_grouping, atleast_nd, group_indices,
                                   group_items, isect_flags, iter_reduce_ufunc,)
     from clab.util.priority_queue import (PriorityQueue, SortedQueue,)
@@ -63,4 +75,6 @@ else:
                                     find_pyclass_above_row, profile, profile,
                                     profile_onthefly,)
     from clab.util.util_alg import (mincost_assignment,)
+    from clab.util.util_averages import (CumMovingAve, ExpMovingAve, MovingAve,
+                                         WindowedMovingAve,)
     # </AUTOGEN_INIT>

@@ -72,6 +72,7 @@ def train_mnist():
         python examples/mnist.py
 
         python ~/code/clab/examples/mnist.py --gpu=2
+        python ~/code/clab/examples/mnist.py
     """
 
     """
@@ -105,6 +106,7 @@ def train_mnist():
 
     # split the learning dataset into training and validation
     # take a subset of data
+    # factor = .15
     factor = .15
     n_vali = int(len(learn_dset) * factor)
     learn_idx = np.arange(len(learn_dset))
@@ -112,8 +114,9 @@ def train_mnist():
     rng = np.random.RandomState(0)
     rng.shuffle(learn_idx)
 
-    valid_idx = torch.LongTensor(learn_idx[:n_vali])
-    train_idx = torch.LongTensor(learn_idx[n_vali:])
+    reduction = 20
+    valid_idx = torch.LongTensor(learn_idx[:n_vali][::reduction])
+    train_idx = torch.LongTensor(learn_idx[n_vali:][::reduction])
 
     def _torch_take(tensor, indices, axis):
         TensorType = type(learn_dset.train_data)
@@ -153,7 +156,7 @@ def train_mnist():
     hyper = clab.hyperparams.HyperParams(
         model=(MnistNet, dict(n_channels=1, n_classes=n_classes)),
         # optimizer=torch.optim.Adam,
-        optimizer=(torch.optim.SGD, {'lr': 0.001}),
+        optimizer=(torch.optim.SGD, {'lr': 0.01}),
         scheduler='ReduceLROnPlateau',
         criterion=torch.nn.CrossEntropyLoss,
         initializer=initializer,
@@ -169,6 +172,7 @@ def train_mnist():
     harn = clab.fit_harness.FitHarness(
         datasets=datasets, batch_size=batch_size,
         xpu=xpu, hyper=hyper, dry=dry,
+        min_keys=['loss'], max_keys=['global_acc', 'class_acc'],
     )
 
     all_labels = np.arange(n_classes)
