@@ -313,7 +313,7 @@ class XPU(ub.NiceRepr):
             >>> loaded = cpu.load(fpath)
             >>> assert all(data == loaded)
         """
-        print('Loading data onto {} from {}'.format(xpu, fpath))
+        # print('Loading data onto {} from {}'.format(xpu, fpath))
         xpu._pickle_fixes()
         return torch.load(fpath, map_location=xpu._map_location)
 

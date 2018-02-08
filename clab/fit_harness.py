@@ -395,7 +395,9 @@ class FitHarness(object):
                     # lr_reduction.
                     # The scheduler has stepped, we should now backtrack the
                     # weights to the previous best state
-                    harn.backtrack_weights(harn.monitor.best_epoch)
+                    backtrack = False
+                    if backtrack:
+                        harn.backtrack_weights(harn.monitor.best_epoch)
 
             # # Hack to determine if the RLROP scheduler stepped
             hack_lr_step(harn.scheduler, improved)
