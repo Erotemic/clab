@@ -789,7 +789,7 @@ def train():
         other=ub.dict_union({
             # TODO: type of augmentation as a parameter dependency
             # 'augmenter': str(datasets['train'].augmenter),
-            'augment': datasets['train'].augment,
+            # 'augment': datasets['train'].augment,
             'batch_size': batch_size,
             'colorspace': datasets['train'].output_colorspace,
             'n_classes': datasets['train'].n_classes,

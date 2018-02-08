@@ -503,7 +503,7 @@ def make_idstr(d):
     return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True)
 
 
-def make_short_idstr(params):
+def make_short_idstr(params, precision=None):
     """
     Make id-string where they keys are shortened
 
@@ -541,7 +541,8 @@ def make_short_idstr(params):
     def make_idstr(d):
         # Note: we are not using sort=True, because repr2 sorts sets and dicts
         # by default.
-        return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True)
+        return ub.repr2(d, itemsep='', nobr=True, explicit=True, nl=0, si=True,
+                        precision=precision)
     short_idstr = make_idstr(d)
     return short_idstr
 

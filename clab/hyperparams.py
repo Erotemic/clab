@@ -293,7 +293,7 @@ class HyperParams(object):
             >>> hyper = HyperParams(other={'augment': True, 'n_classes': 10, 'n_channels': 5})
             >>> hyper.hyper_id()
         """
-        otherid = util.make_short_idstr(hyper.other)
+        otherid = util.make_short_idstr(hyper.other, precision=4)
         return otherid
 
     def get_initkw(hyper):

@@ -142,7 +142,7 @@ class Monitor(object):
         # TODO: also need to see if anything got significantly worse
 
         # only use threshold rel mode
-        monitor.rel_threshold = 1e-4
+        monitor.rel_threshold = 1e-6
         rel_epsilon = 1.0 - monitor.rel_threshold
         improved_flags = (sign1 * current) < (rel_epsilon * sign2 * best)
         # * rel_epsilon
