@@ -109,7 +109,8 @@ class FitHarness(object):
         # should this be a hyperparam? YES, maybe it doesn't change the
         # directory output, but it should be configuarble.
         # harn.monitor = monitor.EarlyStop(patience=30)
-        harn.monitor = monitor.Monitor(min_keys, max_keys, patience=40)
+        harn.monitor = monitor.Monitor(min_keys, max_keys, patience=40,
+                                       smoothing=.6)
 
         # this is optional and is designed for default solvers
         # can be overriden by a custom_run_batch
@@ -352,7 +353,8 @@ class FitHarness(object):
         harn.log('\n\n\n')
         harn.log('Training completed')
         harn.log('Current LRs: {}'.format(harn.current_lrs()))
-        # harn.log('Best epochs / loss: {}'.format(ub.repr2(list(harn.monitor.memory), nl=1)))
+        # harn.log('Best epochs / loss: {}'.format(
+        #     ub.repr2(list(harn.monitor.memory), nl=1)))
         harn.log('Exiting harness.')
 
     def _step_scheduler(harn, improved):
