@@ -45,7 +45,9 @@ def one_hot_embedding(labels, num_classes, cpu=True):
         y = torch.eye(num_classes)  # [D,D]
         y_onehot = y[labels.cpu()]  # [N,D]
         if labels.is_cuda:
-            y_onehot = y_onehot.cuda(labels.get_device())
+            device = labels.get_device()
+            print('device = {!r}'.format(device))
+            y_onehot = y_onehot.cuda(device)
     else:
         if labels.is_cuda:
             y_onehot = torch.cuda.FloatTensor(labels.shape[0], num_classes,
