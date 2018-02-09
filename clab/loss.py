@@ -184,60 +184,6 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
             >>> lossF = FocalLoss(reduce=False, focus=2, ignore_index=0).focal_loss(input, target)
             >>> weight = torch.rand(C)
             >>> lossF = FocalLoss(reduce=False, focus=2, weight=weight, ignore_index=0).focal_loss(input, target)
-
-        Example:
-            >>> # input is of size N x C
-            >>> import numpy as np
-            >>> import ubelt as ub
-            >>> N, C = 128, 2
-            >>> # each element in target has to have 0 <= value < C
-            >>> target = autograd.Variable((torch.rand(N) * C).long())
-            >>> input = autograd.Variable(torch.randn(N, C), requires_grad=True)
-            >>> self = FocalLoss(weight=torch.rand(C))
-            >>> import clab
-            >>> xpu = clab.xpu_device.XPU('gpu')
-            >>> self = xpu.move(self)
-            >>> target = xpu.move(target)
-            >>> input = xpu.move(input)
-            >>> print('----')
-            >>> self = xpu.move(FocalLoss())
-            >>> for timer in ub.Timerit(100, bestof=10, label='FL-call'):
-            >>>     with timer:
-            >>>         self(input, target)
-            >>> self = xpu.move(torch.nn.modules.CrossEntropyLoss())
-            >>> for timer in ub.Timerit(100, bestof=10, label='CE-call'):
-            >>>     with timer:
-            >>>         self(input, target)
-            >>> self = xpu.move(torch.nn.modules.CrossEntropyLoss())
-            >>> for timer in ub.Timerit(100, bestof=10, label='CE-func'):
-            >>>     with timer:
-            >>>         F.cross_entropy(input, target)
-            >>> print('----')
-            >>> weight = xpu.move(torch.randn(C))
-            >>> self = xpu.move(FocalLoss(weight=weight))
-            >>> for timer in ub.Timerit(100, bestof=10, label='FL-call-w'):
-            >>>     with timer:
-            >>>         self(input, target)
-            >>> self = xpu.move(torch.nn.modules.CrossEntropyLoss(weight=weight))
-            >>> for timer in ub.Timerit(100, bestof=10, label='CE-call-w'):
-            >>>     with timer:
-            >>>         self(input, target)
-            >>> for timer in ub.Timerit(100, bestof=10, label='CE-func-w'):
-            >>>     with timer:
-            >>>         F.cross_entropy(input, target, weight=weight)
-            >>> print('----')
-            >>> weight = xpu.move(torch.randn(C))
-            >>> self = xpu.move(FocalLoss(weight=weight, ignore_index=0))
-            >>> for timer in ub.Timerit(100, bestof=10, label='FL-call-wi'):
-            >>>     with timer:
-            >>>         self(input, target)
-            >>> self = xpu.move(torch.nn.modules.CrossEntropyLoss(weight=weight, ignore_index=0))
-            >>> for timer in ub.Timerit(100, bestof=10, label='CE-call-wi'):
-            >>>     with timer:
-            >>>         self(input, target)
-            >>> for timer in ub.Timerit(100, bestof=10, label='CE-func-wi'):
-            >>>     with timer:
-            >>>         F.cross_entropy(input, target, weight=weight, ignore_index=0)
         """
         if self.weight is None:
             alpha = 1
