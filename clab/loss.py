@@ -5,7 +5,7 @@ import torch.nn.modules
 from torch import autograd
 
 
-def one_hot_embedding(labels, num_classes):
+def one_hot_embedding(labels, num_classes, cpu=True):
     """
     Embedding labels to one-hot form.
 
@@ -41,13 +41,19 @@ def one_hot_embedding(labels, num_classes):
     # if labels.is_cuda:
     #     y = y.cuda(labels.get_device())
     # y_onehot = y[labels]        # [N,D]
-    if labels.is_cuda:
-        y_onehot = torch.cuda.FloatTensor(labels.shape[0], num_classes,
-                                          device=labels.get_device()).zero_()
-        y_onehot.scatter_(1, labels[:, None], 1)
+    if cpu:
+        y = torch.eye(num_classes)  # [D,D]
+        y_onehot = y[labels.cpu()]  # [N,D]
+        if labels.is_cuda:
+            y_onehot = y_onehot.cuda(labels.get_device())
     else:
-        y_onehot = torch.FloatTensor(labels.shape[0], num_classes).zero_()
-        y_onehot.scatter_(1, labels[:, None], 1)
+        if labels.is_cuda:
+            y_onehot = torch.cuda.FloatTensor(labels.shape[0], num_classes,
+                                              device=labels.get_device()).zero_()
+            y_onehot.scatter_(1, labels[:, None], 1)
+        else:
+            y_onehot = torch.FloatTensor(labels.shape[0], num_classes).zero_()
+            y_onehot.scatter_(1, labels[:, None], 1)
     return y_onehot
 
 
