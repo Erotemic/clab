@@ -46,7 +46,6 @@ def one_hot_embedding(labels, num_classes, cpu=True):
         y_onehot = y[labels.cpu()]  # [N,D]
         if labels.is_cuda:
             device = labels.get_device()
-            print('device = {!r}'.format(device))
             y_onehot = y_onehot.cuda(device)
     else:
         if labels.is_cuda:
