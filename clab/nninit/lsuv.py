@@ -62,14 +62,16 @@ class Orthonormal(base._BaseInitializer):
             pass
             if isinstance(m, torch.nn.modules.conv._ConvNd) or isinstance(m, nn.Linear):
                 if hasattr(m, 'weight_v'):
-                    w_ortho = svd_orthonormal(m.weight_v.data.cpu().numpy().shape, self.rng, cache_key=name)
+                    shape = tuple(m.weight_v.shape)
+                    w_ortho = svd_orthonormal(shape, self.rng, cache_key=name)
                     m.weight_v.data[:] = torch.from_numpy(w_ortho)
                     try:
                         nn.init.constant(m.bias, 0)
                     except Exception:
                         pass
                 else:
-                    w_ortho = svd_orthonormal(m.weight.data.cpu().numpy().shape, self.rng, cache_key=name)
+                    shape = tuple(m.weight.shape)
+                    w_ortho = svd_orthonormal(shape, self.rng, cache_key=name)
                     m.weight.data[:] = torch.from_numpy(w_ortho)
                     try:
                         nn.init.constant(m.bias, 0)
