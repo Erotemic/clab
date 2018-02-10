@@ -239,6 +239,8 @@ class FitHarness(object):
                     with grad_context(False):
                         loader = harn.loaders['train']
                         inputs, labels = next(iter(loader))
+                        input = harn.xpu.variable(inputs[0])
+                        harn.initializer(harn.model, input)
                 else:
                     harn.initializer(harn.model)
                 if not harn.dry:
