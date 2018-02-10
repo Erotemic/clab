@@ -527,8 +527,8 @@ class FitHarness(object):
             if not isinstance(labels, (list, tuple)):
                 labels = [labels]
 
-            inputs = harn.xpu.variabless(*inputs)
-            labels = harn.xpu.variabless(*labels)
+            inputs = harn.xpu.variables(*inputs)
+            labels = harn.xpu.variables(*labels)
 
             # Core learning / backprop
             outputs, loss = harn.run_batch(inputs, labels, learn=learn)

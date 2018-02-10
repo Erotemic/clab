@@ -454,8 +454,8 @@ class FitHarness(object):
                     labels = [labels]
 
                 # note volatile is depricated
-                inputs = list(harn.xpu.variabless(*inputs))
-                labels = list(harn.xpu.variabless(*labels))
+                inputs = list(harn.xpu.variables(*inputs))
+                labels = list(harn.xpu.variables(*labels))
 
                 # Core learning / backprop
                 outputs, loss = harn.run_batch(inputs, labels, learn=learn)

@@ -641,7 +641,7 @@ class UrbanPredictHarness(object):
                 if not isinstance(inputs_, (list, tuple)):
                     inputs_ = [inputs_]
 
-                inputs_ = pharn.xpu.variabless(*inputs_)
+                inputs_ = pharn.xpu.variables(*inputs_)
                 outputs = pharn.model.forward(inputs_)
 
                 for ox in range(len(outputs)):

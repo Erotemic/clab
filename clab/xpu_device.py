@@ -274,7 +274,16 @@ class XPU(ub.NiceRepr):
         else:
             return data.cpu()
 
-    def variable(xpu, *args, **kw):
+    def variable(xpu, item, **kw):
+        assert 'volatile' not in kw, 'volatile is removed'
+        cukw = {}
+        if 'async' in kw:
+            cukw['async'] = kw.pop('async')
+        item = xpu.move(item, **cukw)
+        item = torch.autograd.Variable(item, **kw)
+        return item
+
+    def variables(xpu, *args, **kw):
         """
         Moves data to this XPU and wraps it inside a `torch.autograd.Variable`
 
@@ -289,18 +298,19 @@ class XPU(ub.NiceRepr):
             >>> from clab.xpu_device import *
             >>> xpu = XPU(None)
             >>> data = torch.FloatTensor([0])
-            >>> data, = xpu.variabless(data)
+            >>> data, = xpu.variables(data)
             >>> assert isinstance(data, torch.autograd.Variable)
         """
         # torch version 0.4 replace the volatile keyword with a context manager
-        assert 'volatile' not in kw, 'volatile is removed'
-        cukw = {}
-        if 'async' in kw:
-            cukw['async'] = kw.pop('async')
+        # assert 'volatile' not in kw, 'volatile is removed'
+        # cukw = {}
+        # if 'async' in kw:
+        #     cukw['async'] = kw.pop('async')
         for item in args:
-            item = xpu.move(item, **cukw)
-            item = torch.autograd.Variable(item, **kw)
-            yield item
+            yield xpu.variables(item, **kw)
+            # item = xpu.move(item, **cukw)
+            # item = torch.autograd.Variable(item, **kw)
+            # yield item
 
     def set_as_default(xpu):
         """
@@ -493,7 +503,7 @@ class XPUUnitTests(object):
                 pytest.skip()
         xpu = XPU(item)
         data = torch.FloatTensor([0])
-        data, = xpu.variabless(data)
+        data, = xpu.variables(data)
         assert isinstance(data, torch.autograd.Variable)
 
 

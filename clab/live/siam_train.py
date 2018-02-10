@@ -647,7 +647,7 @@ def comparable_vamp():
     for aid1, aid2 in ub.ProgIter(pblm_test.samples.index, label='predicting'):
         inputs = dataset.from_edge(aid1, aid2)
         # img1, img2 = [torch.autograd.Variable(item.cpu()) for item in inputs]
-        img1, img2 = xpu.variabless(*inputs)
+        img1, img2 = xpu.variables(*inputs)
         dist_tensor = model(img1[None, :], img2[None, :])
         dist = dist_tensor.data.cpu().numpy()
         dists.append(dist)
