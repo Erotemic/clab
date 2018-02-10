@@ -452,7 +452,7 @@ class FitHarness(object):
         prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
         with grad_context(learn):
-            for bx, (inputs, labels) in enumerate(loader):
+            for bx, (inputs, labels) in enumerate(iter(loader)):
                 # iter_idx = (harn.epoch * len(loader) + bx)
 
                 # The dataset should return a inputs/target 2-tuple of lists.

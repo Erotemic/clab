@@ -209,7 +209,7 @@ class LSUV(base._BaseInitializer):
             # tqdm.tqdm.write('layer {}: std={:.4f}'.format(layer_idx, current_std))
             #print  self.gg['act_dict'].shape
             attempts = 0
-            for attempts in tqdm.trange(self.max_attempts, desc='iterate'):
+            for attempts in range(self.max_attempts):
                 if not (np.abs(current_std - self.needed_std) > self.std_tol):
                     break
                 self.gg['current_coef'] =  self.needed_std / (current_std  + 1e-8)
@@ -224,7 +224,7 @@ class LSUV(base._BaseInitializer):
                 current_std = self.gg['act_dict'].std()
                 # tqdm.tqdm.write('layer {}: std={:.4f}, mean={:.4f}'.format(
                 #         layer_idx, current_std, self.gg['act_dict'].mean()))
-            if attempts >= self.max_attempts:
+            if attempts + 1 >= self.max_attempts:
                 tqdm.tqdm.write('Cannot converge in {} iterations'.format(self.max_attempts))
             if self.gg['hook'] is not None:
                 self.gg['hook'].remove()
