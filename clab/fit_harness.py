@@ -237,6 +237,8 @@ class FitHarness(object):
                 if harn.initializer.__class__.__name__ == 'LSUV':
                     #hack LSUV needs a batch of data to run
                     with grad_context(False):
+                        import utool
+                        utool.embed()
                         loader = harn.loaders['train']
                         inputs, labels = next(iter(loader))
                         input = harn.xpu.variable(inputs[0])
