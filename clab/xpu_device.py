@@ -289,7 +289,7 @@ class XPU(ub.NiceRepr):
             >>> from clab.xpu_device import *
             >>> xpu = XPU(None)
             >>> data = torch.FloatTensor([0])
-            >>> data, = xpu.variable(data)
+            >>> data, = xpu.variabless(data)
             >>> assert isinstance(data, torch.autograd.Variable)
         """
         # torch version 0.4 replace the volatile keyword with a context manager
@@ -493,7 +493,7 @@ class XPUUnitTests(object):
                 pytest.skip()
         xpu = XPU(item)
         data = torch.FloatTensor([0])
-        data, = xpu.variable(data)
+        data, = xpu.variabless(data)
         assert isinstance(data, torch.autograd.Variable)
 
 

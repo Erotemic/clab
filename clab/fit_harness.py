@@ -234,7 +234,13 @@ class FitHarness(object):
 
             else:
                 harn.log('Initializing new model')
-                harn.initializer(harn.model)
+                if harn.initializer.__clas__.__name__ == 'LSUV':
+                    #hack LSUV needs a batch of data to run
+                    with grad_context(False):
+                        loader = harn.loaders['train']
+                        inputs, labels = next(iter(loader))
+                else:
+                    harn.initializer(harn.model)
                 if not harn.dry:
                     for group in harn.optimizer.param_groups:
                         group.setdefault('initial_lr', group['lr'])
@@ -448,8 +454,8 @@ class FitHarness(object):
                     labels = [labels]
 
                 # note volatile is depricated
-                inputs = list(harn.xpu.variable(*inputs))
-                labels = list(harn.xpu.variable(*labels))
+                inputs = list(harn.xpu.variabless(*inputs))
+                labels = list(harn.xpu.variabless(*labels))
 
                 # Core learning / backprop
                 outputs, loss = harn.run_batch(inputs, labels, learn=learn)
