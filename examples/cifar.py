@@ -759,7 +759,7 @@ def train():
     import clab.models.densenet
 
     # batch_size = (128 // 3) * 3
-    batch_size = 128
+    batch_size = 64
 
     # initializer_ = (nninit.KaimingNormal, {
     #     'nonlinearity': 'relu',
@@ -769,8 +769,9 @@ def train():
     hyper = hyperparams.HyperParams(
         model=(clab.models.densenet.DenseNet, {
             'cifar': True,
+            'block_config': (32, 32, 32),  # 100 layer depth
             'num_classes': datasets['train'].n_classes,
-            'drop_rate': float(ub.argval('--drop_rate', default=0)),
+            'drop_rate': float(ub.argval('--drop_rate', default=.2)),
             'groups': 1,
         }),
         optimizer=(torch.optim.SGD, {
@@ -778,7 +779,7 @@ def train():
             'weight_decay': float(ub.argval('--weight_decay', default=.0005)),
             'momentum': 0.9,
             'nesterov': True,
-            'lr': 0.01,
+            'lr': 0.1,
         }),
         scheduler=(torch.optim.lr_scheduler.ReduceLROnPlateau, {
             'factor': .5,
