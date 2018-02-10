@@ -307,7 +307,7 @@ class XPU(ub.NiceRepr):
         # if 'async' in kw:
         #     cukw['async'] = kw.pop('async')
         for item in args:
-            yield xpu.variables(item, **kw)
+            yield xpu.variable(item, **kw)
             # item = xpu.move(item, **cukw)
             # item = torch.autograd.Variable(item, **kw)
             # yield item
