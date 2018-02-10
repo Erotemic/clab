@@ -39,8 +39,7 @@ def svd_orthonormal(shape, rng=None, cache_key=None):
                         enabled=cache_key is not None,
                         # verbose=5,
                         # cfgstr=str(depends)
-                        cfgstr=ub.hash_data(depends)
-                        )
+                        cfgstr=ub.hash_data(depends))
     q = cacher.tryload()
     if q is None:
         # print('Compute orthonormal matrix with shape ' + str(shape))
@@ -60,17 +59,18 @@ class Orthonormal(base._BaseInitializer):
 
     def forward(self, model):
         for name, m in base.trainable_layers(model, names=True):
+            pass
             if isinstance(m, torch.nn.modules.conv._ConvNd) or isinstance(m, nn.Linear):
                 if hasattr(m, 'weight_v'):
                     w_ortho = svd_orthonormal(m.weight_v.data.cpu().numpy().shape, self.rng, cache_key=name)
-                    m.weight_v.data = torch.from_numpy(w_ortho)
+                    m.weight_v.data[:] = torch.from_numpy(w_ortho)
                     try:
                         nn.init.constant(m.bias, 0)
                     except Exception:
                         pass
                 else:
                     w_ortho = svd_orthonormal(m.weight.data.cpu().numpy().shape, self.rng, cache_key=name)
-                    m.weight.data = torch.from_numpy(w_ortho)
+                    m.weight.data[:] = torch.from_numpy(w_ortho)
                     try:
                         nn.init.constant(m.bias, 0)
                     except Exception:
@@ -123,15 +123,6 @@ class LSUV(base._BaseInitializer):
         self.needed_std = needed_std
         self.std_tol = std_tol
         self.max_attempts = max_attempts
-        self.gg = {}
-        self.gg['hook_position'] = 0
-        self.gg['total_fc_conv_layers'] = 0
-        self.gg['done_counter'] = -1
-        self.gg['hook'] = None
-        self.gg['act_dict'] = {}
-        self.gg['counter_to_apply_correction'] = 0
-        self.gg['correction_needed'] = False
-        self.gg['current_coef'] = 1.0
 
     def apply_weights_correction(self, m):
         if self.gg['hook'] is None:
@@ -184,6 +175,15 @@ class LSUV(base._BaseInitializer):
         return
 
     def forward(self, model, data):
+        self.gg = {}
+        self.gg['hook_position'] = 0
+        self.gg['total_fc_conv_layers'] = 0
+        self.gg['done_counter'] = -1
+        self.gg['hook'] = None
+        self.gg['act_dict'] = {}
+        self.gg['counter_to_apply_correction'] = 0
+        self.gg['correction_needed'] = False
+        self.gg['current_coef'] = 1.0
 
         model.train(False)
 
