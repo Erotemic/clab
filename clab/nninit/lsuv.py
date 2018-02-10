@@ -206,7 +206,7 @@ class LSUV(base._BaseInitializer):
             model.apply(self.add_current_hook)
             out = model(data)  # NOQA
             current_std = self.gg['act_dict'].std()
-            tqdm.tqdm.write('layer {}: std={:.4f}'.format(layer_idx, current_std))
+            # tqdm.tqdm.write('layer {}: std={:.4f}'.format(layer_idx, current_std))
             #print  self.gg['act_dict'].shape
             attempts = 0
             for attempts in tqdm.trange(self.max_attempts, desc='iterate'):
@@ -222,8 +222,8 @@ class LSUV(base._BaseInitializer):
                 out = model(data)  # NOQA
 
                 current_std = self.gg['act_dict'].std()
-                tqdm.tqdm.write('layer {}: std={:.4f}, mean={:.4f}'.format(
-                        layer_idx, current_std, self.gg['act_dict'].mean()))
+                # tqdm.tqdm.write('layer {}: std={:.4f}, mean={:.4f}'.format(
+                #         layer_idx, current_std, self.gg['act_dict'].mean()))
             if attempts >= self.max_attempts:
                 tqdm.tqdm.write('Cannot converge in {} iterations'.format(self.max_attempts))
             if self.gg['hook'] is not None:

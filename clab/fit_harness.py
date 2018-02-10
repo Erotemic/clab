@@ -235,14 +235,20 @@ class FitHarness(object):
             else:
                 harn.log('Initializing new model')
                 if harn.initializer.__class__.__name__ == 'LSUV':
+
+                    harn.log('Mounting {} model on {}'.format(model_name, harn.xpu))
+                    # harn.model = harn.xpu.mount(harn.model)
+                    # p =
+                    # set([p.is_cuda for p in harn.model.parameters()])
+
                     #hack LSUV needs a batch of data to run
                     with grad_context(False):
-                        import utool
-                        utool.embed()
+                        # import utool
+                        # utool.embed()
                         loader = harn.loaders['train']
-                        inputs, labels = next(iter(loader))
-                        input = harn.xpu.variable(inputs[0])
-                        harn.initializer(harn.model, input)
+                        input, labels = next(iter(loader))
+                        data = harn.xpu.variable(input)
+                        harn.initializer(harn.model, data)
                 else:
                     harn.initializer(harn.model)
                 if not harn.dry:
