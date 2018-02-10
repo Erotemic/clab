@@ -17,8 +17,8 @@ import torch
 class _BaseInitializer(object):
     """
     """
-    def __call__(self, model):
-        self.forward(model)
+    def __call__(self, model, *args, **kwargs):
+        self.forward(model, *args, **kwargs)
 
     def forward(self, model):
         """
