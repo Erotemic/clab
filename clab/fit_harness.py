@@ -234,7 +234,7 @@ class FitHarness(object):
 
             else:
                 harn.log('Initializing new model')
-                if harn.initializer.__clas__.__name__ == 'LSUV':
+                if harn.initializer.__class__.__name__ == 'LSUV':
                     #hack LSUV needs a batch of data to run
                     with grad_context(False):
                         loader = harn.loaders['train']
