@@ -687,28 +687,51 @@ def shock(tensor, func, scale=.0001, funckw={}):
 #         print(key)
 
 
-def trainable_layers(model):
-    queue = [model]
-    while queue:
-        item = queue.pop(0)
-        # TODO: need to put all trainable layer types here
-        # (I think this is just everything with reset_parameters)
-        if isinstance(item, torch.nn.modules.conv._ConvNd):
-            yield item
-        elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
-            yield item
-        elif hasattr(item, 'reset_parameters'):
-            yield item
-        # if isinstance(input, torch.nn.modules.Linear):
-        #     yield item
-        # if isinstance(input, torch.nn.modules.Bilinear):
-        #     yield item
-        # if isinstance(input, torch.nn.modules.Embedding):
-        #     yield item
-        # if isinstance(input, torch.nn.modules.EmbeddingBag):
-        #     yield item
-        for child in item.children():
-            queue.append(child)
+def trainable_layers(model, names=False):
+    """
+    Example:
+        >>> from clab import nninit
+        >>> import torchvision
+        >>> model = torchvision.models.AlexNet()
+        >>> list(nninit.trainable_layers(model, names=True))
+    """
+    if names:
+        stack = [('', '', model)]
+        while stack:
+            prefix, basename, item = stack.pop()
+            name = '.'.join([p for p in [prefix, basename] if p])
+            if isinstance(item, torch.nn.modules.conv._ConvNd):
+                yield name, item
+            elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
+                yield name, item
+            elif hasattr(item, 'reset_parameters'):
+                yield name, item
+
+            child_prefix = name
+            for child_basename, child_item in list(item.named_children())[::-1]:
+                stack.append((child_prefix, child_basename, child_item))
+    else:
+        queue = [model]
+        while queue:
+            item = queue.pop(0)
+            # TODO: need to put all trainable layer types here
+            # (I think this is just everything with reset_parameters)
+            if isinstance(item, torch.nn.modules.conv._ConvNd):
+                yield item
+            elif isinstance(item, torch.nn.modules.batchnorm._BatchNorm):
+                yield item
+            elif hasattr(item, 'reset_parameters'):
+                yield item
+            # if isinstance(input, torch.nn.modules.Linear):
+            #     yield item
+            # if isinstance(input, torch.nn.modules.Bilinear):
+            #     yield item
+            # if isinstance(input, torch.nn.modules.Embedding):
+            #     yield item
+            # if isinstance(input, torch.nn.modules.EmbeddingBag):
+            #     yield item
+            for child in item.children():
+                queue.append(child)
 
 
 def init_he_normal(model):

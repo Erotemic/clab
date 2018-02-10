@@ -1,7 +1,6 @@
 """
-Modified from
-
-https://github.com/ducha-aiki/LSUV-pytorch
+Modified from:
+    https://github.com/ducha-aiki/LSUV-pytorch
 """
 import numpy as np
 import tqdm
@@ -10,10 +9,14 @@ import torch.nn.init
 import torch.nn as nn
 import ubelt as ub
 from clab import util
+from clab.nninit import _base
 
 
-def svd_orthonormal(shape, rng=None):
+def svd_orthonormal(shape, rng=None, cache_key=None):
     """
+    If cache_key is specified, then the result will be cached, and subsequent
+    calls with the same key and shape will return the same result.
+
     References:
         Orthonorm init code is taked from Lasagne
         https://github.com/Lasagne/Lasagne/blob/master/lasagne/init.py
@@ -26,13 +29,21 @@ def svd_orthonormal(shape, rng=None):
 
     # rand_sequence = rng.randint(0, 2 ** 16)
     # depends = [shape, rand_sequence]
-    depends = [shape]
+    depends = [shape, cache_key]
 
     # this process can be expensive, cache it
+
+    # TODO: only cache very large matrices (4096x4096)
+    # TODO: only cache very large matrices, not (256,256,3,3)
     cacher = ub.Cacher('svd_orthonormal', appname='clab',
-                        cfgstr=ub.hash_data(depends))
+                        enabled=cache_key is not None,
+                        # verbose=5,
+                        # cfgstr=str(depends)
+                        cfgstr=ub.hash_data(depends)
+                        )
     q = cacher.tryload()
     if q is None:
+        # print('Compute orthonormal matrix with shape ' + str(shape))
         a = rng.normal(0.0, 1.0, flat_shape)
         u, _, v = np.linalg.svd(a, full_matrices=False)
         q = u if u.shape == flat_shape else v
@@ -43,36 +54,68 @@ def svd_orthonormal(shape, rng=None):
     return q
 
 
-class LSUV(object):
+class Orthonormal(_base._BaseInitializer):
+    def __init__(self, rng=None):
+        self.rng = util.ensure_rng(rng)
+
+    def forward(self, model):
+        for name, m in _base.trainable_layers(model, names=True):
+            if isinstance(m, torch.nn.modules.conv._ConvNd) or isinstance(m, nn.Linear):
+                if hasattr(m, 'weight_v'):
+                    w_ortho = svd_orthonormal(m.weight_v.data.cpu().numpy().shape, self.rng, cache_key=name)
+                    m.weight_v.data = torch.from_numpy(w_ortho)
+                    try:
+                        nn.init.constant(m.bias, 0)
+                    except Exception:
+                        pass
+                else:
+                    w_ortho = svd_orthonormal(m.weight.data.cpu().numpy().shape, self.rng, cache_key=name)
+                    m.weight.data = torch.from_numpy(w_ortho)
+                    try:
+                        nn.init.constant(m.bias, 0)
+                    except Exception:
+                        pass
+        return model
+
+
+class LSUV(_base._BaseInitializer):
     """
 
     CommandLine:
-        python -m clab._nninit.lsuv LSUV
+        python -m clab.nninit.lsuv LSUV:0
 
     Example:
-        >>> from clab._nninit.lsuv import *
+        >>> from clab.nninit.lsuv import *
         >>> import torchvision
         >>> import torch
         >>> #model = torchvision.models.AlexNet()
         >>> model = torchvision.models.SqueezeNet()
-        >>> initer = LSUV()
+        >>> initer = LSUV(rng=0)
         >>> data = torch.autograd.Variable(torch.randn(4, 3, 224, 224))
         >>> initer.forward(model, data)
 
     Example:
         >>> # DISABLE_DOCTEST
-        >>> from clab._nninit.lsuv import *
+        >>> from clab.nninit.lsuv import *
         >>> import torchvision
         >>> import torch
-        >>> #model = torchvision.models.AlexNet()
-        >>> model = torchvision.models.SqueezeNet()
-        >>> initer = LSUV()
+        >>> model = torchvision.models.AlexNet()
+        >>> initer = LSUV(rng=0)
         >>> data = torch.autograd.Variable(torch.randn(4, 3, 224, 224))
         >>> initer.forward(model, data)
 
+    Example:
+        >>> # DISABLE_DOCTEST
+        >>> from clab.nninit.lsuv import *
+        >>> import torchvision
+        >>> import torch
+        >>> model = torchvision.models.DenseNet()
+        >>> initer = LSUV(rng=0)
+        >>> data = torch.autograd.Variable(torch.randn(4, 3, 224, 224))
+        >>> initer.forward(model, data)
     """
     def __init__(self, needed_std=1.0, std_tol=0.1, max_attempts=10,
-                 do_orthonorm=True, rng=0):
+                 do_orthonorm=True, rng=None):
 
         self.rng = util.ensure_rng(rng)
 
@@ -95,7 +138,7 @@ class LSUV(object):
             return
         if not self.gg['correction_needed']:
             return
-        if (isinstance(m, nn.Conv2d)) or (isinstance(m, nn.Linear)):
+        if (isinstance(m, torch.nn.modules.conv._ConvNd)) or (isinstance(m, nn.Linear)):
             if self.gg['counter_to_apply_correction'] < self.gg['hook_position']:
                 self.gg['counter_to_apply_correction'] += 1
             else:
@@ -120,7 +163,7 @@ class LSUV(object):
     def add_current_hook(self, m):
         if self.gg['hook'] is not None:
             return
-        if (isinstance(m, nn.Conv2d)) or (isinstance(m, nn.Linear)):
+        if (isinstance(m, torch.nn.modules.conv._ConvNd)) or (isinstance(m, nn.Linear)):
             #print('trying to hook to', m, self.gg['hook_position'], self.gg['done_counter'])
             if self.gg['hook_position'] > self.gg['done_counter']:
                 self.gg['hook'] = m.register_forward_hook(self.store_activations)
@@ -131,34 +174,13 @@ class LSUV(object):
         return
 
     def count_conv_fc_layers(self, m):
-        if (isinstance(m, nn.Conv2d)) or (isinstance(m, nn.Linear)):
+        if (isinstance(m, torch.nn.modules.conv._ConvNd)) or (isinstance(m, nn.Linear)):
             self.gg['total_fc_conv_layers'] += 1
         return
 
     def remove_hooks(self, hooks):
         for h in hooks:
             h.remove()
-        return
-
-    def orthogonal_weights_init(self, m):
-        if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-            if hasattr(m, 'weight_v'):
-                w_ortho = svd_orthonormal(m.weight_v.data.cpu().numpy().shape, self.rng)
-                m.weight_v.data = torch.from_numpy(w_ortho)
-                try:
-                    nn.init.constant(m.bias, 0)
-                except Exception:
-                    pass
-            else:
-                #nn.init.orthogonal(m.weight)
-                w_ortho = svd_orthonormal(m.weight.data.cpu().numpy().shape, self.rng)
-                #print(w_ortho)
-                #m.weight.data.copy_(torch.from_numpy(w_ortho))
-                m.weight.data = torch.from_numpy(w_ortho)
-                try:
-                    nn.init.constant(m.bias, 0)
-                except Exception:
-                    pass
         return
 
     def forward(self, model, data):
@@ -171,7 +193,8 @@ class LSUV(object):
         print('Total layers to process:', self.gg['total_fc_conv_layers'])
         if self.do_orthonorm:
             print('Applying orthogonal weights')
-            model.apply(self.orthogonal_weights_init)
+            Orthonormal(rng=self.rng).forward(model)
+            # model.apply(self.orthogonal_weights_init)
             print('Orthonorm done')
             # if cuda:
             #     model = model.cuda()
@@ -217,7 +240,7 @@ class LSUV(object):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab._nninit.lsuv
+        python -m clab.nninit.lsuv
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
