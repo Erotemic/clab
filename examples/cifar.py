@@ -761,6 +761,11 @@ def train():
     # batch_size = (128 // 3) * 3
     batch_size = 128
 
+    # initializer_ = (nninit.KaimingNormal, {
+    #     'nonlinearity': 'relu',
+    # })
+    initializer_ = (nninit.LSUV, {})
+
     hyper = hyperparams.HyperParams(
         model=(clab.models.densenet.DenseNet, {
             'cifar': True,
@@ -778,9 +783,7 @@ def train():
         scheduler=(torch.optim.lr_scheduler.ReduceLROnPlateau, {
             'factor': .5,
         }),
-        initializer=(nninit.KaimingNormal, {
-            'nonlinearity': 'relu',
-        }),
+        initializer=initializer_,
         criterion=(torch.nn.CrossEntropyLoss, {
         }),
         # Specify anything else that is special about your hyperparams here

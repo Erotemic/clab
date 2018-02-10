@@ -199,8 +199,6 @@ class FitHarness(object):
             harn.model = harn.hyper.make_model()
             harn.initializer = harn.hyper.make_initializer()
 
-            harn.initializer(harn.model)
-
             harn.log('Mounting {} model on {}'.format(model_name, harn.xpu))
             harn.model = harn.xpu.mount(harn.model)
 
@@ -236,6 +234,7 @@ class FitHarness(object):
 
             else:
                 harn.log('Initializing new model')
+                harn.initializer(harn.model)
                 if not harn.dry:
                     for group in harn.optimizer.param_groups:
                         group.setdefault('initial_lr', group['lr'])

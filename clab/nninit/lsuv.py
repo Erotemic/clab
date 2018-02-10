@@ -9,7 +9,7 @@ import torch.nn.init
 import torch.nn as nn
 import ubelt as ub
 from clab import util
-from clab.nninit import _base
+from clab.nninit import base
 
 
 def svd_orthonormal(shape, rng=None, cache_key=None):
@@ -54,12 +54,12 @@ def svd_orthonormal(shape, rng=None, cache_key=None):
     return q
 
 
-class Orthonormal(_base._BaseInitializer):
+class Orthonormal(base._BaseInitializer):
     def __init__(self, rng=None):
         self.rng = util.ensure_rng(rng)
 
     def forward(self, model):
-        for name, m in _base.trainable_layers(model, names=True):
+        for name, m in base.trainable_layers(model, names=True):
             if isinstance(m, torch.nn.modules.conv._ConvNd) or isinstance(m, nn.Linear):
                 if hasattr(m, 'weight_v'):
                     w_ortho = svd_orthonormal(m.weight_v.data.cpu().numpy().shape, self.rng, cache_key=name)
@@ -78,7 +78,7 @@ class Orthonormal(_base._BaseInitializer):
         return model
 
 
-class LSUV(_base._BaseInitializer):
+class LSUV(base._BaseInitializer):
     """
 
     CommandLine:
