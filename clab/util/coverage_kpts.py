@@ -13,7 +13,7 @@ def make_kpts_heatmask(kpts, chipsize, cmap='plasma'):
 
     Example:
         >>> img_fpath = util.grab_test_imgpath('carl.png')
-        >>> (kpts, vecs) = pyhesaff.detect_feats(img_fpath)
+        >>> (kpts, vecs) = detect_feats(img_fpath)
         >>> chip = vt.imread(img_fpath)
         >>> kpts = kpts[0:100]
         >>> chipsize = chip.shape[0:2][::-1]
@@ -83,9 +83,8 @@ def make_kpts_coverage_mask(
 
     Example:
         >>> from clab.util import mplutil
-        >>> import pyhesaff
         >>> img_fpath = util.grab_test_imgpath('carl.png')
-        >>> (kpts, vecs) = pyhesaff.detect_feats(img_fpath)
+        >>> (kpts, vecs) = detect_feats(img_fpath)
         >>> kpts = kpts[::10]
         >>> chip = vt.imread(img_fpath)
         >>> chipsize = chip.shape[0:2][::-1]
@@ -154,7 +153,7 @@ def _warp_patch_onto_kpts(
 
     Example:
         >>> img_fpath    = util.grab_test_imgpath('carl.jpg')
-        >>> (kpts, vecs) = pyhesaff.detect_feats(img_fpath)
+        >>> (kpts, vecs) = detect_feats(img_fpath)
         >>> kpts = kpts[::15]
         >>> chip = vt.imread(img_fpath)
         >>> chipshape = chip.shape

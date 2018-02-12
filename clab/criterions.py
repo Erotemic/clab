@@ -10,16 +10,17 @@ from torch.autograd import Variable  # NOQA
 
 def testdata_siam_desc(num_data=128, desc_dim=8):
     import numpy as np
-    import vtool as vt
     rng = np.random.RandomState(0)
-    network_output = vt.normalize_rows(rng.rand(num_data, desc_dim))
+    network_output = rng.rand(num_data, desc_dim)
+    network_output = network_output / np.linalg.norm(network_output, axis=1, keepdims=True)
     vecs1 = network_output[0::2]
     vecs2 = network_output[1::2]
     # roll vecs2 so it is essentially translated
     vecs2 = np.roll(vecs1, 1, axis=1)
     network_output[1::2] = vecs2
     # Every other pair is an imposter match
-    network_output[::4, :] = vt.normalize_rows(rng.rand(32, desc_dim))
+    network_output[::4, :] = rng.rand(32, desc_dim)
+    network_output[::4, :] = network_output[::4, :] / np.linalg.norm(network_output[::4, :], axis=1, keepdims=True)
     #data_per_label = 2
 
     vecs1 = network_output[0::2].astype(np.float32)
@@ -27,7 +28,7 @@ def testdata_siam_desc(num_data=128, desc_dim=8):
 
     def true_dist_metric(vecs1, vecs2):
         g1_ = np.roll(vecs1, 1, axis=1)
-        dist = vt.L2(g1_, vecs2)
+        dist = np.linalg.norm(g1_ - vecs2)
         return dist
     #l2dist = vt.L2(vecs1, vecs2)
     true_dist = true_dist_metric(vecs1, vecs2)

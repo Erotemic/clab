@@ -145,7 +145,7 @@ def make_channels_comparable(img1, img2):
     Broadcasts image arrays so they can have elementwise operations applied
 
     CommandLine:
-        python -m vtool.image make_channels_comparable
+        python -m clab.util.imutil make_channels_comparable
 
     Example:
         >>> # DISABLE_DOCTEST
