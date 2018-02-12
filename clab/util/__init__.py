@@ -12,6 +12,7 @@ if __DYNAMIC__:
 else:
     # <AUTOGEN_INIT>
     from clab.util import colorutil
+    from clab.util import coverage_kpts
     from clab.util import fnameutil
     from clab.util import gpu_util
     from clab.util import hashutil
@@ -22,26 +23,29 @@ else:
     from clab.util import nputil
     from clab.util import priority_queue
     from clab.util import profiler
+    from clab.util import util_affine
     from clab.util import util_alg
     from clab.util import util_averages
+    from clab.util import util_patch
     from clab.util.colorutil import (colorbar_image, convert_hex_to_255,
                                      lookup_bgr255, make_distinct_bgr01_colors,
                                      make_distinct_bgr255_colors, make_heatmask,)
+    from clab.util.coverage_kpts import (gaussian_patch, make_kpts_coverage_mask,
+                                         make_kpts_heatmask,)
     from clab.util.fnameutil import (align_paths, check_aligned, dumpsafe,
                                      shortest_unique_prefixes,
                                      shortest_unique_suffixes,)
     from clab.util.gpu_util import (find_unused_gpu, gpu_info, have_gpu, num_gpus,)
     from clab.util.hashutil import (hash_data, hash_file,)
-    from clab.util.imutil import (CV2_INTERPOLATION_TYPES, InternalRunningStats,
-                                  RunningStats, absdev, adjust_gamma,
+    from clab.util.imutil import (CV2_INTERPOLATION_TYPES, absdev, adjust_gamma,
                                   atleast_3channels, convert_colorspace,
                                   ensure_alpha_channel, ensure_float01,
-                                  ensure_grayscale, get_num_channels, image_slices,
-                                  imread, imscale, imwrite, load_image_paths,
-                                  logger, make_channels_comparable,
-                                  overlay_alpha_images, overlay_colorized,
-                                  putMultiLineText, run_length_encoding,
-                                  wide_strides_1d,)
+                                  ensure_grayscale, get_num_channels,
+                                  grab_test_imgpath, image_slices, imread, imscale,
+                                  imwrite, load_image_paths, logger,
+                                  make_channels_comparable, overlay_alpha_images,
+                                  overlay_colorized, putMultiLineText,
+                                  run_length_encoding, wide_strides_1d,)
     from clab.util.jsonutil import (JSONEncoder, NumpyAwareJSONEncoder,
                                     NumpyEncoder, json_numpy_obj_hook, read_json,
                                     walk_json, write_json,)
@@ -51,20 +55,15 @@ else:
                                 protect_print, random_indices, read_arr,
                                 read_h5arr, roundrobin, super2, write_arr,
                                 write_h5arr,)
-    from clab.util.mplutil import (BASE_FNUM, DF2_DIVIDER_KEY, LEGEND_LOCATION,
-                                   PlotNums, adjust_subplots, axes_extent,
+    from clab.util.mplutil import (PlotNums, adjust_subplots, axes_extent,
                                    colorbar, copy_figure_to_clipboard,
-                                   dark_background, del_plotdat,
                                    deterministic_shuffle, dict_intersection,
-                                   distinct_colors, distinct_markers,
-                                   ensure_divider, ensure_fnum,
-                                   extract_axes_extents, figure,
-                                   get_axis_xy_width_height, get_plotdat,
-                                   get_plotdat_dict, imshow, legend, multi_plot,
-                                   next_fnum, pandas_plot_matrix, qtensure,
-                                   render_figure_to_image, reverse_colormap,
-                                   save_parts, savefig2, scores_to_cmap,
-                                   scores_to_color, set_figtitle, set_plotdat,
+                                   distinct_colors, distinct_markers, ensure_fnum,
+                                   extract_axes_extents, figure, imshow, legend,
+                                   multi_plot, next_fnum, pandas_plot_matrix,
+                                   qtensure, render_figure_to_image,
+                                   reverse_colormap, save_parts, savefig2,
+                                   scores_to_cmap, scores_to_color, set_figtitle,
                                    show_if_requested,)
     from clab.util.nputil import (apply_grouping, atleast_nd, group_indices,
                                   group_items, isect_flags, iter_reduce_ufunc,)
@@ -74,7 +73,15 @@ else:
                                     find_parent_class, find_pattern_above_row,
                                     find_pyclass_above_row, profile, profile,
                                     profile_onthefly,)
+    from clab.util.util_affine import (TRANSFORM_DTYPE, affine_around_mat3x3,
+                                       affine_mat3x3, rotation_around_bbox_mat3x3,
+                                       rotation_around_mat3x3, rotation_mat2x2,
+                                       rotation_mat3x3, scale_around_mat3x3,
+                                       scale_mat3x3, shear_mat3x3,
+                                       transform_around, translation_mat3x3,)
     from clab.util.util_alg import (mincost_assignment,)
-    from clab.util.util_averages import (CumMovingAve, ExpMovingAve, MovingAve,
-                                         WindowedMovingAve,)
+    from clab.util.util_averages import (CumMovingAve, ExpMovingAve,
+                                         InternalRunningStats, MovingAve,
+                                         RunningStats, WindowedMovingAve,)
+    
     # </AUTOGEN_INIT>

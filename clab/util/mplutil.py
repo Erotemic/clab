@@ -632,7 +632,7 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
     if use_darkbackground is None:
         use_darkbackground = not lightbg
     if use_darkbackground:
-        dark_background(force=use_darkbackground is True)
+        _dark_background(force=use_darkbackground is True)
     # TODO: return better info
     return fig
 
@@ -898,19 +898,19 @@ def dict_intersection(dict1, dict2):
     return dict_isect
 
 
-def dark_background(ax=None, doubleit=False, force=False):
+def _dark_background(ax=None, doubleit=False, force=False):
     r"""
     Args:
         ax (None): (default = None)
         doubleit (bool): (default = False)
 
     CommandLine:
-        python -m .draw_func2 --exec-dark_background --show
+        python -m .draw_func2 --exec-_dark_background --show
 
     Example:
         >>> # ENABLE_DOCTEST
         >>> fig = figure()
-        >>> dark_background()
+        >>> _dark_background()
         >>> show_if_requested()
     """
     import matplotlib as mpl
@@ -931,7 +931,7 @@ def dark_background(ax=None, doubleit=False, force=False):
             ax.set_axis_bgcolor(bgcolor)
             ax.tick_params(colors='white')
             return
-        xy, width, height = get_axis_xy_width_height(ax)
+        xy, width, height = _get_axis_xy_width_height(ax)
         if doubleit:
             halfw = (doubleit) * (width / 2)
             halfh = (doubleit) * (height / 2)
@@ -946,7 +946,7 @@ def dark_background(ax=None, doubleit=False, force=False):
         rect = ax.add_patch(rect)
 
 
-def get_axis_xy_width_height(ax=None, xaug=0, yaug=0, waug=0, haug=0):
+def _get_axis_xy_width_height(ax=None, xaug=0, yaug=0, waug=0, haug=0):
     """ gets geometry of a subplot """
     from matplotlib import pyplot as plt
     if ax is None:
@@ -958,7 +958,7 @@ def get_axis_xy_width_height(ax=None, xaug=0, yaug=0, waug=0, haug=0):
     return xy, width, height
 
 
-LEGEND_LOCATION = {
+_LEGEND_LOCATION = {
     'upper right':  1,
     'upper left':   2,
     'lower left':   3,
@@ -1049,8 +1049,8 @@ def legend(loc='best', fontproperties=None, size=None, fc='w', alpha=1,
         >>> show_if_requested()
     """
     from matplotlib import pyplot as plt
-    assert loc in LEGEND_LOCATION or loc == 'best', (
-        'invalid loc. try one of %r' % (LEGEND_LOCATION,))
+    assert loc in _LEGEND_LOCATION or loc == 'best', (
+        'invalid loc. try one of %r' % (_LEGEND_LOCATION,))
     if ax is None:
         ax = plt.gca()
     if fontproperties is None:
@@ -1252,15 +1252,15 @@ def deterministic_shuffle(list_, rng=0):
     return list_
 
 
-BASE_FNUM = 9001
+_BASE_FNUM = 9001
 
 
 def next_fnum(new_base=None):
-    global BASE_FNUM
+    global _BASE_FNUM
     if new_base is not None:
-        BASE_FNUM = new_base
-    BASE_FNUM += 1
-    return BASE_FNUM
+        _BASE_FNUM = new_base
+    _BASE_FNUM += 1
+    return _BASE_FNUM
 
 
 def ensure_fnum(fnum):
@@ -1315,9 +1315,9 @@ def _save_requested(fpath_, save_parts):
         atomic_axes = []
         seen_ = set([])
         for ax in fig.axes:
-            div = get_plotdat(ax, DF2_DIVIDER_KEY, None)
+            div = _get_plotdat(ax, _DF2_DIVIDER_KEY, None)
             if div is not None:
-                df2_div_axes = get_plotdat_dict(ax).get('df2_div_axes', [])
+                df2_div_axes = _get_plotdat_dict(ax).get('df2_div_axes', [])
                 seen_.add(ax)
                 seen_.update(set(df2_div_axes))
                 atomic_axes.append([ax] + df2_div_axes)
@@ -1410,9 +1410,9 @@ def show_if_requested(N=1):
 
     if fpath_ is not None:
         _save_requested(fpath_, save_parts)
-    elif ub.argflag('--cmd'):
-        pass
-    elif ub.argflag('--show'):
+    # elif ub.argflag('--cmd'):
+    #     pass
+    if ub.argflag('--show'):
         # if ub.argflag('--tile'):
         #     if ut.get_computer_name().lower() in ['hyrule']:
         #         fig_presenter.all_figures_tile(percent_w=.5, monitor_num=0)
@@ -1715,10 +1715,10 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
         return None
     # Parameters
     ax = plt.gca()
-    divider = ensure_divider(ax)
+    divider = _ensure_divider(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
 
-    xy, width, height = get_axis_xy_width_height(ax)
+    xy, width, height = _get_axis_xy_width_height(ax)
     #orientation = ['vertical', 'horizontal'][0]
     TICK_FONTSIZE = 8
     #
@@ -1779,8 +1779,8 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
         #cb.ax.get_yticks()
         #cb.set_ticks(ticks)  # tick locations
         #cb.set_ticklabels(ticklabels)  # tick labels
-    # set_plotdat(cb.ax, 'viztype', 'colorbar-%s' % (lbl,))
-    # set_plotdat(cb.ax, 'sm', sm)
+    # _set_plotdat(cb.ax, 'viztype', 'colorbar-%s' % (lbl,))
+    # _set_plotdat(cb.ax, 'sm', sm)
     # FIXME: Figure out how to make a maximum number of ticks
     # and to enforce them to be inside the data bounds
     cb.ax.tick_params(labelsize=TICK_FONTSIZE)
@@ -1791,30 +1791,30 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
     return cb
 
 
-DF2_DIVIDER_KEY = '_df2_divider'
+_DF2_DIVIDER_KEY = '_df2_divider'
 
 
-def get_plotdat(ax, key, default=None):
+def _get_plotdat(ax, key, default=None):
     """ returns internal property from a matplotlib axis """
-    _plotdat = get_plotdat_dict(ax)
+    _plotdat = _get_plotdat_dict(ax)
     val = _plotdat.get(key, default)
     return val
 
 
-def set_plotdat(ax, key, val):
+def _set_plotdat(ax, key, val):
     """ sets internal property to a matplotlib axis """
-    _plotdat = get_plotdat_dict(ax)
+    _plotdat = _get_plotdat_dict(ax)
     _plotdat[key] = val
 
 
-def del_plotdat(ax, key):
+def _del_plotdat(ax, key):
     """ sets internal property to a matplotlib axis """
-    _plotdat = get_plotdat_dict(ax)
+    _plotdat = _get_plotdat_dict(ax)
     if key in _plotdat:
         del _plotdat[key]
 
 
-def get_plotdat_dict(ax):
+def _get_plotdat_dict(ax):
     """ sets internal property to a matplotlib axis """
     if '_plotdat' not in ax.__dict__:
         ax.__dict__['_plotdat'] = {}
@@ -1822,20 +1822,20 @@ def get_plotdat_dict(ax):
     return plotdat_dict
 
 
-def ensure_divider(ax):
+def _ensure_divider(ax):
     """ Returns previously constructed divider or creates one """
     from mpl_toolkits.axes_grid1 import make_axes_locatable
-    divider = get_plotdat(ax, DF2_DIVIDER_KEY, None)
+    divider = _get_plotdat(ax, _DF2_DIVIDER_KEY, None)
     if divider is None:
         divider = make_axes_locatable(ax)
-        set_plotdat(ax, DF2_DIVIDER_KEY, divider)
+        _set_plotdat(ax, _DF2_DIVIDER_KEY, divider)
         orig_append_axes = divider.append_axes
         def df2_append_axes(divider, position, size, pad=None, add_to_figure=True, **kwargs):
             """ override divider add axes to register the divided axes """
-            div_axes = get_plotdat(ax, 'df2_div_axes', [])
+            div_axes = _get_plotdat(ax, 'df2_div_axes', [])
             new_ax = orig_append_axes(position, size, pad=pad, add_to_figure=add_to_figure, **kwargs)
             div_axes.append(new_ax)
-            set_plotdat(ax, 'df2_div_axes', div_axes)
+            _set_plotdat(ax, 'df2_div_axes', div_axes)
             return new_ax
         new_method = df2_append_axes.__get__(divider, divider.__class__)
         setattr(divider, 'append_axes', new_method)
@@ -2162,6 +2162,26 @@ class PlotNums(object):
             #nCols = int(min(rounder(np.sqrt(nrids)), 5))
             nRows = int(rounder(nSubplots / nCols))
         return nRows, nCols
+
+
+def draw_border(ax, color, lw=2, offset=None, adjust=True):
+    'draws rectangle border around a subplot'
+    if adjust:
+        xy, width, height = _get_axis_xy_width_height(ax, -.7, -.2, 1, .4)
+    else:
+        xy, width, height = _get_axis_xy_width_height(ax)
+    if offset is not None:
+        xoff, yoff = offset
+        xy = [xoff, yoff]
+        height = - height - yoff
+        width = width - xoff
+    import matplotlib as mpl
+    rect = mpl.patches.Rectangle(xy, width, height, lw=lw)
+    rect = ax.add_patch(rect)
+    rect.set_clip_on(False)
+    rect.set_fill(False)
+    rect.set_edgecolor(color)
+    return rect
 
 
 if __name__ == '__main__':

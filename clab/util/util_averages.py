@@ -147,6 +147,175 @@ class ExpMovingAve(MovingAve):
                 self.values[k] = (alpha * v) + (1 - alpha) * self.values[k]
         return self
 
+
+class RunningStats(object):
+    """
+    Dynamically records per-element array statistics and can summarized them
+    per-element, across channels, or globally.
+
+    SeeAlso:
+        InternalRunningStats
+
+    Example:
+        >>> from clab.util.imutil import *
+        >>> run = RunningStats()
+        >>> ch1 = np.array([[0, 1], [3, 4]])
+        >>> ch2 = np.zeros((2, 2))
+        >>> img = np.dstack([ch1, ch2])
+        >>> run.update(np.dstack([ch1, ch2]))
+        >>> run.update(np.dstack([ch1 + 1, ch2]))
+        >>> run.update(np.dstack([ch1 + 2, ch2]))
+        >>> # Scalar averages
+        >>> print(ub.repr2(run.simple(), nobr=1, si=True))
+        max: 6.0,
+        mean: 1.5,
+        min: 0.0,
+        n: 24,
+        squares: 146.0,
+        std: 2.0,
+        total: 36.0,
+        >>> # Per channel averages
+        >>> print(ub.repr2(ub.map_vals(lambda x: np.array(x).tolist(), run.simple()), nobr=1, si=True, nl=1))
+        mean: [3.0, 0.0],
+        min: [0.0, 0.0],
+        n: 12,
+        squares: [146.0, 0.0],
+        std: [1.8586407545691703, 0.0],
+        total: [36.0, 0.0],
+        >>> # Per-pixel averages
+        >>> print(ub.repr2(ub.map_vals(lambda x: np.array(x).tolist(), run.detail()), nobr=1, si=True, nl=1))
+        max: [[[2.0, 0.0], [3.0, 0.0]], [[5.0, 0.0], [6.0, 0.0]]],
+        mean: [[[1.0, 0.0], [2.0, 0.0]], [[4.0, 0.0], [5.0, 0.0]]],
+        min: [[[0.0, 0.0], [1.0, 0.0]], [[3.0, 0.0], [4.0, 0.0]]],
+        n: 3,
+        squares: [[[5.0, 0.0], [14.0, 0.0]], [[50.0, 0.0], [77.0, 0.0]]],
+        std: [[[1.0, 0.0], [1.0, 0.0]], [[1.0, 0.0], [1.0, 0.0]]],
+        total: [[[3.0, 0.0], [6.0, 0.0]], [[12.0, 0.0], [15.0, 0.0]]],
+        """
+
+    def __init__(run):
+        run.raw_max = -np.inf
+        run.raw_min = np.inf
+        run.raw_total = 0
+        run.raw_squares = 0
+        run.n = 0
+
+    def update(run, img):
+        run.n += 1
+        # Update stats across images
+        run.raw_max = np.maximum(run.raw_max, img)
+        run.raw_min = np.minimum(run.raw_min, img)
+        run.raw_total += img
+        run.raw_squares += img ** 2
+
+    def _sumsq_std(run, total, squares, n):
+        """
+        Sum of squares method to compute standard deviation
+        """
+        numer = (n * squares - total ** 2)
+        denom = (n * (n - 1))
+        std = np.sqrt(numer / denom)
+        return std
+
+    def simple(run, axis=None):
+        assert run.n > 0, 'no stats exist'
+        maxi    = run.raw_max.max(axis=axis, keepdims=True)
+        mini    = run.raw_min.min(axis=axis, keepdims=True)
+        total   = run.raw_total.sum(axis=axis, keepdims=True)
+        squares = run.raw_squares.sum(axis=axis, keepdims=True)
+        if not hasattr(run.raw_total, 'shape'):
+            n = run.n
+        elif axis is None:
+            n = run.n * np.prod(run.raw_total.shape)
+        else:
+            n = run.n * np.prod(np.take(run.raw_total.shape, axis))
+        info = ub.odict([
+            ('n', n),
+            ('max', maxi),
+            ('min', mini),
+            ('total', total),
+            ('squares', squares),
+            ('mean', total / n),
+            ('std', run._sumsq_std(total, squares, n)),
+        ])
+        return info
+
+    def detail(run):
+        total = run.raw_total
+        squares = run.raw_squares
+        maxi = run.raw_max
+        mini = run.raw_min
+        n = run.n
+        info = ub.odict([
+            ('n', n),
+            ('max', maxi),
+            ('min', mini),
+            ('total', total),
+            ('squares', squares),
+            ('mean', total / n),
+            ('std', run._sumsq_std(total, squares, n)),
+        ])
+        return info
+
+
+class InternalRunningStats():
+    """
+    Maintains an averages of average internal statistics across a dataset.
+
+    The difference between `RunningStats` and this is that the former can keep
+    track of the average value of pixel (x, y) or channel (c) across the
+    dataset, whereas this class tracks the average pixel value within an image
+    across the dataset. So, this is an average of averages.
+
+    Example:
+        >>> from clab.util.imutil import *
+        >>> ch1 = np.array([[0, 1], [3, 4]])
+        >>> ch2 = np.zeros((2, 2))
+        >>> img = np.dstack([ch1, ch2])
+        >>> irun = InternalRunningStats(axis=(0, 1))
+        >>> irun.update(np.dstack([ch1, ch2]))
+        >>> irun.update(np.dstack([ch1 + 1, ch2]))
+        >>> irun.update(np.dstack([ch1 + 2, ch2]))
+        >>> # Scalar averages
+        >>> print(ub.repr2(irun.info(), nobr=1, si=True))
+    """
+
+    def __init__(irun, axis=None):
+        from functools import partial
+        irun.axis = axis
+        # Define a running stats object for each as well as the function to
+        # compute the internal statistic
+        irun.runs = ub.odict([
+            ('mean', (
+                RunningStats(), np.mean)),
+            ('std', (
+                RunningStats(), np.std)),
+            ('median', (
+                RunningStats(), np.median)),
+            # ('mean_absdev_from_mean', (
+            #     RunningStats(),
+            #     partial(absdev, ave=np.mean, central=np.mean))),
+            ('mean_absdev_from_median', (
+                RunningStats(),
+                partial(absdev, ave=np.mean, central=np.median))),
+            ('median_absdev_from_median', (
+                RunningStats(),
+                partial(absdev, ave=np.median, central=np.median))),
+        ])
+
+    def update(irun, img):
+        axis = irun.axis
+        for run, func in irun.runs.values():
+            stat = func(img, axis=axis)
+            run.update(stat)
+
+    def info(irun):
+        return {
+            key: run.detail() for key, (run, _) in irun.runs.items()
+        }
+
+
+
 if __name__ == '__main__':
     r"""
     CommandLine:

@@ -6,8 +6,8 @@ import numpy as np
 import six
 import pandas as pd
 import ubelt as ub
+from clab import util
 from clab.util import fnameutil
-from clab.util import imutil
 
 from clab import getLogger
 logger = getLogger(__name__)
@@ -342,7 +342,7 @@ class Inputs(ub.NiceRepr):
 
     def prepare_truth(self):
         if self.gt_paths is None:
-            self.gt_paths = imutil.load_image_paths(self.gtdir, ext='.png')
+            self.gt_paths = util.load_image_paths(self.gtdir, ext='.png')
 
     def prepare_image_paths(self):
         print('Preparing {} image paths'.format(self.tag))
@@ -350,15 +350,15 @@ class Inputs(ub.NiceRepr):
         any_loaded = False
 
         if self.im_paths is None and self.imdir:
-            self.im_paths = imutil.load_image_paths(self.imdir)
+            self.im_paths = util.load_image_paths(self.imdir)
             any_loaded = len(self.im_paths) > 0
 
         if self.gt_paths is None and self.gtdir:
-            self.gt_paths = imutil.load_image_paths(self.gtdir)
+            self.gt_paths = util.load_image_paths(self.gtdir)
             any_loaded = len(self.gt_paths) > 0
 
         if self.aux_paths is None and self.auxdir:
-            self.aux_paths = {k: imutil.load_image_paths(v)
+            self.aux_paths = {k: util.load_image_paths(v)
                               for k, v in self.auxdir.items()}
             any_loaded = any(self.aux_paths.values())
 
@@ -469,9 +469,9 @@ class Inputs(ub.NiceRepr):
 
             class IntensityStats(object):
                 def __init__(p):
-                    p.run = imutil.RunningStats()
-                    p.scalar_internals = imutil.InternalRunningStats()
-                    p.channel_internals = imutil.InternalRunningStats(axis=(0, 1))
+                    p.run = util.RunningStats()
+                    p.scalar_internals = util.InternalRunningStats()
+                    p.channel_internals = util.InternalRunningStats(axis=(0, 1))
 
                 def update(p, im):
                     p.run.update(im)
@@ -595,7 +595,7 @@ class Inputs(ub.NiceRepr):
                                dtype=np.int)
 
         for path in ub.ProgIter(gt_paths, label='computing class weights', verbose=1):
-            y_true = imutil.imread(path).ravel()
+            y_true = util.imread(path).ravel()
             pxlfreq = pd.value_counts(y_true)
             gtstats.pxlfreq.loc[pxlfreq.index] += pxlfreq
             gtstats.imfreq.loc[pxlfreq.index] += 1
