@@ -1,3 +1,8 @@
+"""
+TODO: Implement algorithm from dlib
+http://blog.dlib.net/2018/02/automatic-learning-rate-scheduling-that.html
+
+"""
 from clab import util
 import numpy as np
 import ubelt as ub
