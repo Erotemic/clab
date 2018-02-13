@@ -278,7 +278,9 @@ class XPU(ub.NiceRepr):
         assert 'volatile' not in kw, 'volatile is removed'
         cukw = {}
         if 'async' in kw:
-            cukw['async'] = kw.pop('async')
+            cukw['non_blocking'] = kw.pop('async')
+        if 'non_blocking' in kw:
+            cukw['non_blocking'] = kw.pop('non_blocking')
         item = xpu.move(item, **cukw)
         item = torch.autograd.Variable(item, **kw)
         return item
