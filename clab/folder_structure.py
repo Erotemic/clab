@@ -1,67 +1,69 @@
-import os
-from os.path import join, normpath, dirname
+# from os.path import join, normpath, dirname
+from os.path import dirname
+from os.path import join
 import ubelt as ub
 from clab import util
 
 
-def symlink(real_path, link_path, overwrite=False, on_error='raise',
-            verbose=2):
-    """
-    Attempt to create a symbolic link.
+# import os
+# def symlink(real_path, link_path, overwrite=False, on_error='raise',
+#             verbose=2):
+#     """
+#     Attempt to create a symbolic link.
 
-    TODO:
-        Can this be fixed on windows?
+#     TODO:
+#         Can this be fixed on windows?
 
-    Args:
-        path (str): path to real file or directory
-        link_path (str): path to desired location for symlink
-        overwrite (bool): overwrite existing symlinks (default = False)
-        on_error (str): strategy for dealing with errors.
-            raise or ignore
-        verbose (int):  verbosity level (default=2)
+#     Args:
+#         path (str): path to real file or directory
+#         link_path (str): path to desired location for symlink
+#         overwrite (bool): overwrite existing symlinks (default = False)
+#         on_error (str): strategy for dealing with errors.
+#             raise or ignore
+#         verbose (int):  verbosity level (default=2)
 
-    Returns:
-        str: link path
+#     Returns:
+#         str: link path
 
-    CommandLine:
-        python -m utool.util_path symlink
-    """
-    path = normpath(real_path)
-    link = normpath(link_path)
-    if verbose:
-        print('[util_path] Creating symlink: path={} link={}'.format(path, link))
-    if os.path.islink(link):
-        if verbose:
-            print('[util_path] symlink already exists')
-        os_readlink = getattr(os, "readlink", None)
-        if callable(os_readlink):
-            if os_readlink(link) == path:
-                if verbose > 1:
-                    print('[path] ... and points to the right place')
-                return link
-        else:
-            print('[util_path] Warning, symlinks are not implemented on windows')
-        if verbose > 1:
-            print('[util_path] ... but it points somewhere else')
-        if overwrite:
-            ub.delete(link, verbose > 1)
-        elif on_error == 'ignore':
-            return False
-    try:
-        os_symlink = getattr(os, "symlink", None)
-        if callable(os_symlink):
-            os_symlink(path, link)
-        else:
-            raise NotImplementedError('')
-            # win_shortcut(path, link)
-    except Exception as ex:
-        # import utool as ut
-        # checkpath(link, verbose=True)
-        # checkpath(path, verbose=True)
-        do_raise = (on_error == 'raise')
-        if do_raise:
-            raise
-    return link
+#     CommandLine:
+#         python -m utool.util_path symlink
+#     """
+#     path = normpath(real_path)
+#     link = normpath(link_path)
+#     if verbose:
+#         print('[util_path] Creating symlink: path={} link={}'.format(path, link))
+#     if os.path.islink(link):
+#         if verbose:
+#             print('[util_path] symlink already exists')
+#         os_readlink = getattr(os, "readlink", None)
+#         if callable(os_readlink):
+#             if os_readlink(link) == path:
+#                 if verbose > 1:
+#                     print('[path] ... and points to the right place')
+#                 return link
+#         else:
+#             print('[util_path] Warning, symlinks are not implemented on windows')
+#         if verbose > 1:
+#             print('[util_path] ... but it points somewhere else')
+#         if overwrite:
+#             ub.delete(link, verbose > 1)
+#         elif on_error == 'ignore':
+#             return False
+#     try:
+#         os_symlink = getattr(os, "symlink", None)
+#         if callable(os_symlink):
+#             os_symlink(path, link)
+#         else:
+#             raise NotImplementedError('')
+#             # win_shortcut(path, link)
+#     except Exception as ex:
+#         # import utool as ut
+#         # checkpath(link, verbose=True)
+#         # checkpath(path, verbose=True)
+#         do_raise = (on_error == 'raise')
+#         if do_raise:
+#             raise
+#     return link
 
 
 class FolderStructure(object):
@@ -153,8 +155,8 @@ class FolderStructure(object):
 
         # setup symlinks
         ub.ensuredir(dirname(train_info['link_dpath']))
-        symlink(train_info['train_dpath'], train_info['link_dpath'],
-                on_error='ignore')
+        ub.symlink(train_info['train_dpath'], train_info['link_dpath'],
+                   on_error='ignore')
 
         print('+=========')
         # print('hyper_strid = {!r}'.format(params.hyper_id()))

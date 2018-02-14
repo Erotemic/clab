@@ -295,7 +295,8 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
     # Get passed in axes or setup a new figure
     ax = kwargs.get('ax', None)
     if ax is None:
-        fig = figure(fnum=fnum, pnum=pnum, docla=False)
+        doclf = kwargs.get('doclf', False)
+        fig = figure(fnum=fnum, pnum=pnum, docla=False, doclf=doclf)
         ax = plt.gca()
     else:
         plt.sca(ax)
