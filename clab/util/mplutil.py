@@ -86,8 +86,6 @@ def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
     def _setup_subfigure(pnum):
         if isinstance(pnum, int):
             pnum = _convert_pnum_int_to_tup(pnum)
-        if doclf:
-            fig.clf()
         axes_list = fig.get_axes()
         if docla or len(axes_list) == 0:
             if pnum is not None:
@@ -107,6 +105,8 @@ def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
                 ax = plt.gca()
 
     fig = ensure_fig(fnum)
+    if doclf:
+        fig.clf()
     if pnum is not None:
         _setup_subfigure(pnum)
     # Set the title / figtitle
@@ -496,11 +496,11 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
     if 'ylim' in kwargs:
         ylim = kwargs['ylim']
         if ylim is not None:
-            if 'ymin' not in kwargs and 'ymay' not in kwargs:
+            if 'ymin' not in kwargs and 'ymax' not in kwargs:
                 kwargs['ymin'] = ylim[0]
-                kwargs['ymay'] = ylim[1]
+                kwargs['ymax'] = ylim[1]
             else:
-                raise ValueError('use ymay, ymin instead of ylim')
+                raise ValueError('use ymax, ymin instead of ylim')
 
     xmin = kwargs.get('xmin', ax.get_xlim()[0])
     xmax = kwargs.get('xmax', ax.get_xlim()[1])
@@ -2183,6 +2183,47 @@ def draw_border(ax, color, lw=2, offset=None, adjust=True):
     rect.set_fill(False)
     rect.set_edgecolor(color)
     return rect
+
+
+def draw_line_segments(pts1, pts2, ax=None, **kwargs):
+    """
+    draws `N` line segments between `N` pairs of points
+
+    Args:
+        pts1 (ndarray): Nx2
+        pts2 (ndarray): Nx2
+        ax (None): (default = None)
+        **kwargs: lw, alpha, colors
+
+    CommandLine:
+        python -m clab.util.mplutil draw_line_segments --show
+
+    Example:
+        >>> pts1 = np.array([(.1, .8), (.6, .8)])
+        >>> pts2 = np.array([(.6, .7), (.4, .1)])
+        >>> figure(fnum=None)
+        >>> draw_line_segments(pts1, pts2)
+        >>> # xdoc: +REQUIRES(--show)
+        >>> import matplotlib.pyplot as plt
+        >>> ax = plt.gca()
+        >>> ax.set_xlim(0, 1)
+        >>> ax.set_ylim(0, 1)
+        >>> show_if_requested()
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    if ax is None:
+        ax = plt.gca()
+    assert len(pts1) == len(pts2), 'unaligned'
+    segments = [(xy1, xy2) for xy1, xy2 in zip(pts1, pts2)]
+    linewidth = kwargs.pop('lw', kwargs.pop('linewidth', 1.0))
+    alpha = kwargs.pop('alpha', 1.0)
+    if 'color' in kwargs:
+        kwargs['colors'] = kwargs['color']
+        # mpl.colors.ColorConverter().to_rgb(kwargs['color'])
+    line_group = mpl.collections.LineCollection(segments, linewidths=linewidth,
+                                                alpha=alpha, **kwargs)
+    ax.add_collection(line_group)
 
 
 if __name__ == '__main__':
