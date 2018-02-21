@@ -108,6 +108,9 @@ class XPU(ub.NiceRepr):
     @classmethod
     def from_data(xpu, item, **kwargs):
         """
+        Creates an XPU to represent the processing device a Tensor or Variable
+        is on
+
         Example:
             >>> xpu = XPU(torch.randn(3))
             >>> assert not xpu.is_gpu()
@@ -275,6 +278,23 @@ class XPU(ub.NiceRepr):
             return data.cpu()
 
     def variable(xpu, item, **kw):
+        """
+        Moves data to this XPU and wraps it inside a `torch.autograd.Variable`
+
+        Args:
+            item (Tensor): a of tensors
+            **kwargs: forwarded to `xpu.move` and `torch.autograd.Variable`
+
+        Returns:
+            torch.autograd.Variable: variable on the xpu
+
+        Example:
+            >>> from clab.xpu_device import *
+            >>> xpu = XPU(None)
+            >>> data = torch.FloatTensor([0])
+            >>> vari = xpu.variable(data)
+            >>> assert isinstance(vari, torch.autograd.Variable)
+        """
         assert 'volatile' not in kw, 'volatile is removed'
         cukw = {}
         if 'async' in kw:
@@ -287,32 +307,10 @@ class XPU(ub.NiceRepr):
 
     def variables(xpu, *args, **kw):
         """
-        Moves data to this XPU and wraps it inside a `torch.autograd.Variable`
-
-        Args:
-            *args: sequence of tensors
-            **kwargs: forwarded to `xpu.move` and `torch.autograd.Variable`
-
-        Yeilds:
-            variables on the xpu
-
-        Example:
-            >>> from clab.xpu_device import *
-            >>> xpu = XPU(None)
-            >>> data = torch.FloatTensor([0])
-            >>> data, = xpu.variables(data)
-            >>> assert isinstance(data, torch.autograd.Variable)
+        Convinience function to wrap multiple Tensors in Variables at once
         """
-        # torch version 0.4 replace the volatile keyword with a context manager
-        # assert 'volatile' not in kw, 'volatile is removed'
-        # cukw = {}
-        # if 'async' in kw:
-        #     cukw['async'] = kw.pop('async')
         for item in args:
             yield xpu.variable(item, **kw)
-            # item = xpu.move(item, **cukw)
-            # item = torch.autograd.Variable(item, **kw)
-            # yield item
 
     def set_as_default(xpu):
         """
@@ -505,7 +503,7 @@ class XPUUnitTests(object):
                 pytest.skip()
         xpu = XPU(item)
         data = torch.FloatTensor([0])
-        data, = xpu.variables(data)
+        data = xpu.variables(data)
         assert isinstance(data, torch.autograd.Variable)
 
 
