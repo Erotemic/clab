@@ -122,9 +122,13 @@ class FolderStructure(object):
         temp_initializer = hyper.make_initializer()
         init_history = temp_initializer.history()
 
+        # Gather all information about this run into a single hash
+        train_hashid = ub.hash_data(train_id)[0:8]
+
         train_info =  {
             'workdir': self.workdir,
             'train_id': train_id,
+            'train_hashid': train_hashid,
             'train_dpath': train_dpath,
             'input_id': input_id,
             'other_id': other_id,

@@ -5,120 +5,10 @@ import six
 import ubelt as ub
 from six.moves import zip_longest
 from os.path import join, dirname
+import warnings
 
 
-def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
-           docla=False, projection=None, **kwargs):
-    """
-    http://matplotlib.org/users/gridspec.html
-
-    Args:
-        fnum (int): fignum = figure number
-        pnum (int, str, or tuple(int, int, int)): plotnum = plot tuple
-        title (str):  (default = None)
-        figtitle (None): (default = None)
-        docla (bool): (default = False)
-        doclf (bool): (default = False)
-
-    Returns:
-        mpl.Figure: fig
-
-    CommandLine:
-        python -m clab.util.mplutil figure:0 --show
-
-    Example:
-        >>> import matplotlib.pyplot as plt
-        >>> fnum = 1
-        >>> fig = figure(fnum, (2, 2, 1))
-        >>> plt.gca().text(0.5, 0.5, "ax1", va="center", ha="center")
-        >>> fig = figure(fnum, (2, 2, 2))
-        >>> plt.gca().text(0.5, 0.5, "ax2", va="center", ha="center")
-        >>> show_if_requested()
-
-    Example:
-        >>> import matplotlib.pyplot as plt
-        >>> fnum = 1
-        >>> fig = figure(fnum, (2, 2, 1))
-        >>> plt.gca().text(0.5, 0.5, "ax1", va="center", ha="center")
-        >>> fig = figure(fnum, (2, 2, 2))
-        >>> plt.gca().text(0.5, 0.5, "ax2", va="center", ha="center")
-        >>> fig = figure(fnum, (2, 4, (1, slice(1, None))))
-        >>> plt.gca().text(0.5, 0.5, "ax3", va="center", ha="center")
-        >>> show_if_requested()
-    """
-    import matplotlib.pyplot as plt
-    import matplotlib.gridspec as gridspec
-
-    def ensure_fig(fnum=None):
-        if fnum is None:
-            try:
-                fig = plt.gcf()
-            except Exception as ex:
-                fig = plt.figure()
-        else:
-            try:
-                fig = plt.figure(fnum)
-            except Exception as ex:
-                fig = plt.gcf()
-        return fig
-
-    def _convert_pnum_int_to_tup(int_pnum):
-        # Convert pnum to tuple format if in integer format
-        nr = int_pnum // 100
-        nc = int_pnum // 10 - (nr * 10)
-        px = int_pnum - (nr * 100) - (nc * 10)
-        pnum = (nr, nc, px)
-        return pnum
-
-    def _pnum_to_subspec(pnum):
-        if isinstance(pnum, six.string_types):
-            pnum = list(pnum)
-        nrow, ncols, plotnum = pnum
-        # if kwargs.get('use_gridspec', True):
-        # Convert old pnums to gridspec
-        gs = gridspec.GridSpec(nrow, ncols)
-        if isinstance(plotnum, (tuple, slice, list)):
-            subspec = gs[plotnum]
-        else:
-            subspec = gs[plotnum - 1]
-        return (subspec,)
-
-    def _setup_subfigure(pnum):
-        if isinstance(pnum, int):
-            pnum = _convert_pnum_int_to_tup(pnum)
-        axes_list = fig.get_axes()
-        if docla or len(axes_list) == 0:
-            if pnum is not None:
-                assert pnum[0] > 0, 'nRows must be > 0: pnum=%r' % (pnum,)
-                assert pnum[1] > 0, 'nCols must be > 0: pnum=%r' % (pnum,)
-                subspec = _pnum_to_subspec(pnum)
-                ax = fig.add_subplot(*subspec, projection=projection)
-                if len(axes_list) > 0:
-                    ax.cla()
-            else:
-                ax = plt.gca()
-        else:
-            if pnum is not None:
-                subspec = _pnum_to_subspec(pnum)
-                ax = plt.subplot(*subspec)
-            else:
-                ax = plt.gca()
-
-    fig = ensure_fig(fnum)
-    if doclf:
-        fig.clf()
-    if pnum is not None:
-        _setup_subfigure(pnum)
-    # Set the title / figtitle
-    if title is not None:
-        ax = plt.gca()
-        ax.set_title(title)
-    if figtitle is not None:
-        fig.suptitle(figtitle)
-    return fig
-
-
-def multi_plot(xdata=None, ydata_list=[], **kwargs):
+def multi_plot(xdata=None, ydata=[], **kwargs):
     r"""
     plots multiple lines, bars, etc...
 
@@ -128,28 +18,33 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
 
     Args:
         xdata (ndarray): can also be a list of arrays
-        ydata_list (list of ndarrays): can also be a single array
+        ydata (list or dict of ndarrays): can also be a single array
+        **kwargs:
+            Misc:
+                fnum, pnum, use_legend, legend_loc
+            Labels:
+                xlabel, ylabel, title, figtitle
+                ticksize, titlesize, legendsize, labelsize
+            Grid:
+                gridlinewidth, gridlinestyle
+            Ticks:
+                num_xticks, num_yticks, tickwidth, ticklength, ticksize
+            Data:
+                xmin, xmax, ymin, ymax, spread_list
+                # can append _list to any of these
+                # these can be dictionaries if ydata was also a dict
 
-    Kwargs:
-        Misc:
-            fnum, pnum, use_legend, legend_loc
-        Labels:
-            xlabel, ylabel, title, figtitle
-            ticksize, titlesize, legendsize, labelsize
-        Grid:
-            gridlinewidth, gridlinestyle
-        Ticks:
-            num_xticks, num_yticks, tickwidth, ticklength, ticksize
-        Data:
-            xmin, xmax, ymin, ymax, spread_list
-            # can append _list to any of these
-            plot_kw_keys = ['label', 'color', 'marker', 'markersize',
-                'markeredgewidth', 'linewidth', 'linestyle']
-            kind = ['bar', 'plot', ...]
-        if kind='plot':
-            spread
-        if kind='bar':
-            stacked, width
+                plot_kw_keys = ['label', 'color', 'marker', 'markersize',
+                    'markeredgewidth', 'linewidth', 'linestyle']
+                any plot_kw key can be a scalar (corresponding to all ydatas),
+                a list if ydata was specified as a list, or a dict if ydata was
+                specified as a dict.
+
+                kind = ['bar', 'plot', ...]
+            if kind='plot':
+                spread
+            if kind='bar':
+                stacked, width
 
     References:
         matplotlib.org/examples/api/barchart_demo.html
@@ -173,6 +68,7 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
     """
     import matplotlib as mpl
     from matplotlib import pyplot as plt
+    ydata_list = ydata
 
     if isinstance(ydata_list, dict):
         # Special case where ydata is a dictionary
@@ -186,6 +82,8 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
         # Normalize input
         ydata_list = list(ub.take(ydata_list, ykeys))
         kwargs['label_list'] = kwargs.get('label_list', ykeys)
+    else:
+        ykeys = None
 
     def is_listlike(data):
         flag = isinstance(data, (list, np.ndarray, tuple))
@@ -224,18 +122,30 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
     kind = kwargs.get('kind', 'plot')
     transpose = kwargs.get('transpose', False)
 
-    def parsekw_list(key, kwargs, num_lines=num_lines):
+    def parsekw_list(key, kwargs, num_lines=num_lines, ykeys=ykeys):
         """ copies relevant plot commands into plot_list_kw """
         if key in kwargs:
-            val_list = [kwargs[key]] * num_lines
+            val_list = kwargs[key]
         elif key + '_list' in kwargs:
+            warnings.warn('depricated, just use kwarg {}'.format(key))
             val_list = kwargs[key + '_list']
         elif key + 's' in kwargs:
             # hack, multiple ways to do something
+            warnings.warn('depricated, just use kwarg {}'.format(key))
             val_list = kwargs[key + 's']
         else:
             val_list = None
-            #val_list = [None] * num_lines
+
+        if val_list is not None:
+            if isinstance(val_list, dict):
+                if ykeys is None:
+                    raise ValueError('ydata is not a dict, but a property was.')
+                else:
+                    val_list = [val_list[key] for key in ykeys]
+
+            if not isinstance(val_list, list):
+                val_list = [val_list] * num_lines
+
         return val_list
 
     # Parse out arguments to ax.plot
@@ -635,6 +545,117 @@ def multi_plot(xdata=None, ydata_list=[], **kwargs):
     if use_darkbackground:
         _dark_background(force=use_darkbackground is True)
     # TODO: return better info
+    return fig
+
+
+def figure(fnum=None, pnum=(1, 1, 1), title=None, figtitle=None, doclf=False,
+           docla=False, projection=None, **kwargs):
+    """
+    http://matplotlib.org/users/gridspec.html
+
+    Args:
+        fnum (int): fignum = figure number
+        pnum (int, str, or tuple(int, int, int)): plotnum = plot tuple
+        title (str):  (default = None)
+        figtitle (None): (default = None)
+        docla (bool): (default = False)
+        doclf (bool): (default = False)
+
+    Returns:
+        mpl.Figure: fig
+
+    CommandLine:
+        python -m clab.util.mplutil figure:0 --show
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> fnum = 1
+        >>> fig = figure(fnum, (2, 2, 1))
+        >>> plt.gca().text(0.5, 0.5, "ax1", va="center", ha="center")
+        >>> fig = figure(fnum, (2, 2, 2))
+        >>> plt.gca().text(0.5, 0.5, "ax2", va="center", ha="center")
+        >>> show_if_requested()
+
+    Example:
+        >>> import matplotlib.pyplot as plt
+        >>> fnum = 1
+        >>> fig = figure(fnum, (2, 2, 1))
+        >>> plt.gca().text(0.5, 0.5, "ax1", va="center", ha="center")
+        >>> fig = figure(fnum, (2, 2, 2))
+        >>> plt.gca().text(0.5, 0.5, "ax2", va="center", ha="center")
+        >>> fig = figure(fnum, (2, 4, (1, slice(1, None))))
+        >>> plt.gca().text(0.5, 0.5, "ax3", va="center", ha="center")
+        >>> show_if_requested()
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+
+    def ensure_fig(fnum=None):
+        if fnum is None:
+            try:
+                fig = plt.gcf()
+            except Exception as ex:
+                fig = plt.figure()
+        else:
+            try:
+                fig = plt.figure(fnum)
+            except Exception as ex:
+                fig = plt.gcf()
+        return fig
+
+    def _convert_pnum_int_to_tup(int_pnum):
+        # Convert pnum to tuple format if in integer format
+        nr = int_pnum // 100
+        nc = int_pnum // 10 - (nr * 10)
+        px = int_pnum - (nr * 100) - (nc * 10)
+        pnum = (nr, nc, px)
+        return pnum
+
+    def _pnum_to_subspec(pnum):
+        if isinstance(pnum, six.string_types):
+            pnum = list(pnum)
+        nrow, ncols, plotnum = pnum
+        # if kwargs.get('use_gridspec', True):
+        # Convert old pnums to gridspec
+        gs = gridspec.GridSpec(nrow, ncols)
+        if isinstance(plotnum, (tuple, slice, list)):
+            subspec = gs[plotnum]
+        else:
+            subspec = gs[plotnum - 1]
+        return (subspec,)
+
+    def _setup_subfigure(pnum):
+        if isinstance(pnum, int):
+            pnum = _convert_pnum_int_to_tup(pnum)
+        axes_list = fig.get_axes()
+        if docla or len(axes_list) == 0:
+            if pnum is not None:
+                assert pnum[0] > 0, 'nRows must be > 0: pnum=%r' % (pnum,)
+                assert pnum[1] > 0, 'nCols must be > 0: pnum=%r' % (pnum,)
+                subspec = _pnum_to_subspec(pnum)
+                ax = fig.add_subplot(*subspec, projection=projection)
+                if len(axes_list) > 0:
+                    ax.cla()
+            else:
+                ax = plt.gca()
+        else:
+            if pnum is not None:
+                subspec = _pnum_to_subspec(pnum)
+                ax = plt.subplot(*subspec)
+            else:
+                ax = plt.gca()
+
+    fig = ensure_fig(fnum)
+    if doclf:
+        fig.clf()
+    if pnum is not None:
+        _setup_subfigure(pnum)
+    # Set the title / figtitle
+    if title is not None:
+        ax = plt.gca()
+        ax.set_title(title)
+    if figtitle is not None:
+        fig.suptitle(figtitle)
     return fig
 
 
