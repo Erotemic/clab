@@ -82,7 +82,6 @@ class Orthonormal(base._BaseInitializer):
 
 class LSUV(base._BaseInitializer):
     """
-
     CommandLine:
         python -m clab.nninit.lsuv LSUV:0
 

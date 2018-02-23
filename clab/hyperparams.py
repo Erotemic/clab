@@ -189,7 +189,7 @@ class HyperParams(object):
                  model=None, other=None, initializer=None,
 
                  # TODO: give hyper info about the inputs
-                 augment=None, train=None, vali=None,
+                 centering=None, augment=None, train=None, vali=None,
                  **kwargs):
 
         cls, kw = _rectify_model(model, kwargs)
@@ -220,6 +220,7 @@ class HyperParams(object):
         hyper.train = train
         hyper.vali = vali
         hyper.augment = augment
+        hyper.centering = centering
 
         if len(kwargs) > 0:
             raise ValueError('Unused kwargs {}'.format(list(kwargs.keys())))
