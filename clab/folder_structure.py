@@ -121,6 +121,10 @@ class FolderStructure(object):
         ub.ensuredir(dirname(train_info['link_dpath']))
         ub.symlink(train_info['train_dpath'], train_info['link_dpath'])
 
+        if train_info['nice_dpath']:
+            ub.ensuredir(dirname(train_info['nice_dpath']))
+            ub.symlink(train_info['train_dpath'], train_info['nice_dpath'])
+
         print('+=========')
         # print('hyper_strid = {!r}'.format(params.hyper_id()))
         # print('train_init_id = {!r}'.format(train_info['input_id']))
