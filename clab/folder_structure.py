@@ -6,10 +6,11 @@ from clab import util
 
 
 class FolderStructure(object):
-    def __init__(self, workdir='.', hyper=None, datasets=None):
+    def __init__(self, workdir='.', hyper=None, datasets=None, nice=None):
         self.datasets = datasets
         self.workdir = workdir
         self.hyper = hyper
+        self.nice = nice
 
     def train_info(self, short=True, hashed=True):
         # TODO: needs MASSIVE cleanup and organization
@@ -20,8 +21,6 @@ class FolderStructure(object):
 
         arch = hyper.model_cls.__name__
 
-        # setup a short symlink directory as well
-        link_base = join(self.workdir, 'link', arch)
         arch_base = join(self.workdir, 'arch', arch)
 
         if 'train' in hyper.input_ids:
@@ -55,8 +54,19 @@ class FolderStructure(object):
         link_dname = train_hashid
 
         input_dname = 'input_' + input_id
-        link_dpath = join(link_base, link_dname)
+
         train_dpath = join(arch_base, input_dname, full_dname)
+
+        # setup a short symlink directory as well
+        link_base = join(self.workdir, 'link')
+        link_dpath = join(link_base, link_dname)
+
+        # also setup a "nice" custom name, which may conflict, but oh well
+        if self.nice:
+            nice_base = join(self.workdir, 'nice')
+            nice_dpath = join(nice_base, nice_dname=self.nice)
+        else:
+            nice_dpath = None
 
         # make temporary initializer so we can infer the history
         temp_initializer = hyper.make_initializer()
@@ -84,8 +94,11 @@ class FolderStructure(object):
             ('init_history', init_history),
             ('init_history_hashid', ub.hash_data(util.make_idstr(init_history))),
 
+            ('nice', self.nice),
+
             ('link_dname', link_dname),
             ('link_dpath', link_dpath),
+            ('nice_dpath', nice_dpath),
 
             # TODO, add in n_classes if applicable
             # TODO, add in centering if applicable
