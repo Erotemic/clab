@@ -432,7 +432,12 @@ class AffineWarp(object):
         borderMode = self.cv2_border_lookup[border_mode]
         cv2_interp = self.cv2_interp_lookup[interp]
         # It is slightly faster (5-10%) to pass an inverted matrix to cv2
-        inv_mat_2x3 = np.linalg.inv(matrix)[0:2]
+        try:
+            inv_mat_2x3 = np.linalg.inv(matrix)[0:2]
+        except Exception:
+            print('ERROR INVERTING matrix = {!r}'.format(matrix))
+            raise
+
         inv_flags = cv2_interp | cv2.WARP_INVERSE_MAP
 
         # TODO: only clip if we are in float01 space

@@ -27,19 +27,20 @@ def svd_orthonormal(shape, rng=None, cache_key=None):
         raise RuntimeError("Only shapes of length 2 or more are supported.")
     flat_shape = (shape[0], np.prod(shape[1:]))
 
-    # rand_sequence = rng.randint(0, 2 ** 16)
-    # depends = [shape, rand_sequence]
-    depends = [shape, cache_key]
+    enabled = False and cache_key is not None
+    if enabled:
+        rand_sequence = rng.randint(0, 2 ** 16)
+        depends = [shape, cache_key, rand_sequence]
+        cfgstr = ub.hash_data(depends)
+    else:
+        cfgstr = ''
 
     # this process can be expensive, cache it
 
     # TODO: only cache very large matrices (4096x4096)
     # TODO: only cache very large matrices, not (256,256,3,3)
-    cacher = ub.Cacher('svd_orthonormal', appname='clab',
-                        enabled=cache_key is not None,
-                        # verbose=5,
-                        # cfgstr=str(depends)
-                        cfgstr=ub.hash_data(depends))
+    cacher = ub.Cacher('svd_orthonormal', appname='clab', enabled=enabled,
+                       cfgstr=cfgstr)
     q = cacher.tryload()
     if q is None:
         # print('Compute orthonormal matrix with shape ' + str(shape))
