@@ -64,7 +64,7 @@ class FolderStructure(object):
         # also setup a "nice" custom name, which may conflict, but oh well
         if self.nice:
             nice_base = join(self.workdir, 'nice')
-            nice_dpath = join(nice_base, nice_dname=self.nice)
+            nice_dpath = join(nice_base, self.nice)
         else:
             nice_dpath = None
 
