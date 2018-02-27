@@ -2277,7 +2277,7 @@ class Color(ub.NiceRepr):
         return ', '.join(['{:.3f}'.format(c) for c in self.color01])
 
     def as255(self, space=None):
-        color = (np.array(self.color01(space)) * 255).astype(np.uint8)
+        color = (np.array(self.as01(space)) * 255).astype(np.uint8)
         return tuple(map(int, color))
 
     def as01(self, space=None):
