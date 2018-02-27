@@ -2277,18 +2277,28 @@ class Color(ub.NiceRepr):
         return ', '.join(['{:.3f}'.format(c) for c in self.color01])
 
     def as255(self, space=None):
-        color = (np.array(self.color01) * 255).astype(np.uint8)
+        color = (np.array(self.color01(space)) * 255).astype(np.uint8)
+        return tuple(map(int, color))
+
+    def as01(self, space=None):
+        """
+        self = mplutil.Color('red')
+        mplutil.Color('green').as01('rgba')
+
+        """
+        color = tuple(self.color01)
         if space is not None:
-            if space == 'bgr' and self.space == 'rgb':
+            if space == self.space:
+                pass
+            elif space == 'rgba' and self.space == 'rgb':
+                color = color + (1,)
+            elif space == 'bgr' and self.space == 'rgb':
                 color = color[::-1]
             elif space == 'rgb' and self.space == 'bgr':
                 color = color[::-1]
             else:
                 assert False
-        return tuple(map(int, color))
-
-    def as01(self):
-        return tuple(self.color01)
+        return tuple(map(float, color))
 
     @classmethod
     def _is_base01(channels):
@@ -2331,6 +2341,11 @@ class Color(ub.NiceRepr):
 
     @classmethod
     def _string_to_01(Color, color):
+        """
+        mplutil.Color._string_to_01('green')
+        mplutil.Color._string_to_01('red')
+
+        """
         from matplotlib import colors as mcolors
         if color in mcolors.BASE_COLORS:
             color01 = mcolors.BASE_COLORS[color]
@@ -2342,6 +2357,12 @@ class Color(ub.NiceRepr):
         else:
             raise ValueError('unknown color=%r' % (color,))
         return color01
+
+    @classmethod
+    def named_colors():
+        from matplotlib import colors as mcolors
+        names = sorted(list(mcolors.BASE_COLORS.keys()) + list(mcolors.CSS4_COLORS.keys()))
+        return names
 
 if __name__ == '__main__':
     r"""
