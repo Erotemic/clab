@@ -183,7 +183,11 @@ class XPU(ub.NiceRepr):
         """
         Respect command line gpu and cpu argument
         """
-        gpu_num = ub.argval('--gpu', default=None)
+        anygpu = ub.argflag('--gpu')
+        if anygpu:
+            gpu_num = '0'
+        else:
+            gpu_num = ub.argval('--gpu', default=None)
         if ub.argflag('--cpu'):
             xpu = XPU(None)
         elif gpu_num is None:
