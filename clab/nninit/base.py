@@ -370,8 +370,6 @@ def apply_initializer(input, func, funckw):
         assert False, ('input is tensor? does this make sense?')
         # data = input
     elif isinstance(input, (torch.nn.modules.conv._ConvNd)):
-        print('input = {!r}'.format(type(input)))
-        print('input.weight = {!r}'.format(type(input.weight)))
         func(input.weight, **funckw)
     elif isinstance(input, torch.nn.modules.batchnorm._BatchNorm):
         input.reset_parameters()
