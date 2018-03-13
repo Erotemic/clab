@@ -2250,31 +2250,59 @@ def draw_line_segments(pts1, pts2, ax=None, **kwargs):
 
 class Color(ub.NiceRepr):
     """
+    move to colorutil?
+
     Example:
         >>> from clab.util.mplutil import *
-        >>> Color('g')
-        >>> Color('orangered')
-        >>> Color('#AAAAAA').as255()
-        >>> Color([0, 255, 0])
-        >>> Color([1, 1, 1.])
-        >>> Color([1, 1, 1])
-        >>> Color(Color([1, 1, 1])).as255()
+        >>> print(Color('g'))
+        >>> print(Color('orangered'))
+        >>> print(Color('#AAAAAA').as255())
+        >>> print(Color([0, 255, 0]))
+        >>> print(Color([1, 1, 1.]))
+        >>> print(Color([1, 1, 1]))
+        >>> print(Color(Color([1, 1, 1])).as255())
+        >>> print(Color(Color([1., 0, 1, 0])).ashex())
+        >>> print(Color([1, 1, 1], alpha=255))
+        >>> print(Color([1, 1, 1], alpha=255, space='lab'))
     """
-    def __init__(self, color, space=None):
+    def __init__(self, color, alpha=None, space=None):
         if isinstance(color, Color):
+            assert alpha is None
+            assert space is None
             space = color.space
             color = color.color01
-        elif isinstance(color, six.string_types):
-            color = self._string_to_01(color)
-        elif self._is_base255(color):
-            color = self._255_to_01(color)
+        else:
+            color = self._ensure_color01(color)
+            if alpha is not None:
+                alpha = self._ensure_color01([alpha])[0]
+
         if space is None:
             space = 'rgb'
-        self.color01 = list(color)
+
+        # always normalize the color down to 01
+        color01 = list(color)
+
+        if alpha is not None:
+            if len(color01) not in [1, 3]:
+                raise ValueError('alpha already in color')
+            color01 = color01 + [alpha]
+
+        # correct space if alpha is given
+        if len(color01) in [2, 4]:
+            if not space.endswith('a'):
+                space += 'a'
+
+        self.color01 = color01
+
         self.space = space
 
     def __nice__(self):
-        return ', '.join(['{:.3f}'.format(c) for c in self.color01])
+        colorpart = ', '.join(['{:.2f}'.format(c) for c in self.color01])
+        return self.space + ': ' + colorpart
+
+    def ashex(self, space=None):
+        c255 = self.as255(space)
+        return '#' + ''.join(['{:02x}'.format(c) for c in c255])
 
     def as255(self, space=None):
         color = (np.array(self.as01(space)) * 255).astype(np.uint8)
@@ -2333,6 +2361,14 @@ class Color(ub.NiceRepr):
         color255 = tuple(int(parts[i: i + 2], 16) for i in range(0, len(parts), 2))
         assert len(color255) in [3, 4], 'must be length 3 or 4'
         return Color._255_to_01(color255)
+
+    def _ensure_color01(Color, color):
+        """ Infer what type color is and normalize to 01 """
+        if isinstance(color, six.string_types):
+            color = Color._string_to_01(color)
+        elif Color._is_base255(color):
+            color = Color._255_to_01(color)
+        return color
 
     @classmethod
     def _255_to_01(Color, color255):

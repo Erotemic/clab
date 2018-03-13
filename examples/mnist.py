@@ -119,14 +119,18 @@ def train_mnist():
     train_idx = torch.LongTensor(learn_idx[n_vali:][::reduction])
 
     def _torch_take(tensor, indices, axis):
-        TensorType = type(learn_dset.train_data)
+        if torch.__version__.startswith('0.3'):
+            TensorType = type(learn_dset.train_data)
+        else:
+            TensorType = learn_dset.train_data.type()
+            TensorType = getattr(torch, TensorType.split('.')[1])
         return TensorType(tensor.numpy().take(indices, axis=axis))
 
     vali_dset.train_data   = _torch_take(learn_dset.train_data, valid_idx, axis=0)
-    vali_dset.train_labels = _torch_take(learn_dset.train_labels, valid_idx, axis=0)
+    vali_dset.train_labels = _torch_take(learn_dset.train_labels, valid_idx, axis=0).long()
 
     train_dset.train_data   = _torch_take(learn_dset.train_data, train_idx, axis=0)
-    train_dset.train_labels = _torch_take(learn_dset.train_labels, train_idx, axis=0)
+    train_dset.train_labels = _torch_take(learn_dset.train_labels, train_idx, axis=0).long()
 
     datasets = {
         'train': train_dset,

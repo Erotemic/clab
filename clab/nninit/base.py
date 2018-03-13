@@ -1,6 +1,10 @@
 """
 References:
     https://github.com/alykhantejani/nninit
+
+TODO:
+    DEPRICATE FOR THOSE IN TORCH.NN
+
 """
 from os.path import dirname
 import torch.nn as nn
@@ -267,36 +271,43 @@ class HeNormal(_BaseInitializer):
 def kaiming_normal(tensor, nonlinearity='leaky_relu', param=0, mode='fan_in'):
     """
     similar to pytorch version 0.4, but exposes different params
+
+
+    Example:
+        >>> from clab.nninit import *
+        >>> import torch
+        >>> from clab.xpu_device import XPU
+        >>> xpu = XPU()
+        >>> w = torch.Tensor(3, 5)
+        >>> var = xpu.variable(w)
+        >>> kaiming_normal(var.data)
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         kaiming_normal(tensor.data, nonlinearity=nonlinearity, param=param, mode=mode)
         return tensor
 
-    fan = nn.init._calculate_correct_fan(tensor, mode)
-    gain = nn.init.calculate_gain(nonlinearity=nonlinearity, param=param)
-    std = gain / math.sqrt(fan)
-    return tensor.normal_(0, std)
+    with torch.no_grad():
+        fan = nn.init._calculate_correct_fan(tensor, mode)
+        gain = nn.init.calculate_gain(nonlinearity=nonlinearity, param=param)
+        std = gain / math.sqrt(fan)
+        return tensor.normal_(0, std)
 
 
 def kaiming_uniform(tensor, nonlinearity='leaky_relu', param=0, mode='fan_in'):
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         kaiming_uniform(tensor.data, nonlinearity=nonlinearity, param=param, mode=mode)
         return tensor
-
-    fan = nn.init._calculate_correct_fan(tensor, mode)
-    gain = nn.init.calculate_gain(nonlinearity, param)
-    std = gain / math.sqrt(fan)
-    bound = math.sqrt(3.0) * std  # Calculate uniform bounds from standard deviation
-    return tensor.uniform_(-bound, bound)
+    with torch.no_grad():
+        fan = nn.init._calculate_correct_fan(tensor, mode)
+        gain = nn.init.calculate_gain(nonlinearity, param)
+        std = gain / math.sqrt(fan)
+        bound = math.sqrt(3.0) * std  # Calculate uniform bounds from standard deviation
+        return tensor.uniform_(-bound, bound)
 
 
 class KaimingUniform(_BaseInitializer):
     """
     Same as HeNormal, but uses pytorch implementation
-
-    Example:
-        >>> from clab.nninit import *
-        >>> self = KaimingNormal()
     """
     def __init__(self, nonlinearity='leaky_relu', param=0, mode='fan_in'):
         self.nonlinearity = nonlinearity
@@ -343,6 +354,13 @@ def apply_initializer(input, func, funckw):
     """
     Args:
         input: can be a model, layer, or tensor
+
+    >>> from torch import nn
+    >>> class DummyNet(nn.Module):
+    >>>     def __init__(self, n_channels=1, n_classes=10):
+    >>>         super(DummyNet, self).__init__()
+    >>>         self.conv1 = nn.Conv2d(n_channels, 10, kernel_size=5)
+    >>> model = DummyNet()
     """
     if getattr(input, 'bias', None) is not None:
         # zero all biases
@@ -352,6 +370,8 @@ def apply_initializer(input, func, funckw):
         assert False, ('input is tensor? does this make sense?')
         # data = input
     elif isinstance(input, (torch.nn.modules.conv._ConvNd)):
+        print('input = {!r}'.format(type(input)))
+        print('input.weight = {!r}'.format(type(input.weight)))
         func(input.weight, **funckw)
     elif isinstance(input, torch.nn.modules.batchnorm._BatchNorm):
         input.reset_parameters()
@@ -375,14 +395,16 @@ def uniform(tensor, a=0, b=1):
         b: the upper bound of the uniform distribution
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.uniform(w)
+        >>> uniform(w)
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         uniform(tensor.data, a=a, b=b)
         return tensor
     else:
-        return tensor.uniform_(a, b)
+        with torch.no_grad():
+            return tensor.uniform_(a, b)
 
 
 def normal(tensor, mean=0, std=1):
@@ -397,15 +419,18 @@ def normal(tensor, mean=0, std=1):
         >>> w = torch.Tensor(3, 5)
         >>> nninit.normal(w)
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         normal(tensor.data, mean=mean, std=std)
         return tensor
     else:
-        return tensor.normal_(mean, std)
+        with torch.no_grad():
+            return tensor.normal_(mean, std)
 
 
 def constant(tensor, val):
     """Fills the input Tensor or Variable with the value `val`
+
+    DEPRICATE FOR THOSE IN TORCH.NN
 
     Args:
         tensor: a n-dimension torch.Tensor
@@ -415,11 +440,12 @@ def constant(tensor, val):
         >>> w = torch.Tensor(3, 5)
         >>> nninit.constant(w)
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         constant(tensor.data, val)
         return tensor
     else:
-        return tensor.fill_(val)
+        with torch.no_grad():
+            return tensor.fill_(val)
 
 
 def _calculate_fan_in_and_fan_out(tensor):
@@ -455,14 +481,15 @@ def xavier_uniform(tensor, gain=1):
         >>> w = torch.Tensor(3, 5)
         >>> nninit.xavier_uniform(w, gain=np.sqrt(2.0))
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         xavier_uniform(tensor.data, gain=gain)
         return tensor
     else:
-        fan_in, fan_out = _calculate_fan_in_and_fan_out(tensor)
-        std = gain * np.sqrt(2.0 / (fan_in + fan_out))
-        a = np.sqrt(3.0) * std
-        return tensor.uniform_(-a, a)
+        with torch.no_grad():
+            fan_in, fan_out = _calculate_fan_in_and_fan_out(tensor)
+            std = gain * np.sqrt(2.0 / (fan_in + fan_out))
+            a = np.sqrt(3.0) * std
+            return tensor.uniform_(-a, a)
 
 
 def xavier_normal(tensor, gain=1):
@@ -480,13 +507,14 @@ def xavier_normal(tensor, gain=1):
         >>> w = torch.Tensor(3, 5)
         >>> nninit.xavier_normal(w, gain=np.sqrt(2.0))
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         xavier_normal(tensor.data, gain=gain)
         return tensor
     else:
-        fan_in, fan_out = _calculate_fan_in_and_fan_out(tensor)
-        std = gain * np.sqrt(2.0 / (fan_in + fan_out))
-        return tensor.normal_(0, std)
+        with torch.no_grad():
+            fan_in, fan_out = _calculate_fan_in_and_fan_out(tensor)
+            std = gain * np.sqrt(2.0 / (fan_in + fan_out))
+            return tensor.normal_(0, std)
 
 
 def he_uniform(tensor, gain=1):
@@ -507,14 +535,15 @@ def he_uniform(tensor, gain=1):
         >>> nninit.he_uniform(w, gain=np.sqrt(2.0))
     """
 
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         he_uniform(tensor.data, gain=gain)
         return tensor
     else:
-        fan_in, _ = _calculate_fan_in_and_fan_out(tensor)
-        std = gain * np.sqrt(1.0 / fan_in)
-        a = np.sqrt(3.0) * std
-        return tensor.uniform_(-a, a)
+        with torch.no_grad():
+            fan_in, _ = _calculate_fan_in_and_fan_out(tensor)
+            std = gain * np.sqrt(1.0 / fan_in)
+            a = np.sqrt(3.0) * std
+            return tensor.uniform_(-a, a)
 
 
 def he_normal(tensor, gain=1):
@@ -535,13 +564,14 @@ def he_normal(tensor, gain=1):
         >>> w = torch.Tensor(3, 5)
         >>> he_normal(w, gain=np.sqrt(2.0))
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         he_normal(tensor.data, gain=gain)
         return tensor
     else:
-        fan_in, _ = _calculate_fan_in_and_fan_out(tensor)
-        std = gain * np.sqrt(1.0 / fan_in)
-        return tensor.normal_(0, std)
+        with torch.no_grad():
+            fan_in, _ = _calculate_fan_in_and_fan_out(tensor)
+            std = gain * np.sqrt(1.0 / fan_in)
+            return tensor.normal_(0, std)
 
 
 def orthogonal(tensor, gain=1):
@@ -559,24 +589,25 @@ def orthogonal(tensor, gain=1):
         >>> w = torch.Tensor(3, 5)
         >>> nninit.orthogonal(w)
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         orthogonal(tensor.data, gain=gain)
         return tensor
     else:
         if tensor.ndimension() < 2:
             raise ValueError("Only tensors with 2 or more dimensions are supported.")
 
-        flattened_shape = (tensor.size(0), int(np.prod(tensor.numpy().shape[1:])))
-        flattened = torch.Tensor(flattened_shape[0], flattened_shape[1]).normal_(0, 1)
+        with torch.no_grad():
+            flattened_shape = (tensor.size(0), int(np.prod(tensor.numpy().shape[1:])))
+            flattened = torch.Tensor(flattened_shape[0], flattened_shape[1]).normal_(0, 1)
 
-        u, s, v = np.linalg.svd(flattened.numpy(), full_matrices=False)
-        if u.shape == flattened.numpy().shape:
-            tensor.view_as(flattened).copy_(torch.from_numpy(u))
-        else:
-            tensor.view_as(flattened).copy_(torch.from_numpy(v))
+            u, s, v = np.linalg.svd(flattened.numpy(), full_matrices=False)
+            if u.shape == flattened.numpy().shape:
+                tensor.view_as(flattened).copy_(torch.from_numpy(u))
+            else:
+                tensor.view_as(flattened).copy_(torch.from_numpy(v))
 
-        tensor.mul_(gain)
-        return tensor
+            tensor.mul_(gain)
+            return tensor
 
 
 def sparse(tensor, sparsity, std=0.01):
@@ -592,7 +623,7 @@ def sparse(tensor, sparsity, std=0.01):
         >>> w = torch.Tensor(3, 5)
         >>> nninit.sparse(w, sparsity=0.1)
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         sparse(tensor.data, sparsity, std=std)
         return tensor
     else:
@@ -627,7 +658,7 @@ def shock_he(tensor):
         >>> np.linalg.matrix_rank(tensor.numpy())
         3
     """
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         shock_he(tensor.data)
         return tensor
     else:
@@ -644,7 +675,7 @@ def shock_he(tensor):
 
 
 def shock(tensor, func, scale=.0001, funckw={}):
-    if isinstance(tensor, Variable):
+    if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         shock(tensor.data, func, scale, funckw)
         return tensor
     else:
