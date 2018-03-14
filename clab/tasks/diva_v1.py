@@ -45,7 +45,7 @@ class DivaV1(SemanticSegmentationTask):
     CommandLine:
         python -m clab.tasks DivaV1
 
-    Example:
+    Script:
         >>> from clab.tasks import *
         >>> task = DivaV1()
         >>> print(task.classnames)
@@ -335,7 +335,7 @@ class DivaV1(SemanticSegmentationTask):
         CommandLine:
             python -m clab.tasks DivaV1.create_groundtruth
 
-        Example:
+        Script:
             >>> from clab.tasks import *
             >>> task = DivaV1()
             >>> task.create_groundtruth(force=True)
@@ -461,7 +461,7 @@ class DivaV1(SemanticSegmentationTask):
         Converts the layered scene elemenents into pixel labels suitable for
         semantic segmentation.
 
-        Example:
+        Script:
             >>> from clab.tasks import *
             >>> task = DivaV1()
             >>> scene = task.scene_ids[0]
@@ -948,7 +948,7 @@ class DivaV1(SemanticSegmentationTask):
 
             rsync -avpr aretha:sseg/sseg-data/xval-solvers ~/sseg/sseg-data/xval-solvers
 
-        Example:
+        Script:
             >>> from clab.tasks import *
             >>> import clab
             >>> task = DivaV1(clean=2)

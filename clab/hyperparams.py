@@ -161,7 +161,7 @@ def _rectify_model(arg, kw):
 
 class HyperParams(object):
     """
-    Holds hyper relavent to training strategy
+    Holds hyperparams relavent to training strategy
 
     The idea is that you tell it what is relevant FOR YOU, and then it makes
     you nice ids based on that. If you give if enough info it also allows you
@@ -178,7 +178,7 @@ class HyperParams(object):
         >>>     }),
         >>>     optimizer=(torch.optim.SGD, {
         >>>         'nesterov': True, 'weight_decay': .0005,
-        >>>         'momentum': 0.9, lr=.001,
+        >>>         'momentum': 0.9, 'lr': .001,
         >>>     }),
         >>>     scheduler=('ReduceLROnPlateau', {}),
         >>> )

@@ -100,7 +100,7 @@ class NetMixin(object):
 
     def load_partial_state(model, model_state_dict, shock_partial=False):
         """
-        Example:
+        Ignore:
             >>> from clab.models.unet import *  # NOQA
             >>> self1 = UNet(in_channels=5, n_classes=3)
             >>> self2 = UNet(in_channels=6, n_classes=4)
@@ -141,7 +141,7 @@ class NetMixin(object):
                             # Shock weights because we are doing something weird
                             # might help the network recover in case this is
                             # not a good idea
-                            nninit.shock_he(self_state[key], gain=1e-5)
+                            nninit.shock_he(self_state[key])
                         unused_keys.remove(key)
                 else:
                     print('Skipping {} due to incompatable size'.format(key))

@@ -90,7 +90,7 @@ class PadToAgree(nn.Module):
             >>> self = PadToAgree()
             >>> input_shape1 = (1, 32, 37, 52)
             >>> input_shape2 = (1, 32, 28, 44)
-            >>> self.padding(input1_shape, input2_shape)
+            >>> self.padding(input_shape1, input_shape2)
             [-4, -4, -5, -4]
         """
         have_w, have_h = input_shape1[-2:]
@@ -184,6 +184,7 @@ class UNet(nn.Module, mixin.NetMixin):
     dims, so the input should be mirrored with
 
     Example:
+        >>> # xdoctest: +REQUIRES(--slow)
         >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 256, 256)
@@ -198,6 +199,7 @@ class UNet(nn.Module, mixin.NetMixin):
         >>> print(np.array(inputs.size()) - np.array(outputs.size()))
 
     Example:
+        >>> # xdoctest: +REQUIRES(--slow)
         >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 5, 480, 360)
@@ -302,6 +304,7 @@ class UNet(nn.Module, mixin.NetMixin):
     def find_padding_and_crop_for(self, input_shape):
         """
         Example:
+            >>> # xdoctest: +REQUIRES(--slow)
             >>> from clab.models.unet import *  # NOQA
             >>> from clab.models.unet import nn, math, torch, F, OutputShapeFor
             >>> from torch.autograd import Variable
@@ -479,6 +482,7 @@ class UNet(nn.Module, mixin.NetMixin):
 
     def forward(self, inputs):
         """
+        Example:
             >>> from clab.models.unet import *  # NOQA
             >>> import torch
             >>> from torch.autograd import Variable
@@ -559,7 +563,7 @@ class UNet(nn.Module, mixin.NetMixin):
                             # Shock weights because we are doing something weird
                             # might help the network recover in case this is
                             # not a good idea
-                            nninit.shock_he(self_state[key], gain=1e-5)
+                            nninit.shock_he(self_state[key])
                         unused_keys.remove(key)
                 else:
                     print('Skipping {} due to incompatable size'.format(key))

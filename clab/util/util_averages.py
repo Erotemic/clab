@@ -1,6 +1,7 @@
 import collections
 import pandas as pd
 import ubelt as ub
+import numpy as np
 
 
 class MovingAve(ub.NiceRepr):
@@ -31,7 +32,7 @@ class CumMovingAve(MovingAve):
         >>> from clab.metrics import *
         >>> self = CumMovingAve()
         >>> print(str(self.update({'a': 10})))
-        <CumMovingAve({'a': 10})>
+        <CumMovingAve({'a': 10.0})>
         >>> print(str(self.update({'a': 0})))
         <CumMovingAve({'a': 5.0})>
         >>> print(str(self.update({'a': 2})))
@@ -66,11 +67,11 @@ class WindowedMovingAve(MovingAve):
         >>> from clab.metrics import *
         >>> self = WindowedMovingAve(window=3)
         >>> print(str(self.update({'a': 10})))
-        <WindowedMovingAve({'a': 10})>
+        <WindowedMovingAve({'a': 10.0})>
         >>> print(str(self.update({'a': 0})))
         <WindowedMovingAve({'a': 5.0})>
         >>> print(str(self.update({'a': 2})))
-        <WindowedMovingAve({'a': 1.0})>
+        <WindowedMovingAve({'a': 4.0})>
     """
     def __init__(self, window=500):
         self.window = window
@@ -157,7 +158,6 @@ class RunningStats(object):
         InternalRunningStats
 
     Example:
-        >>> from clab.util.imutil import *
         >>> run = RunningStats()
         >>> ch1 = np.array([[0, 1], [3, 4]])
         >>> ch2 = np.zeros((2, 2))
@@ -167,30 +167,10 @@ class RunningStats(object):
         >>> run.update(np.dstack([ch1 + 2, ch2]))
         >>> # Scalar averages
         >>> print(ub.repr2(run.simple(), nobr=1, si=True))
-        max: 6.0,
-        mean: 1.5,
-        min: 0.0,
-        n: 24,
-        squares: 146.0,
-        std: 2.0,
-        total: 36.0,
         >>> # Per channel averages
         >>> print(ub.repr2(ub.map_vals(lambda x: np.array(x).tolist(), run.simple()), nobr=1, si=True, nl=1))
-        mean: [3.0, 0.0],
-        min: [0.0, 0.0],
-        n: 12,
-        squares: [146.0, 0.0],
-        std: [1.8586407545691703, 0.0],
-        total: [36.0, 0.0],
         >>> # Per-pixel averages
         >>> print(ub.repr2(ub.map_vals(lambda x: np.array(x).tolist(), run.detail()), nobr=1, si=True, nl=1))
-        max: [[[2.0, 0.0], [3.0, 0.0]], [[5.0, 0.0], [6.0, 0.0]]],
-        mean: [[[1.0, 0.0], [2.0, 0.0]], [[4.0, 0.0], [5.0, 0.0]]],
-        min: [[[0.0, 0.0], [1.0, 0.0]], [[3.0, 0.0], [4.0, 0.0]]],
-        n: 3,
-        squares: [[[5.0, 0.0], [14.0, 0.0]], [[50.0, 0.0], [77.0, 0.0]]],
-        std: [[[1.0, 0.0], [1.0, 0.0]], [[1.0, 0.0], [1.0, 0.0]]],
-        total: [[[3.0, 0.0], [6.0, 0.0]], [[12.0, 0.0], [15.0, 0.0]]],
         """
 
     def __init__(run):
@@ -258,6 +238,47 @@ class RunningStats(object):
         return info
 
 
+def absdev(x, ave=np.mean, central=np.median, axis=None):
+    """
+    Average absolute deviation from a point of central tendency
+
+    The `ave` absolute deviation from the `central`.
+
+    Args:
+        x (np.ndarray): input data
+        axis (tuple): summarize over
+        central (np.ufunc): function to get measure the center
+            defaults to np.median
+        ave (np.ufunc): function to average deviation over.
+            defaults to np.mean
+
+    Returns:
+        np.ndarray : average_deviations
+
+    References:
+        https://en.wikipedia.org/wiki/Average_absolute_deviation
+
+    Example:
+        >>> x = np.array([[[0, 1], [3, 4]],
+        >>>               [[0, 0], [0, 0]]])
+        >>> axis = (0, 1)
+        >>> absdev(x, np.mean, np.median, axis=(0, 1))
+        array([0.75, 1.25])
+        >>> absdev(x, np.median, np.median, axis=(0, 1))
+        array([0. , 0.5])
+        >>> absdev(x, np.mean, np.median)
+        1.0
+        >>> absdev(x, np.median, np.median)
+        0.0
+        >>> absdev(x, np.median, np.median, axis=0)
+        array([[0. , 0.5], [1.5, 2. ]])
+    """
+    point = central(x, axis=axis, keepdims=True)
+    deviations = np.abs(x - point)
+    average_deviations = ave(deviations, axis=axis)
+    return average_deviations
+
+
 class InternalRunningStats():
     """
     Maintains an averages of average internal statistics across a dataset.
@@ -313,7 +334,6 @@ class InternalRunningStats():
         return {
             key: run.detail() for key, (run, _) in irun.runs.items()
         }
-
 
 
 if __name__ == '__main__':

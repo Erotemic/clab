@@ -92,7 +92,7 @@ class OutputShapeFor(object):
             >>> module = nn.Upsample(size=100)
             >>> output_shape = OutputShapeFor(module)(input_shape)
             >>> print('output_shape = {!r}'.format(output_shape))
-            (1, 3, 100, 100, 100)
+            output_shape = (1, 3, 100, 100, 100)
         """
         math = OutputShapeFor.math
         N, C, *DIMS_in = input_shape
@@ -172,8 +172,8 @@ class OutputShapeFor(object):
     @staticmethod
     def convndT(module, input_shape, n):
         """
-          - Input: :math:`(N, C_{in}, H_{in}, W_{in})`
-          - Output: :math:`(N, C_{out}, H_{out}, W_{out})` where
+        - Input: :math:`(N, C_{in}, H_{in}, W_{in})`
+        - Output: :math:`(N, C_{out}, H_{out}, W_{out})` where
             :math:`H_{out} = (H_{in} - 1) * stride[0] - 2 * padding[0] + kernel\_size[0] + output\_padding[0]`
             :math:`W_{out} = (W_{in} - 1) * stride[1] - 2 * padding[1] + kernel\_size[1] + output\_padding[1]`
 
@@ -248,9 +248,9 @@ class OutputShapeFor(object):
             >>> from clab.models.output_shape_for import *
             >>> input_shape = (1, 3, 256, 256)
             >>> module = nn.MaxPool2d(kernel_size=2)
-            >>> output_shape = OutputShapeFor(module)(input_shape)
+            >>> output_shape = tuple(OutputShapeFor(module)(input_shape))
             >>> print('output_shape = {!r}'.format(output_shape))
-            output_shape = [1, 3, 256, 256]
+            output_shape = (1, 3, 256, 256)
 
         Shape:
             2d Case:

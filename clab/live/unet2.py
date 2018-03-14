@@ -14,6 +14,7 @@ class UNet2(unet.UNet):
     dims, so the input should be mirrored with
 
     Example:
+        >>> # xdoc: +REQUIRES(--slow)
         >>> from clab.live.unet2 import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 256, 256)
@@ -28,6 +29,7 @@ class UNet2(unet.UNet):
         >>> print(np.array(inputs.shape) - np.array(outputs.shape))
 
     Example:
+        >>> # xdoc: +REQUIRES(--slow)
         >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 5, 480, 360)
@@ -72,6 +74,8 @@ class UNet2(unet.UNet):
 
     def forward(self, inputs):
         """
+        Ignore:
+            >>> # xdoc: +REQUIRES(--slow)
             >>> from clab.models.unet import *  # NOQA
             >>> import torch
             >>> from torch.autograd import Variable

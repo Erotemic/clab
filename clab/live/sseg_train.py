@@ -441,7 +441,7 @@ def task_fit(taskname):
 
         python -m clab.live.sseg_train task_fit --task=urban_mapper_3d --arch=unet --dry
 
-    Example:
+    Script:
         >>> from clab.fit_harness import *
         >>> taskname = ub.argval('--task', default='camvid')
         >>> harn = task_fit(taskname)

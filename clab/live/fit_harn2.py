@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""
+DEPRICATE
+"""
 from __future__ import absolute_import, division, print_function, unicode_literals
 # import numpy as np
 import collections
@@ -28,7 +31,7 @@ def demo():
     """
     python -m clab.live.fit_harn2 demo
 
-    Example:
+    Ignore:
         >>> from clab.live.fit_harn2 import *
         >>> demo()
     """
@@ -135,7 +138,7 @@ class EarlyStop(object):
 
     TODO: Poisson based early stop
 
-    Example:
+    Ignore:
         >>> early_stop = EarlyStop()
         >>> early_stop.update(1, .5)
         >>> early_stop.update(2, .4)

@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 import glob
 from os.path import expanduser, exists, join, basename
+import ubelt as ub
 import warnings
 import numpy as np
 import cv2
@@ -80,7 +81,6 @@ def imscale(img, scale, interpolation=None):
 
 
 def grab_test_imgpath(key='carl'):
-    import ubelt as ub
     assert key == 'carl'
     fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')
     return fpath
@@ -95,7 +95,6 @@ def adjust_gamma(img, gamma=1.0):
 
     Ignore:
         >>> from clab.util.imutil import *
-        >>> import ubelt as ub
         >>> fpath = grab_test_imgpath()
         >>> img = imread(fpath)
         >>> gamma = .5
@@ -427,15 +426,10 @@ def convert_colorspace(img, dst_space, src_space='BGR', copy=False, dst=None):
 
     Example:
         >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
-        array([[[  32.29370117,   79.1875    , -107.859375  ]]], dtype=float32)
         >>> convert_colorspace(np.array([[[0, 1, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
-        array([[[ 87.73803711, -86.1875    ,  83.171875  ]]], dtype=float32)
         >>> convert_colorspace(np.array([[[1, 0, 0]]], dtype=np.float32), 'LAB', src_space='RGB')
-        array([[[ 53.2409668,  80.09375  ,  67.203125 ]]], dtype=float32)
         >>> convert_colorspace(np.array([[[1, 1, 1]]], dtype=np.float32), 'LAB', src_space='RGB')
-        array([[[ 100.,    0.,    0.]]], dtype=float32)
         >>> convert_colorspace(np.array([[[0, 0, 1]]], dtype=np.float32), 'HSV', src_space='RGB')
-        array([[[ 240.        ,    0.99999988,    1.        ]]], dtype=float32)
     """
     dst_space = dst_space.upper()
     src_space = src_space.upper()
@@ -524,6 +518,7 @@ def imread(fpath, **kw):
         >>> assert np.all(img2 == img1)
 
     Example:
+        >>> import tempfile
         >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
         >>> img1 = imread(ub.grabdata('http://i.imgur.com/iXNf4Me.png', fname='ada.png'))
         >>> tmp_tif = tempfile.NamedTemporaryFile(suffix='.tif')
@@ -536,7 +531,6 @@ def imread(fpath, **kw):
 
     Example:
         >>> from clab.util.imutil import *
-        >>> import ubelt as ub
         >>> import tempfile
         >>> #img1 = (np.arange(0, 12 * 12 * 3).reshape(12, 12, 3) % 255).astype(np.uint8)
         >>> tif_fpath = ub.grabdata('https://ghostscript.com/doc/tiff/test/images/rgb-3c-16b.tiff')
@@ -626,7 +620,7 @@ def wide_strides_1d(margin, stop, step=None, start=0, keepbound=False,
         >>> from clab.util.imutil import *
         >>> stop, margin, step = 2000, 360, 360
         >>> keepbound = True
-        >>> strides = list(wide_strides_1d(margin, stop, step, keepbound))
+        >>> strides = list(wide_strides_1d(margin, stop, step, keepbound, check=False))
         >>> assert all([(s.stop - s.start) == margin for s in strides])
 
     Example:
@@ -727,7 +721,6 @@ def run_length_encoding(img):
 
     Example:
         >>> from clab.util.imutil import *
-        >>> import ubelt as ub
         >>> lines = ub.codeblock(
         >>>     '''
         >>>     ..........
@@ -739,7 +732,7 @@ def run_length_encoding(img):
         >>>     ..2.......
         >>>     ''').replace('.', '0').splitlines()
         >>> img = np.array([list(map(int, line)) for line in lines])
-        >>> (w, h), runlen = rlencode(img)
+        >>> (w, h), runlen = run_length_encoding(img)
         >>> target = np.array([0,16,1,3,0,3,2,1,0,3,1,3,0,2,2,3,0,2,1,3,0,1,2,5,0,6,2,3,0,8,2,1,0,7])
         >>> assert np.all(target == runlen)
     """
@@ -754,48 +747,6 @@ def run_length_encoding(img):
 
     h, w = img.shape[0:2]
     return (w, h), runlen
-
-
-def absdev(x, ave=np.mean, central=np.median, axis=None):
-    """
-    Average absolute deviation from a point of central tendency
-
-    The `ave` absolute deviation from the `central`.
-
-    Args:
-        x (np.ndarray): input data
-        axis (tuple): summarize over
-        central (np.ufunc): function to get measure the center
-            defaults to np.median
-        ave (np.ufunc): function to average deviation over.
-            defaults to np.mean
-
-    Returns:
-        np.ndarray : average_deviations
-
-    References:
-        https://en.wikipedia.org/wiki/Average_absolute_deviation
-
-    Example:
-        >>> x = np.array([[[0, 1], [3, 4]],
-        >>>               [[0, 0], [0, 0]]])
-        >>> axis = (0, 1)
-        >>> absdev(x, np.mean, np.median, axis=(0, 1))
-        array([ 0.75,  1.25])
-        >>> absdev(x, np.median, np.median, axis=(0, 1))
-        array([ 0. ,  0.5])
-        >>> absdev(x, np.mean, np.median)
-        1.0
-        >>> absdev(x, np.median, np.median)
-        0.0
-        >>> absdev(x, np.median, np.median, axis=0)
-        array([[ 0. ,  0.5],
-               [ 1.5,  2. ]])
-    """
-    point = central(x, axis=axis, keepdims=True)
-    deviations = np.abs(x - point)
-    average_deviations = ave(deviations, axis=axis)
-    return average_deviations
 
 
 def putMultiLineText(img, text, org, **kwargs):
@@ -824,3 +775,12 @@ def putMultiLineText(img, text, org, **kwargs):
         img = cv2.putText(img, line, (x0, y), **kwargs)
         y += (h + ypad)
     return img
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.util.imutil all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

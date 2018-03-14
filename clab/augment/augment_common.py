@@ -68,8 +68,6 @@ def random_affine_args(zoom_pdf=None,
         >>> Aff = affine_mat2x3(sx, sy, theta, shear, tx, ty)
         >>> result = ut.repr2(Aff)
         >>> print(result)
-        np.array([[ 1.00934827, -0.        ,  1.6946192 ],
-                  [ 0.        ,  1.0418724 ,  2.58357645]])
 
     Ignore:
         from clab.augment.augment_common import *
@@ -184,9 +182,6 @@ def random_affine_args(zoom_pdf=None,
     >>> affine_args = (sx, sy, theta, shear, tx, ty)
     >>> M = affine_mat2x3(*affine_args)
     >>> print('M =\n{!r}'.format(M))
-    affine_mat2x3(*random_affine_args(flip_ud_prob=1))
-    affine_mat2x3(*random_affine_args(flip_lr_prob=1))
-    affine_mat2x3(*random_affine_args(shear_pdf=.01))
     """
 
     # flip left-right some fraction of the time

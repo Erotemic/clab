@@ -331,6 +331,7 @@ class SSegInputsWrapper(torch.utils.data.Dataset):
 
     def class_weights(self):
         """
+        Ignore:
             >>> from clab.live.urban_train import *
             >>> self = load_task_dataset('urban_mapper_3d')['train']
             >>> self.class_weights()
@@ -521,7 +522,7 @@ class DualChanCE(torch.nn.Module):
         return loss
 
 
-class SegNetVGG(nninit._BaseInitializer):
+class SegNetVGG(nninit.base._BaseInitializer):
     def forward(self, model):
         model.init_vgg16_params()
 
@@ -565,7 +566,7 @@ def urban_fit():
         python -m clab.live.urban_train urban_fit --task=urban_mapper_3d --arch=unet2 --colorspace=RGB --use_aux_diff --halfcombo \
                 --pretrained '/home/local/KHQ/jon.crall/data/work/urban_mapper2/arch/unet2/train/input_25800-hemanvft/solver_25800-hemanvft_unet2_mmavmuou_stuyuerd_a=1,c=RGB,n_ch=6,n_cl=4/torch_snapshots/_epoch_00000041.pt' --gpu=3
 
-    Example:
+    Script:
         >>> from clab.fit_harness import *
         >>> harn = urban_fit()
     """

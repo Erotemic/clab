@@ -9,7 +9,7 @@ from clab.util import imutil
 
 class SemanticSegmentationTask(object):
     """
-    Doctest:
+    Ignore:
         >>> from clab.tasks import *
         >>> classnames = ['spam',  'NULL', 'eggs', 'ham', 'jam','bannana']
         >>> null_classname = 'NULL'

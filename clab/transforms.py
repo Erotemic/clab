@@ -165,7 +165,7 @@ class ZipTransforms():
 
 
 class AffineWarp(object):
-    """
+    r"""
     Wrapper around three different methods for affine warping.  The fastest is
     cv2, followed by pil, followed by skimage.  The most flexible is skimage,
     and the least flexible is pil, but cv2 has lanczos resampling while the
@@ -487,8 +487,8 @@ class RandomWarpAffine(object):
         return affine_args
 
     def warp(self, img, params, interp='nearest', border_mode='constant', backend=None):
-        """
-
+        r"""
+        Ignore:
             >>> from clab.transforms import *
             >>> import plottool as pt
             >>> pt.qtensure()

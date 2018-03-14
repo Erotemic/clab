@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.autograd import Variable  # NOQA
@@ -9,7 +10,6 @@ from torch.autograd import Variable  # NOQA
 
 
 def testdata_siam_desc(num_data=128, desc_dim=8):
-    import numpy as np
     rng = np.random.RandomState(0)
     network_output = rng.rand(num_data, desc_dim)
     network_output = network_output / np.linalg.norm(network_output, axis=1, keepdims=True)
@@ -28,7 +28,7 @@ def testdata_siam_desc(num_data=128, desc_dim=8):
 
     def true_dist_metric(vecs1, vecs2):
         g1_ = np.roll(vecs1, 1, axis=1)
-        dist = np.linalg.norm(g1_ - vecs2)
+        dist = np.linalg.norm(g1_ - vecs2, axis=1)
         return dist
     #l2dist = vt.L2(vecs1, vecs2)
     true_dist = true_dist_metric(vecs1, vecs2)
@@ -78,6 +78,7 @@ class ContrastiveLoss(nn.Module):
         >>> dist1_l2 = dist[label]
         >>> loss0 = loss2x[~label] / 2
         >>> loss1 = loss2x[label] / 2
+        >>> # xdoc: +REQUIRES(--show)
         >>> import plottool as pt
         >>> pt.plot2(dist0_l2, loss0, 'x', color=pt.FALSE_RED, label='imposter_loss', y_label='loss')
         >>> pt.plot2(dist1_l2, loss1, 'x', color=pt.TRUE_BLUE, label='genuine_loss', y_label='loss')
@@ -86,13 +87,14 @@ class ContrastiveLoss(nn.Module):
         >>> ut.show_if_requested()
 
     Example:
+        >>> import torch
         >>> from clab.models import SiameseLP
         >>> from torch.autograd import Variable  # NOQA
-        >>> imgs1 = Variable(torch.rand(3, 3, 224, 244))
-        >>> imgs2 = Variable(torch.rand(3, 3, 224, 244))
+        >>> imgs1 = Variable(torch.rand(1, 3, 224, 244))
+        >>> imgs2 = Variable(torch.rand(1, 3, 224, 244))
         >>> label = (Variable(torch.rand(3)) * 2).long()
 
-        >>> model = SiameseLP()
+        >>> model = SiameseLP(input_shape=imgs1.shape[1:])
         >>> output = model(imgs1, imgs2)
         >>> self = ContrastiveLoss(margin=10)
         >>> self.forward(output, label)
@@ -141,7 +143,6 @@ class ContrastiveLoss(nn.Module):
 
 
 def testdata_sseg():
-    import numpy as np
     rng = np.random.RandomState(0)
     batch_size = 4
     n_classes = 12

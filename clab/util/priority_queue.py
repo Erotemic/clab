@@ -2,6 +2,8 @@ import heapq
 import ubelt as ub
 import sortedcontainers
 import operator
+import numpy as np  # NOQA
+from six.moves import cPickle as pickle  # NOQA
 
 
 def _heappush_max(heap, item):
@@ -312,3 +314,12 @@ class PriorityQueue(ub.NiceRepr):
                 raise
         del _dict[key]
         return key, val
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.util.priority_queue all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

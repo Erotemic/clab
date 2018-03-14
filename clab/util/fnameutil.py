@@ -7,6 +7,7 @@ pip install pygtrie
 from __future__ import print_function, division
 from os.path import commonprefix, isdir, dirname
 # from os.path import relpath, splitext
+import numpy as np  # NOQA
 from collections import deque
 import pygtrie
 
@@ -37,7 +38,6 @@ def shortest_unique_prefixes(items, sep=None, allow_simple=True, min_length=0, a
         pip install pygtrie
 
     Doctest:
-        >>> from clab.fnameutil import *
         >>> items = ["zebra", "dog", "duck", "dove"]
         >>> shortest_unique_prefixes(items)
         ['z', 'dog', 'du', 'dov']
@@ -130,16 +130,13 @@ def _trie_iternodes(self):
 def shortest_unique_suffixes(items, sep=None):
     """
     Example:
-        >>> from clab.fnameutil import *
         >>> items = ["zebra", "dog", "duck", "dove"]
         >>> shortest_unique_suffixes(items)
         ['a', 'g', 'k', 'e']
 
     Example:
-        >>> from clab.fnameutil import *
         >>> items = ["aa/bb/cc", "aa/bb/bc", "aa/bb/dc", "aa/cc/cc"]
         >>> shortest_unique_suffixes(items)
-        ['a', 'g', 'k', 'e']
     """
     snoitpo = [p[::-1] for p in items]
     sexiffus = shortest_unique_prefixes(snoitpo, sep=sep)
@@ -400,7 +397,6 @@ def align_paths(paths1, paths2):
             assert sorted(unique1) == sorted(unique2), not_comparable_msg()
         return unique1, unique2
 
-    import numpy as np
     unique1, unique2 = comparable_unique_path_ids(paths1, paths2)
 
     lookup = {k: v for v, k in enumerate(unique1)}
@@ -427,3 +423,12 @@ def check_aligned(paths1, paths2):
     except AssertionError:
         return False
     return aligned_paths2 == paths2
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.util.fnameutil all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

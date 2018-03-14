@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.signal
+import ubelt as ub  # NOQA
 
 
 def iter_reduce_ufunc(ufunc, arr_iter, out=None):
@@ -102,7 +103,7 @@ def atleast_nd(arr, n, tofront=False):
         >>> n = 2
         >>> arr = np.array([1, 1, 1])
         >>> arr_ = atleast_nd(arr, n)
-        >>> result = ub.repr2(arr_.tolist())
+        >>> result = ub.repr2(arr_.tolist(), nl=0)
         >>> print(result)
         [[1], [1], [1]]
 
@@ -114,9 +115,9 @@ def atleast_nd(arr, n, tofront=False):
         >>> arr1_ = atleast_nd(arr1, n)
         >>> arr2_ = atleast_nd(arr2, n)
         >>> arr3_ = atleast_nd(arr3, n)
-        >>> result1 = ub.repr2(arr1_.tolist())
-        >>> result2 = ub.repr2(arr2_.tolist())
-        >>> result3 = ub.repr2(arr3_.tolist())
+        >>> result1 = ub.repr2(arr1_.tolist(), nl=0)
+        >>> result2 = ub.repr2(arr2_.tolist(), nl=0)
+        >>> result3 = ub.repr2(arr3_.tolist(), nl=0)
         >>> result = '\n'.join([result1, result2, result3])
         >>> print(result)
         [[[[1]]], [[[1]]], [[[1]]]]
@@ -380,7 +381,6 @@ def _hist_argmaxima(hist, centers=None, maxima_thresh=None):
         >>> maxima_x, maxima_y, argmaxima = _hist_argmaxima(hist, centers)
         >>> result = str((maxima_x, maxima_y, argmaxima))
         >>> print(result)
-        (array([ 0.39,  2.75]), array([  8.69,  34.62]), array([1, 4]))
     """
     # FIXME: Not handling general cases
     # [0] index because argrelmaxima returns a tuple
@@ -412,7 +412,7 @@ def _interpolate_submaxima(argmaxima, hist_, centers=None):
     CommandLine:
         python -m vtool.histogram --test-_interpolate_submaxima --show
 
-    Example:
+    Ignore:
         >>> # ENABLE_DOCTEST
         >>> from vtool.histogram import *  # NOQA
         >>> argmaxima = np.array([1, 4, 7])
@@ -440,13 +440,6 @@ def _interpolate_submaxima(argmaxima, hist_, centers=None):
         >>> for x_pts, y_pts in zip(xpoints, ypoints):
         >>>     pt.plt.plot(x_pts, y_pts, 'g--', lw=2)
         >>> pt.show_if_requested()
-        np.array([ 0.15,  3.03,  5.11], dtype=np.float64),
-        np.array([  9.2 ,  37.19,   0.  ], dtype=np.float64),
-
-    Example:
-        >>> hist_ = np.array([5])
-        >>> argmaxima = [0]
-
     """
     if len(argmaxima) == 0:
         return [], []

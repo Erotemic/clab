@@ -10,6 +10,12 @@ import torch
 import six
 
 
+if torch.__version__.startswith('0.3'):
+    _TENSOR_TYPES = (torch._TensorBase, torch.autograd.Variable)
+else:
+    _TENSOR_TYPES = (torch.Tensor, torch.autograd.Variable)
+
+
 class DataSerial(torch.nn.Module):
     """
     Wraper to create consistent API with DataParallel
@@ -49,9 +55,7 @@ class XPU(ub.NiceRepr):
         xpu.mode = None
         xpu._device = None
 
-        if item == 'cpu' or item is None:
-            item = None
-        elif isinstance(item, six.string_types):
+        if isinstance(item, six.string_types):
             item = item.lower()
             item = item.replace('cpu', '')
             item = item.replace('gpu', '')
@@ -99,7 +103,8 @@ class XPU(ub.NiceRepr):
         elif isinstance(item, int):
             if item < 0:
                 raise ValueError('gpu num must be positive not {}'.format(item))
-            return item < torch.cuda.device_count()
+            return (torch.cuda.is_available() and
+                    item < torch.cuda.device_count())
         elif isinstance(item, (tuple, list)):
             return all(XPU.exists(i) for i in item)
         else:
@@ -112,12 +117,15 @@ class XPU(ub.NiceRepr):
         is on
 
         Example:
-            >>> xpu = XPU(torch.randn(3))
+            >>> xpu = XPU.from_data(torch.randn(3))
             >>> assert not xpu.is_gpu()
-            >>> xpu = XPU(torch.randn(3).cuda())
-            >>> assert xpu.is_gpu()
-            >>> xpu = XPU(torch.randn(3).cuda(1))
-            >>> assert xpu.main_device == 1
+            >>> if torch.cuda.is_available():
+            >>>     xpu = XPU.from_data(torch.randn(3).cuda())
+            >>>     assert xpu.is_gpu()
+            >>>     for i in range(torch.cuda.device_count()):
+            >>>         xpu = XPU.from_data(torch.randn(3).cuda(i))
+            >>>         assert xpu.is_gpu()
+            >>>         assert xpu.main_device == i
         """
         if item.is_cuda:
             return XPU(item.get_device())
@@ -134,7 +142,7 @@ class XPU(ub.NiceRepr):
         """
         if isinstance(item, XPU):
             return item
-        elif isinstance(item, (torch._TensorBase, torch.autograd.Variable)):
+        elif isinstance(item, _TENSOR_TYPES):
             return XPU.from_data(item)
         elif isinstance(item, int):
             return XPU(item)

@@ -11,7 +11,7 @@ def make_kpts_heatmask(kpts, chipsize, cmap='plasma'):
     """
     makes a heatmap overlay for keypoints
 
-    Example:
+    Ignore:
         >>> img_fpath = util.grab_test_imgpath('carl.png')
         >>> (kpts, vecs) = detect_feats(img_fpath)
         >>> chip = vt.imread(img_fpath)
@@ -81,7 +81,7 @@ def make_kpts_coverage_mask(
     Returns:
         tuple (ndarray, ndarray): dstimg, patch
 
-    Example:
+    Ignore:
         >>> from clab.util import mplutil
         >>> img_fpath = util.grab_test_imgpath('carl.png')
         >>> (kpts, vecs) = detect_feats(img_fpath)
@@ -151,7 +151,7 @@ def _warp_patch_onto_kpts(
     Returns:
         ndarray: mask
 
-    Example:
+    Ignore:
         >>> img_fpath    = util.grab_test_imgpath('carl.jpg')
         >>> (kpts, vecs) = detect_feats(img_fpath)
         >>> kpts = kpts[::15]
@@ -256,28 +256,11 @@ def _get_transforms_from_patch_image_kpts(kpts, patch_shape, scale_factor=1.0):
     Returns:
         M_list: a list of 3x3 tranformation matricies for each keypoint
 
-    Example:
+    Ignore:
         >>> kpts = vt.dummy.get_dummy_kpts()
         >>> patch_shape = (7, 7)
         >>> scale_factor = 1.0
         >>> M_list = _get_transforms_from_patch_image_kpts(kpts, patch_shape, scale_factor)
-        >>> result = kpts_repr(M_list)
-        >>> print(result)
-        array([[[  1.49,   0.  ,  15.53],
-                [ -1.46,   6.9 ,   8.68],
-                [  0.  ,   0.  ,   1.  ]],
-               [[  0.67,   0.  ,  26.98],
-                [ -1.46,   6.9 ,   8.68],
-                [  0.  ,   0.  ,   1.  ]],
-               [[  3.49,   0.  ,  19.53],
-                [  3.43,   3.01,  10.67],
-                [  0.  ,   0.  ,   1.  ]],
-               [[  3.82,   0.  ,  19.55],
-                [  5.04,   4.03,   1.8 ],
-                [  0.  ,   0.  ,   1.  ]],
-               [[  4.59,   0.  ,  18.24],
-                [  0.97,   3.35,  18.02],
-                [  0.  ,   0.  ,   1.  ]]])
 
     Ignore:
         >>> kpts = vt.dummy.get_dummy_kpts()
@@ -350,17 +333,9 @@ def _get_invVR_mats3x3(kpts):
     Example:
         >>> kpts = np.array([
         ...    [10, 20, 1, 2, 3, 0],
-        ...    [30, 40, 1, 2, 3, TAU / 4.0],
+        ...    [30, 40, 1, 2, 3, np.pi / 2.0],
         ... ])
         >>> invVR_mats3x3 = _get_invVR_mats3x3(kpts)
-        >>> result = kpts_repr(invVR_mats3x3)
-        >>> print(result)
-        array([[[  1.,   0.,  10.],
-                [  2.,   3.,  20.],
-                [  0.,   0.,   1.]],
-               [[  0.,  -1.,  30.],
-                [  3.,  -2.,  40.],
-                [  0.,   0.,   1.]]])
     """
     #nKpts = len(kpts)
     invVR_mats2x2 = _get_invVR_mats2x2(kpts)
@@ -396,15 +371,9 @@ def _get_invVR_mats2x2(kpts):
     Example:
         >>> kpts = np.array([
         ...    [0, 0, 1, 2, 3, 0],
-        ...    [0, 0, 1, 2, 3, TAU / 4.0],
+        ...    [0, 0, 1, 2, 3, np.pi / 2.0],
         ... ])
         >>> invVR_mats2x2 = _get_invVR_mats2x2(kpts)
-        >>> result = kpts_repr(invVR_mats2x2)
-        >>> print(result)
-        array([[[ 1.,  0.],
-                [ 2.,  3.]],
-               [[ 0., -1.],
-                [ 3., -2.]]])
 
     Example:
         >>> kpts = np.empty((0, 6))
@@ -444,15 +413,9 @@ def _get_invV_mats2x2(kpts):
     Example:
         >>> kpts = np.array([
         ...    [0, 0, 1, 2, 3, 0],
-        ...    [0, 0, 1, 2, 3, TAU / 4.0],
+        ...    [0, 0, 1, 2, 3, np.pi / 2.0],
         ... ])
         >>> invV_mats2x2 = _get_invV_mats2x2(kpts)
-        >>> result = kpts_repr(invV_mats2x2)
-        >>> print(result)
-        array([[[ 1.,  0.],
-                [ 2.,  3.]],
-               [[ 1.,  0.],
-                [ 2.,  3.]]])
     """
     nKpts = len(kpts)
     _iv11s, _iv21s, _iv22s = _get_invVs(kpts)

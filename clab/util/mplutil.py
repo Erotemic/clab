@@ -57,7 +57,7 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
     Example:
         >>> xdata = [1, 2, 3, 4, 5]
         >>> ydata_list = [[1, 2, 3, 4, 5], [3, 3, 3, 3, 3], [5, 4, np.nan, 2, 1], [4, 3, np.nan, 1, 0]]
-        >>> kwargs = {'label_list': ['spamΣ', 'eggs', 'jamµ', 'pram'],  'linestyle': '-'}
+        >>> kwargs = {'label': ['spamΣ', 'eggs', 'jamµ', 'pram'],  'linestyle': '-'}
         >>> #fig = multi_plot(xdata, ydata_list, title='$\phi_1(\\vec{x})$', xlabel='\nfds', **kwargs)
         >>> fig = multi_plot(xdata, ydata_list, title='ΣΣΣµµµ', xlabel='\nfdsΣΣΣµµµ', **kwargs)
         >>> show_if_requested()
@@ -128,11 +128,11 @@ def multi_plot(xdata=None, ydata=[], **kwargs):
         if key in kwargs:
             val_list = kwargs[key]
         elif key + '_list' in kwargs:
-            warnings.warn('depricated, just use kwarg {}'.format(key))
+            warnings.warn('*_list is depricated, just use kwarg {}'.format(key))
             val_list = kwargs[key + '_list']
         elif key + 's' in kwargs:
             # hack, multiple ways to do something
-            warnings.warn('depricated, just use kwarg {}'.format(key))
+            warnings.warn('*s depricated, just use kwarg {}'.format(key))
             val_list = kwargs[key + 's']
         else:
             val_list = None
@@ -1059,7 +1059,7 @@ def legend(loc='best', fontproperties=None, size=None, fc='w', alpha=1,
         fontproperties (None): (default = None)
         size (None): (default = None)
 
-    Example:
+    Ignore:
         >>> # ENABLE_DOCTEST
         >>> loc = 'best'
         >>> xdata = np.linspace(-6, 6)
@@ -1121,7 +1121,7 @@ def distinct_colors(N, brightness=.878, randomize=True, hue_range=(0.0, 1.0), cm
         python -m .color_funcs --exec-distinct_colors --show --no-randomize --N 50
         python -m .color_funcs --exec-distinct_colors --show --cmap_seed=foobar
 
-    Example:
+    Ignore:
         >>> # build test data
         >>> N = ub.smartcast(ub.get_argval('--N', default=2), int)
         >>> randomize = not ub.argflag('--no-randomize')
@@ -1134,7 +1134,7 @@ def distinct_colors(N, brightness=.878, randomize=True, hue_range=(0.0, 1.0), cm
         >>> assert len(RGB_tuples) == N
         >>> result = str(RGB_tuples)
         >>> print(result)
-        >>> ut.quit_if_noshow()
+        >>> # xdoctest: +REQUIRES(--show)
         >>> color_list = RGB_tuples
         >>> testshow_colors(color_list)
         >>> show_if_requested()
@@ -1225,8 +1225,7 @@ def distinct_markers(num, style='astrisk', total=None, offset=0):
         python -m .draw_func2 --exec-distinct_markers --style=star --show
         python -m .draw_func2 --exec-distinct_markers --style=polygon --show
 
-    Example:
-        >>> # ENABLE_DOCTEST
+    Ignore:
         >>> style = ub.get_argval('--style', type_=str, default='astrisk')
         >>> marker_list = distinct_markers(10, style)
         >>> x_data = np.arange(0, 3)
@@ -1463,7 +1462,7 @@ def save_parts(fig, fpath, grouped_axes=None, dpi=None):
     CommandLine:
         python -m draw_func2 save_parts
 
-    Example:
+    Ignore:
         >>> # DISABLE_DOCTEST
         >>> import matplotlib as mpl
         >>> import matplotlib.pyplot as plt
@@ -1569,7 +1568,7 @@ def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
     Returns:
         tuple: (fig, ax)
 
-    Example:
+    Ignore:
         >>> img_fpath = ut.grab_test_imgpath('carl.jpg')
         >>> img = util.imread(img_fpath)
         >>> (fig, ax) = imshow(img)
@@ -1702,7 +1701,7 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
     Returns:
         cb : matplotlib colorbar object
 
-    Example:
+    Ignore:
         >>> scalars = np.array([-1, -2, 1, 1, 2, 7, 10])
         >>> cmap_ = 'plasma'
         >>> logscale = False
@@ -1717,7 +1716,7 @@ def colorbar(scalars, colors, custom=False, lbl=None, ticklabels=None,
         >>> df2.present()
         >>> show_if_requested()
 
-    Example:
+    Ignore:
         >>> # ENABLE_DOCTEST
         >>> scalars = np.linspace(0, 1, 100)
         >>> cmap_ = 'plasma'
@@ -1896,7 +1895,7 @@ def scores_to_color(score_list, cmap_='hot', logscale=False, reverse_cmap=False,
     Returns:
         <class '_ast.ListComp'>
 
-    Example1:
+    Ignore:
         >>> ut.exec_funckw(scores_to_color, globals())
         >>> score_list = np.array([-1, -2, 1, 1, 2, 10])
         >>> # score_list = np.array([0, .1, .11, .12, .13, .8])
@@ -1909,7 +1908,7 @@ def scores_to_color(score_list, cmap_='hot', logscale=False, reverse_cmap=False,
         >>> imshow(imgBGR)
         >>> show_if_requested()
 
-    Example:
+    Ignore:
         >>> score_list = np.array([-1, -2, 1, 1, 2, 10])
         >>> cmap_ = 'hot'
         >>> logscale = False
@@ -2048,11 +2047,11 @@ class PlotNums(object):
             >>> import itertools as it
             >>> pnum_ = PlotNums(nSubplots=9)
             >>> pnum_list = list( (pnum_() for _ in it.count()) )
-            >>> print((nRows, nCols, nSubplots))
             >>> result = ('pnum_list = %s' % (ub.repr2(pnum_list),))
             >>> print(result)
 
         Example:
+            >>> import itertools as it
             >>> for nRows, nCols, nSubplots in it.product([None, 3], [None, 3], [None, 9]):
             >>>     start = 0
             >>>     pnum_ = PlotNums(nRows, nCols, nSubplots, start)

@@ -51,7 +51,7 @@ def calculate_flops(gen):
     Calculate the flops given a generator of pytorch model.
     It only compute the flops of forward pass.
 
-    Example:
+    Ignore:
         >>> net = torchvision.models.resnet18()
         >>> calculate_flops(net.children())
     """
@@ -88,7 +88,7 @@ def as_networkx(model, input_shapes, params=None):
         params: dict of (name, Variable) to add names to node that
             require grad (TODO: make optional)
 
-    Example:
+    Ignore:
         >>> from clab.netinfo import *
         >>> from clab.models.unet import *  # NOQA
         >>> from torch.autograd import Variable

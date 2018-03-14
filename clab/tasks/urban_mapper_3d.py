@@ -44,11 +44,11 @@ def _imshow_dtm(image):
 
 
 class UrbanMapper3D(SemanticSegmentationTask):
-    """
+    r"""
     References:
         https://community.topcoder.com/longcontest/?module=ViewProblemStatement&compid=57607&rd=17007
 
-    Example:
+    Script:
         >>> from clab.tasks.urban_mapper_3d import *
         >>> task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
         >>>                      workdir='~/data/work/urban_mapper4', boundary=True)
@@ -134,7 +134,7 @@ class UrbanMapper3D(SemanticSegmentationTask):
         """
         Loads the source data into the Inputs format for further processing.
 
-        Example:
+        Script:
             >>> from clab.tasks.urban_mapper_3d import *
             >>> task = UrbanMapper3D(root='~/remote/aretha/data/UrbanMapper3D',
             >>>                      workdir='~/data/work/urban_mapper')

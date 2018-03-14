@@ -24,6 +24,7 @@ class SiameseLP(torch.nn.Module):
         # LP distance between pairs of images.
         # Also need to replace the pooling layer in case the input has a
         # different size.
+        self.prepool_shape = prepool_shape
         pool_channels = prepool_shape[1]
         pool_kernel = prepool_shape[2:4]
         self.branch.avgpool = torch.nn.AvgPool2d(pool_kernel, stride=1)
@@ -33,8 +34,12 @@ class SiameseLP(torch.nn.Module):
 
     def resnet_prepool_output_shape(self, input_shape):
         """
+        self = SiameseLP(input_shape=input_shape)
         input_shape = (1, 3, 224, 224)
+        self.resnet_prepool_output_shape(input_shape)
+        self = SiameseLP(input_shape=input_shape)
         input_shape = (1, 3, 416, 416)
+        self.resnet_prepool_output_shape(input_shape)
         """
         # Figure out how big the output will be and redo the average pool layer
         # to account for it
@@ -57,16 +62,18 @@ class SiameseLP(torch.nn.Module):
         Compute a resnet50 vector for each input and look at the LP-distance
         between the vectors.
 
-        >>> input1 = torch.autograd.Variable(torch.rand(1, 3, 224, 224))
-        >>> input2 = torch.autograd.Variable(torch.rand(1, 3, 224, 224))
-        >>> self = SiameseLP()
-        >>> self(input1, input2)
+        Example:
+            >>> input1 = torch.autograd.Variable(torch.rand(4, 3, 224, 224))
+            >>> input2 = torch.autograd.Variable(torch.rand(4, 3, 224, 224))
+            >>> self = SiameseLP(input_shape=input2.shape[1:])
+            >>> output = self(input1, input2)
 
-        >>> input1 = torch.autograd.Variable(torch.rand(1, 3, 416, 416))
-        >>> input2 = torch.autograd.Variable(torch.rand(1, 3, 416, 416))
-        >>> input_shape1 = input1.shape
-        >>> self = SiameseLP()
-        >>> self(input1, input2)
+        Ignore:
+            >>> input1 = torch.autograd.Variable(torch.rand(1, 3, 416, 416))
+            >>> input2 = torch.autograd.Variable(torch.rand(1, 3, 416, 416))
+            >>> input_shape1 = input1.shape
+            >>> self = SiameseLP(input_shape=input2.shape[1:])
+            >>> self(input1, input2)
         """
         output1 = self.branch(input1)
         output2 = self.branch(input2)

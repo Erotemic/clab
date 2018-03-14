@@ -414,8 +414,9 @@ def normal(tensor, mean=0, std=1):
         std: the standard deviation of the normal distribution
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.normal(w)
+        >>> normal(w)
     """
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         normal(tensor.data, mean=mean, std=std)
@@ -435,8 +436,9 @@ def constant(tensor, val):
         val: the value to fill the tensor with
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.constant(w)
+        >>> constant(w, 3)
     """
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         constant(tensor.data, val)
@@ -476,8 +478,9 @@ def xavier_uniform(tensor, gain=1):
         gain: an optional scaling factor to be applied
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.xavier_uniform(w, gain=np.sqrt(2.0))
+        >>> xavier_uniform(w, gain=np.sqrt(2.0))
     """
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         xavier_uniform(tensor.data, gain=gain)
@@ -502,8 +505,9 @@ def xavier_normal(tensor, gain=1):
         gain: an optional scaling factor to be applied
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.xavier_normal(w, gain=np.sqrt(2.0))
+        >>> xavier_normal(w, gain=np.sqrt(2.0))
     """
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         xavier_normal(tensor.data, gain=gain)
@@ -529,8 +533,9 @@ def he_uniform(tensor, gain=1):
         gain: an optional scaling factor to be applied
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.he_uniform(w, gain=np.sqrt(2.0))
+        >>> he_uniform(w, gain=np.sqrt(2.0))
     """
 
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
@@ -551,8 +556,8 @@ def he_normal(tensor, gain=1):
     performance on ImageNet classification" - He, K. et al using a normal
     distribution. 2015
 
-   The resulting tensor will have values sampled from normal distribution with
-   mean=0 and std = gain * sqrt(1/(fan_in))
+    The resulting tensor will have values sampled from normal distribution with
+    mean=0 and std = gain * sqrt(1/(fan_in))
 
     Args:
         tensor: a n-dimension torch.Tensor
@@ -584,8 +589,9 @@ def orthogonal(tensor, gain=1):
         gain: optional gain to be applied
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.orthogonal(w)
+        >>> orthogonal(w)
     """
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         orthogonal(tensor.data, gain=gain)
@@ -618,8 +624,9 @@ def sparse(tensor, sparsity, std=0.01):
         std: the standard deviation of the normal distribution used to generate the non-zero values
 
     Examples:
+        >>> from clab.nninit.base import *
         >>> w = torch.Tensor(3, 5)
-        >>> nninit.sparse(w, sparsity=0.1)
+        >>> sparse(w, sparsity=0.1)
     """
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
         sparse(tensor.data, sparsity, std=std)
@@ -660,7 +667,7 @@ def shock_he(tensor):
         shock_he(tensor.data)
         return tensor
     else:
-        # prb = tensor.copy()
+        # prb = tensor.clone()
         # he_normal(prb, gain)
         # tensor += prb
         # return tensor
@@ -677,7 +684,7 @@ def shock(tensor, func, scale=.0001, funckw={}):
         shock(tensor.data, func, scale, funckw)
         return tensor
     else:
-        perterb = tensor.copy()
+        perterb = tensor.clone()
         # Init the perterbation matrix with the desired method and down scale
         func(perterb, **funckw)
         perterb *= scale

@@ -39,6 +39,7 @@ def np_loader(fpath, colorspace=None):
 def pil_loader(fpath, colorspace=None):
     """
     Example:
+        >>> import ubelt as ub
         >>> from clab.im_loaders import *
         >>> assert int(Image.PILLOW_VERSION.split('.')[0]) >= 4
         >>> fpath = ub.grabdata('https://i.imgur.com/oHGsmvF.png', fname='carl.png')

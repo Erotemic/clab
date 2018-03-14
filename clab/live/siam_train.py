@@ -349,6 +349,7 @@ class RandomBalancedIBEISSample(PairDataset):
 
 def randomized_ibeis_dset(dbname, dim=224):
     """
+    Ignore:
         >>> from clab.live.siam_train import *
         >>> datasets = randomized_ibeis_dset('PZ_MTEST')
         >>> ut.qtensure()
@@ -402,7 +403,7 @@ def randomized_ibeis_dset(dbname, dim=224):
 
 def ibeis_datasets(dbname='PZ_MTEST', dim=224):
     """
-    Example:
+    Script:
         >>> from clab.live.siam_train import *
         >>> from ibeis.algo.verif.vsone import *  # NOQA
         >>> pblm = OneVsOneProblem.from_empty('GZ_Master1')
@@ -546,7 +547,7 @@ def comparable_vamp():
         python -m clab.live.siam_train comparable_vamp --db GZ_Master1
         python -m clab.live.siam_train comparable_vamp --db PZ_Master1
 
-    Example:
+    Script:
         >>> # SCRIPT
         >>> from clab.live.siam_train import *  # NOQA
         >>> comparable_vamp()
@@ -697,7 +698,7 @@ def siam_vsone_train():
 
         python -m clab.live.siam_train siam_vsone_train --db humpbacks_fb
 
-    Example:
+    Script:
         >>> # DISABLE_DOCTEST
         >>> from clab.live.siam_train import *  # NOQA
         >>> siam_vsone_train()

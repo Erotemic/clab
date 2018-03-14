@@ -35,14 +35,14 @@ def one_hot_embedding(labels, num_classes, cpu=True):
          0  0  0  0  1
          0  0  1  0  0
          0  0  0  1  0
-        [torch.FloatTensor of size 6x5]
+        [torch.FloatTensor of size (6,5)]
     """
     # y = torch.eye(num_classes)  # [D,D]
     # if labels.is_cuda:
     #     y = y.cuda(labels.get_device())
     # y_onehot = y[labels]        # [N,D]
     if cpu:
-        y = torch.eye(num_classes)  # [D,D]
+        y = torch.eye(int(num_classes))  # [D,D]
         y_onehot = y[labels.cpu()]  # [N,D]
         if labels.is_cuda:
             device = labels.get_device()
@@ -119,11 +119,10 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         >>> # each element in target has to have 0 <= value < C
         >>> target = autograd.Variable((torch.rand(N) * C).long())
         >>> input = torch.nn.LogSoftmax(dim=1)(data)
-        >>> self.focal_loss_alt(input, target)
+        >>> #self.focal_loss_alt(input, target)
         >>> self.focal_loss(input, target)
-
         >>> output = self(input, target)
-        >>> output.backward()
+        >>> output.sum().backward()
 
         input = torch.FloatTensor([
             [0, 1, 0, 0],

@@ -119,7 +119,7 @@ def affine_around_mat3x3(x, y, sx=1.0, sy=1.0, theta=0.0, shear=0.0, tx=0.0,
         x2 (float, optional): center y location in output space (default = x)
         y2 (float, optional): center y location in output space (default = y)
 
-    Example:
+    Ignore:
         >>> orig_pts = np.array(vt.verts_from_bbox([10, 10, 20, 20]))
         >>> x, y = vt.bbox_center(vt.bbox_from_verts(orig_pts))
         >>> sx, sy = 0.5, 1.0

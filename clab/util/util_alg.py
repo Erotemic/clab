@@ -15,6 +15,7 @@ def mincost_assignment(cost, infok=False):
 
     Example:
         >>> from clab.util.util_alg import *
+        >>> import ubelt as ub
         >>> cost = np.array([
         >>>     [10, 10, 10, 10, 4],
         >>>     [ 2, 10, 10, 10, 9],
@@ -50,6 +51,7 @@ def mincost_assignment(cost, infok=False):
         {0: 0}
 
     Example:
+        >>> import ubelt as ub
         >>> cost = np.array([[]])
         >>> rxs, cxs = mincost_assignment(cost)
         >>> print(ub.repr2(dict(zip(rxs, cxs)), nl=0))
@@ -103,3 +105,12 @@ def mincost_assignment(cost, infok=False):
     valid_rxs = rxs[flags]
     valid_cxs = cxs[flags]
     return valid_rxs, valid_cxs
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.util.util_alg all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

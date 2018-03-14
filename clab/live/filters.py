@@ -13,7 +13,7 @@ def watershed_filter(mask, dist_thresh=5, topology=None, demo_mode=False):
     References:
         https://docs.opencv.org/trunk/d3/db4/tutorial_py_watershed.html
 
-    Example:
+    Ignore:
         >>> from clab import filters
         >>> from clab import util
         >>> import ubelt as ub

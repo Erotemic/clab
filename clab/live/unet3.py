@@ -1,5 +1,4 @@
 import torch
-from clab.models import unet
 import ubelt as ub
 import torchvision  # NOQA
 import torch.nn as nn
@@ -135,10 +134,11 @@ class PadToAgree(nn.Module):
     def padding(self, input_shape1, input_shape2):
         """
         Example:
+            >>> # xdoc: +REQUIRES(--slow)
             >>> self = PadToAgree()
             >>> input_shape1 = (1, 32, 37, 52)
             >>> input_shape2 = (1, 32, 28, 44)
-            >>> self.padding(input1_shape, input2_shape)
+            >>> self.padding(input_shape1, input_shape2)
             [-4, -4, -5, -4]
         """
         have_w, have_h = input_shape1[-2:]
@@ -213,15 +213,16 @@ class DenseUNetUp(nn.Module):
     def output_shape_for(self, input1_shape, input2_shape):
         """
 
-        Example:
+        Ignore:
             >>> self = DenseUNetUp(128, 256)
             >>> input1_shape = [4, 128, 24, 24]
             >>> input2_shape = [4, 256, 8, 8]
             >>> output_shape = self.output_shape_for(input1_shape, input2_shape)
-            (4, 64, 24, 24)
             >>> inputs1 = torch.autograd.Variable(torch.rand(input1_shape))
             >>> inputs2 = torch.autograd.Variable(torch.rand(input2_shape))
             >>> assert self.forward(inputs1, inputs2).shape == output_shape
+            >>> print('output_shape = {!r}'.format(output_shape))
+            output_shape = (4, 64, 24, 24)
         """
         output2_shape = OutputShapeFor(self.up)(input2_shape)
         output2_shape = OutputShapeFor(self.pad)(output2_shape, input1_shape)
@@ -284,7 +285,7 @@ class DenseUNet(nn.Module, mixin.NetMixin):
     In this case there will be a ~188 pixel difference between input and output
     dims, so the input should be mirrored with
 
-    Example:
+    Ignore:
         >>> from clab.live.unet3 import *
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 480, 360)
@@ -504,7 +505,8 @@ class DenseUNet2(nn.Module, mixin.NetMixin):
     In this case there will be a ~188 pixel difference between input and output
     dims, so the input should be mirrored with
 
-    Example:
+    SlowExample:
+        >>> # xdoc: +REQUIRES(--slow)
         >>> from clab.live.unet3 import *
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 480, 360)
@@ -538,7 +540,7 @@ class DenseUNet2(nn.Module, mixin.NetMixin):
         >>> inputs = Variable(torch.rand(B, C, W, H))
         >>> labels = Variable((torch.rand(B, W, H) * n_classes).long())
         >>> self = DenseUNet2(in_channels=C, n_classes=n_classes)
-        >>> outputs = self.forward(inputs)
+        >>> outputs, outputs2 = self.forward(inputs)
         >>> print('inputs.size() = {!r}'.format(inputs.size()))
         >>> print('outputs.size() = {!r}'.format(outputs.size()))
         >>> print(np.array(inputs.size()) - np.array(outputs.size()))
@@ -660,12 +662,14 @@ class DenseUNet2(nn.Module, mixin.NetMixin):
 
     def activation_shapes(self, input_shape):
         """
-        >>> from clab.live.unet3 import *
-        >>> from torch.autograd import Variable
-        >>> input_shape = (10, 3, 480, 360)
-        >>> self = DenseUNet2(in_channels=3, is_deconv=False)
-        >>> activations = self.activation_shapes(input_shape)
-        >>> print(ut.byte_str2(sum(map(np.prod, activations)) * 4))
+        Ignore:
+            >>> # xdoc: +REQUIRES(--slow)
+            >>> from clab.live.unet3 import *
+            >>> from torch.autograd import Variable
+            >>> input_shape = (10, 3, 480, 360)
+            >>> self = DenseUNet2(in_channels=3, is_deconv=False)
+            >>> activations = self.activation_shapes(input_shape)
+            >>> print(ut.byte_str2(sum(map(np.prod, activations)) * 4))
         """
         conn = self.connectivity()
         conn.io_shapes(self, input_shape)

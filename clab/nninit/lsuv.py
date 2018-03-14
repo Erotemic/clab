@@ -87,6 +87,7 @@ class LSUV(base._BaseInitializer):
         python -m clab.nninit.lsuv LSUV:0
 
     Example:
+        >>> # xdoc: +REQUIRES(--slow)
         >>> from clab.nninit.lsuv import *
         >>> import torchvision
         >>> import torch

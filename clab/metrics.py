@@ -325,7 +325,7 @@ def acc(output, label, labels, ignore_label=-100):
     """
     accuracy (this is not tpr because tpr only considers a single class)
 
-    Example:
+    Ignore:
         >>> from clab.sseg_train import *
         >>> from clab.metrics import *
         >>> datasets = load_task_dataset(taskname='camvid')

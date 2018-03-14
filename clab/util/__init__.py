@@ -21,6 +21,7 @@ else:
     from clab.util import misc
     from clab.util import mplutil
     from clab.util import nputil
+    from clab.util import nxutil
     from clab.util import priority_queue
     from clab.util import profiler
     from clab.util import util_affine
@@ -36,7 +37,7 @@ else:
                                      shortest_unique_suffixes,)
     from clab.util.gpu_util import (find_unused_gpu, gpu_info, have_gpu, num_gpus,)
     from clab.util.hashutil import (hash_data, hash_file,)
-    from clab.util.imutil import (CV2_INTERPOLATION_TYPES, absdev, adjust_gamma,
+    from clab.util.imutil import (CV2_INTERPOLATION_TYPES, adjust_gamma,
                                   atleast_3channels, convert_colorspace,
                                   ensure_alpha_channel, ensure_float01,
                                   ensure_grayscale, get_num_channels,
@@ -68,6 +69,10 @@ else:
     from clab.util.nputil import (apply_grouping, argsubmax, argsubmaxima,
                                   atleast_nd, group_indices, group_items,
                                   isect_flags, iter_reduce_ufunc,)
+    from clab.util.nxutil import (dump_nx_ondisk, make_agraph,
+                                  nx_delete_None_edge_attr, nx_delete_node_attr,
+                                  nx_ensure_agraph_color, nx_sink_nodes,
+                                  nx_source_nodes, patch_pygraphviz,)
     from clab.util.priority_queue import (PriorityQueue, SortedQueue,)
     from clab.util.profiler import (IS_PROFILING, IS_PROFILING, KernprofParser,
                                     dump_global_profile_report, dynamic_profile,
@@ -83,5 +88,5 @@ else:
     from clab.util.util_alg import (mincost_assignment,)
     from clab.util.util_averages import (CumMovingAve, ExpMovingAve,
                                          InternalRunningStats, MovingAve,
-                                         RunningStats, WindowedMovingAve,)
+                                         RunningStats, WindowedMovingAve, absdev,)
     # </AUTOGEN_INIT>

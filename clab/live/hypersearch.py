@@ -614,39 +614,39 @@ def junk():
                        columns=['f1', 'precision', 'recall'])
     rdf.sort_values('f1').index[-1]
 
-        import optml
-        from optml.bayesian_optimizer import BayesianOptimizer
-        hyperparams = [
-            optml.Parameter(name='mask_thresh', param_type='continuous', lower=.15, upper=.85),
-            optml.Parameter(name='seed_thresh', param_type='continuous', lower=.15, upper=.85),
-            optml.Parameter(name='min_seed_size', param_type='integer', lower=0, upper=100),
-        ]
-        self = BayesianOptimizer(model=None, hyperparams=hyperparams, eval_func=None)
+    import optml
+    from optml.bayesian_optimizer import BayesianOptimizer
+    hyperparams = [
+        optml.Parameter(name='mask_thresh', param_type='continuous', lower=.15, upper=.85),
+        optml.Parameter(name='seed_thresh', param_type='continuous', lower=.15, upper=.85),
+        optml.Parameter(name='min_seed_size', param_type='integer', lower=0, upper=100),
+    ]
+    self = BayesianOptimizer(model=None, hyperparams=hyperparams, eval_func=None)
 
-        for path, path1 in zip(prob_paths, prob1_paths):
-            pass
+    for path, path1 in zip(prob_paths, prob1_paths):
+        pass
 
-        def func(**new_hyperparams):
-            probs = np.load(path)['arr_0']
-            probs1 = np.load(path1)['arr_0']
-            seed_probs = probs[:, :, task.classname_to_id['inner_building']]
-            mask_probs = probs1[:, :, 1]
+    def func(**new_hyperparams):
+        probs = np.load(path)['arr_0']
+        probs1 = np.load(path1)['arr_0']
+        seed_probs = probs[:, :, task.classname_to_id['inner_building']]
+        mask_probs = probs1[:, :, 1]
 
-            seed_thresh, mask_thresh, min_seed_size = ub.take(
-                new_hyperparams, ['seed_thresh', 'mask_thresh', 'min_seed_size'])
-            seed = (seed_probs > mask_thresh).astype(np.uint8)
-            mask = (mask_probs > seed_thresh).astype(np.uint8)
-            pred = seeded_instance_label(seed, mask, min_seed_size=min_seed_size)
-            scores = instance_fscore(gti, uncertain, dsm, pred)
-            fscore = scores[0]
-            return fscore
+        seed_thresh, mask_thresh, min_seed_size = ub.take(
+            new_hyperparams, ['seed_thresh', 'mask_thresh', 'min_seed_size'])
+        seed = (seed_probs > mask_thresh).astype(np.uint8)
+        mask = (mask_probs > seed_thresh).astype(np.uint8)
+        pred = seeded_instance_label(seed, mask, min_seed_size=min_seed_size)
+        scores = instance_fscore(gti, uncertain, dsm, pred)
+        fscore = scores[0]
+        return fscore
 
-        history = self.simple(func, n_iters=10, verbose=True)
-        best = max(history)
-        print('best = {!r}'.format(best))
+    history = self.simple(func, n_iters=10, verbose=True)
+    best = max(history)
+    print('best = {!r}'.format(best))
 
-        # {'mask_thresh': 0.45318221555100013, 'seed_thresh': 0.69172340500683327, 'min_seed_size': 41}
-        func(**{'mask_thresh': 0.5, 'seed_thresh': 0.7, 'min_seed_size': 20})
+    # {'mask_thresh': 0.45318221555100013, 'seed_thresh': 0.69172340500683327, 'min_seed_size': 41}
+    func(**{'mask_thresh': 0.5, 'seed_thresh': 0.7, 'min_seed_size': 20})
 
 
 def hypersearch_probs():

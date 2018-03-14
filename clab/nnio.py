@@ -64,7 +64,7 @@ def export_model(fpath, model, input_shapes=None):
     References:
         http://pytorch.org/tutorials/advanced/super_resolution_with_caffe2.html
 
-    Example:
+    Ignore:
         >>> import ubelt as ub
         >>> from clab.nnio import *
         >>> from clab import models
@@ -74,8 +74,7 @@ def export_model(fpath, model, input_shapes=None):
         >>> input_shapes = (1, 28, 28)
         >>> export_model(fpath, model, input_shapes)
 
-
-    Example:
+    Ignore:
         >>> from clab import models
         >>> from torch.autograd import Variable
         >>> B, C, W, H = (4, 3, 372, 400)

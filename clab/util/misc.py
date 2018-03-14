@@ -2,7 +2,6 @@ import six
 import sys
 import ubelt as ub
 import numpy as np
-import h5py
 import tqdm
 
 
@@ -275,11 +274,13 @@ def roundrobin(iterables):
 
 
 def read_h5arr(fpath):
+    import h5py
     with h5py.File(fpath, 'r') as hf:
         return hf['arr_0'][...]
 
 
 def write_h5arr(fpath, arr):
+    import h5py
     with h5py.File(fpath, 'w') as hf:
         hf.create_dataset('arr_0', data=arr)
 
