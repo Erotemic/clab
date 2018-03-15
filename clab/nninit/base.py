@@ -68,7 +68,9 @@ class Pretrained(_BaseInitializer):
         self.shock_partial = shock_partial
 
     def forward(self, model):
-        model_state_dict = torch.load(self.fpath)
+        from clab import xpu_device
+        xpu = xpu_device.XPU.from_data(model)
+        model_state_dict = xpu.load(self.fpath)
         if 'model_state_dict' in model_state_dict:
             model_state_dict = model_state_dict['model_state_dict']
         load_partial_state(model, model_state_dict,
@@ -79,6 +81,7 @@ class Pretrained(_BaseInitializer):
         """
         if available return the history of the model as well
         """
+        # TODO: check for train_info.json in a few different places
         info_dpath = dirname(dirname(ub.truepath(self.fpath)))
         info_fpath = join(info_dpath, 'train_info.json')
         if exists(info_fpath):

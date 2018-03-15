@@ -127,10 +127,19 @@ class XPU(ub.NiceRepr):
             >>>         assert xpu.is_gpu()
             >>>         assert xpu.main_device == i
         """
-        if item.is_cuda:
-            return XPU(item.get_device())
+        if hasattr(item, 'is_cuda'):
+            if item.is_cuda:
+                return XPU(item.get_device())
+            else:
+                return XPU(None)
+        elif hasattr(item, 'state_dict'):
+            state_dict = item.state_dict()
+            hist = ub.dict_hist(v.get_device() if v.is_cuda else None
+                                for v in state_dict.values())
+            device_num = ub.argsort(hist)[-1]
+            return XPU(device_num)
         else:
-            return XPU(None)
+            raise TypeError(type(item))
 
     @classmethod
     def cast(xpu, item, **kwargs):
