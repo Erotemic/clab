@@ -7,6 +7,12 @@
 # Code written by Piotr Dollar and Tsung-Yi Lin, 2015.
 # Licensed under the Simplified BSD License [see coco/license.txt]
 #**************************************************************************
+"""
+NUMPY_INCLUDE=$(python -c "import numpy as np; print(np.get_include())")
+CPATH=$CPATH:$NUMPY_INCLUDE cythonize -a -i ~/code/clab/clab/models/yolo2/utils/pycocotools/_mask.pyx
+
+"""
+
 
 __author__ = 'tsungyi'
 

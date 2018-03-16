@@ -4,6 +4,10 @@
 # Licensed under The MIT License [see LICENSE for details]
 # Written by Ross Girshick
 # --------------------------------------------------------
+"""
+NUMPY_INCLUDE=$(python -c "import numpy as np; print(np.get_include())")
+CPATH=$CPATH:$NUMPY_INCLUDE cythonize -a -i ~/code/clab/clab/models/yolo2/utils/nms/cpu_nms.pyx
+"""
 
 import numpy as np
 cimport numpy as np

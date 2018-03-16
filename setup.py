@@ -36,6 +36,11 @@ Pypi:
 
 """
 from setuptools import setup, find_packages
+import os
+import numpy as np
+from os.path import dirname, join, exists
+from distutils.extension import Extension
+from Cython.Distutils import build_ext
 
 
 def parse_version(package):
@@ -45,7 +50,6 @@ def parse_version(package):
     CommandLine:
         python -c "import setup; print(setup.parse_version('clab'))"
     """
-    from os.path import dirname, join
     import ast
     init_fpath = join(dirname(__file__), package, '__init__.py')
     with open(init_fpath) as file_:
@@ -122,6 +126,176 @@ def conditional_requirements(pkgmods):
             __import__(modname)
         except ImportError:
             yield pkgname
+
+
+def find_in_path(name, path):
+    """
+    Find a file in a search path
+    adapted fom
+    http://code.activestate.com/recipes/52224-find-a-file-given-a-search-path/
+    """
+    for dir in path.split(os.pathsep):
+        binpath = join(dir, name)
+        if os.path.exists(binpath):
+            return os.path.abspath(binpath)
+    return None
+
+
+def locate_cuda():
+    """Locate the CUDA environment on the system
+
+    Returns a dict with keys 'home', 'nvcc', 'include', and 'lib64'
+    and values giving the absolute path to each directory.
+
+    Starts by looking for the CUDAHOME env variable. If not found, everything
+    is based on finding 'nvcc' in the PATH.
+    """
+
+    # there doesnt seem to be an accepted standard for the CUDA envvar yet
+    cuda_environs = ['CUDA_HOME', 'CUDA_PATH', 'CUDA_SDK_ROOT_DIR', 'CUDAHOME']
+    cuda_environs = [key for key in cuda_environs if key in os.environ]
+
+    # first check for the env variable CUDA_HOME / CUDA_ROOT / etc.
+    if cuda_environs:
+        cuda_environ = cuda_environs[0]
+        home = os.environ[cuda_environ]
+        nvcc = join(home, 'bin', 'nvcc')
+        if not exists(nvcc):
+            raise EnvironmentError(
+                'The nvcc binary={} does not exist in ${}'.format(
+                    nvcc, cuda_environ))
+    else:
+        # otherwise, search the PATH for NVCC
+        default_path = join(os.sep, 'usr', 'local', 'cuda', 'bin')
+        nvcc = find_in_path('nvcc',
+                            os.environ['PATH'] + os.pathsep + default_path)
+        if nvcc is None:
+            raise EnvironmentError('The nvcc binary could not be '
+                                   'located in your $PATH. '
+                                   'Either add it to your path, '
+                                   'or set $CUDAHOME')
+        home = os.path.dirname(os.path.dirname(nvcc))
+
+    cudaconfig = {'home': home, 'nvcc': nvcc,
+                  'include': join(home, 'include'),
+                  'lib64': join(home, 'lib64')}
+    for k, v in cudaconfig.items():
+        if not os.path.exists(v):
+            raise EnvironmentError('The CUDA %s path could not '
+                                   'be located in %s' % (k, v))
+
+    return cudaconfig
+
+
+CUDA = locate_cuda()
+
+# Obtain the numpy include directory.  This logic works across numpy versions.
+try:
+    numpy_include = np.get_include()
+except AttributeError:
+    numpy_include = np.get_numpy_include()
+
+
+def customize_compiler_for_nvcc(self):
+    """inject deep into distutils to customize how the dispatch
+    to gcc/nvcc works.
+
+    If you subclass UnixCCompiler, it's not trivial to get your subclass
+    injected in, and still have the right customizations (i.e.
+    distutils.sysconfig.customize_compiler) run on it. So instead of going
+    the OO route, I have this. Note, it's kindof like a wierd functional
+    subclassing going on."""
+
+    # tell the compiler it can processes .cu
+    self.src_extensions.append('.cu')
+
+    # save references to the default compiler_so and _comple methods
+    default_compiler_so = self.compiler_so
+    super = self._compile
+
+    # now redefine the _compile method. This gets executed for each
+    # object but distutils doesn't have the ability to change compilers
+    # based on source extension: we add it.
+    def _compile(obj, src, ext, cc_args, extra_postargs, pp_opts):
+        print(extra_postargs)
+        if os.path.splitext(src)[1] == '.cu':
+            # use the cuda for .cu files
+            self.set_executable('compiler_so', CUDA['nvcc'])
+            # use only a subset of the extra_postargs, which are 1-1 translated
+            # from the extra_compile_args in the Extension class
+            postargs = extra_postargs['nvcc']
+        else:
+            postargs = extra_postargs['gcc']
+
+        super(obj, src, ext, cc_args, postargs, pp_opts)
+        # reset the default compiler_so, which we might have changed for cuda
+        self.compiler_so = default_compiler_so
+
+    # inject our redefined _compile method into the class
+    self._compile = _compile
+
+
+# run the customize_compiler
+class custom_build_ext(build_ext):
+    def build_extensions(self):
+        customize_compiler_for_nvcc(self.compiler)
+        build_ext.build_extensions(self)
+
+
+# --------------------------------------------------------
+# Some code was derived from Fast R-CNN
+# Copyright (c) 2015 Microsoft
+# Licensed under The MIT License [see LICENSE for details]
+# Written by Ross Girshick
+# --------------------------------------------------------
+ext_modules = [
+    Extension(
+        "clab.models.yolo2.utils.nms.cython_bbox",
+        ["clab/models/yolo2/utils/nms/cython_bbox.pyx"],
+        extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+        include_dirs=[numpy_include]
+    ),
+    Extension(
+        "clab.models.yolo2.utils.nms.cython_yolo",
+        ["clab/models/yolo2/utils/nms/cython_yolo.pyx"],
+        extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+        include_dirs=[numpy_include]
+    ),
+    Extension(
+        "clab.models.yolo2.utils.nms.cpu_nms",
+        ["clab/models/yolo2/utils/nms/cpu_nms.pyx"],
+        extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
+        include_dirs=[numpy_include]
+    ),
+    Extension('clab.models.yolo2.utils.nms.gpu_nms',
+              ['clab/models/yolo2/utils/nms/nms_kernel.cu',
+               'clab/models/yolo2/utils/nms/gpu_nms.pyx'],
+              library_dirs=[CUDA['lib64']],
+              libraries=['cudart'],
+              language='c++',
+              runtime_library_dirs=[CUDA['lib64']],
+              # this syntax is specific to this build system
+              # we're only going to use certain compiler args with
+              # nvcc and not with gcc
+              # the implementation of this trick is in
+              # customize_compiler() below
+              extra_compile_args={'gcc': ["-Wno-unused-function"],
+                                  'nvcc': ['-arch=sm_35',
+                                           '--ptxas-options=-v',
+                                           '-c',
+                                           '--compiler-options',
+                                           "'-fPIC'"]},
+              include_dirs=[numpy_include, CUDA['include']]
+              ),
+    Extension(
+        'clab.models.yolo2.utils.pycocotools._mask',
+        sources=['clab/models/yolo2/utils/pycocotools/maskApi.c',
+                 'clab/models/yolo2/utils/pycocotools/_mask.pyx'],
+        include_dirs=[numpy_include, 'clab/models/yolo2/utils/pycocotools'],
+        extra_compile_args={
+            'gcc': ['-Wno-cpp', '-Wno-unused-function', '-std=c99']},
+    ),
+]
 
 
 if __name__ == '__main__':

@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 from .im_transform import imcv2_affine_trans, imcv2_recolor
 # from box import BoundBox, box_iou, prob_compare
-from utils.nms_wrapper import nms
-from utils.cython_yolo import yolo_to_bbox
+from ..nms_wrapper import nms
+from ..cython_yolo import yolo_to_bbox
 
 
 def clip_boxes(boxes, im_shape):
@@ -180,8 +180,8 @@ def _bbox_targets_perimage(im_shape, gt_boxes, cls_inds, dontcare_areas, cfg):
     # gt_boxes[:, 2] = (gt_boxes[:, 2] - gt_boxes[:, 0]) / im_shape[1]
     # gt_boxes[:, 3] = (gt_boxes[:, 3] - gt_boxes[:, 1]) / im_shape[0]
 
-    bbox_target = [[] for _ in range(H*W)]
-    cls_target = [[] for _ in range(H*W)]
+    bbox_target = [[] for _ in range(H * W)]
+    cls_target = [[] for _ in range(H * W)]
     for i, ind in enumerate(cell_inds):
         bbox_target[ind].append(gt_boxes[i])
         cls_target[ind].append(cls_inds[i])
