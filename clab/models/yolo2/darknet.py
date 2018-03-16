@@ -3,11 +3,11 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
-import utils.network as net_utils
-import cfgs.config as cfg
-from layers.reorg.reorg_layer import ReorgLayer
-from utils.cython_bbox import bbox_ious, anchor_intersections
-from utils.cython_yolo import yolo_to_bbox
+from .utils import network as net_utils
+from .cfgs import config as cfg
+from .layers.reorg.reorg_layer import ReorgLayer
+from .utils.cython_bbox import bbox_ious, anchor_intersections
+from .utils.cython_yolo import yolo_to_bbox
 from functools import partial
 
 from multiprocessing import Pool
