@@ -248,9 +248,13 @@ class custom_build_ext(build_ext):
 # Licensed under The MIT License [see LICENSE for details]
 # Written by Ross Girshick
 # --------------------------------------------------------
-ext_modules = [
+ext_modules = []
+
+
+yolo_util_prefix = 'clab.models.yolo2.utils.'
+ext_modules += [
     Extension(
-        "clab.models.yolo2.utils.nms.cython_bbox",
+        yolo_util_prefix + "nms.cython_bbox",
         ["clab/models/yolo2/utils/nms/cython_bbox.pyx"],
         extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
         include_dirs=[numpy_include]
@@ -267,6 +271,20 @@ ext_modules = [
         extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
         include_dirs=[numpy_include]
     ),
+]
+
+ext_modules += [
+    Extension(
+        'clab.models.yolo2.utils.pycocotools._mask',
+        sources=['clab/models/yolo2/utils/pycocotools/maskApi.c',
+                 'clab/models/yolo2/utils/pycocotools/_mask.pyx'],
+        include_dirs=[numpy_include, 'clab/models/yolo2/utils/pycocotools'],
+        extra_compile_args={
+            'gcc': ['-Wno-cpp', '-Wno-unused-function', '-std=c99']},
+    ),
+]
+
+ext_modules += [
     Extension('clab.models.yolo2.utils.nms.gpu_nms',
               ['clab/models/yolo2/utils/nms/nms_kernel.cu',
                'clab/models/yolo2/utils/nms/gpu_nms.pyx'],
@@ -287,14 +305,74 @@ ext_modules = [
                                            "'-fPIC'"]},
               include_dirs=[numpy_include, CUDA['include']]
               ),
-    Extension(
-        'clab.models.yolo2.utils.pycocotools._mask',
-        sources=['clab/models/yolo2/utils/pycocotools/maskApi.c',
-                 'clab/models/yolo2/utils/pycocotools/_mask.pyx'],
-        include_dirs=[numpy_include, 'clab/models/yolo2/utils/pycocotools'],
-        extra_compile_args={
-            'gcc': ['-Wno-cpp', '-Wno-unused-function', '-std=c99']},
-    ),
+]
+
+
+class TorchExtension(object):
+    """
+    customized hacked extension
+
+    TODO: is there a better way to do this?
+    """
+
+    def __init__(self, name, sources, cuda_sources, extra_compile_args,
+                 with_cuda=True):
+        self.name = name
+        self.sources = sources
+        self.cuda_sources = cuda_sources
+        self.extra_compile_args = extra_compile_args
+        self.with_cuda = with_cuda
+
+    def build(self):
+
+        c_sources = [p.endswith('.c') for p in self.sources]
+        c_headers = [p.endswith('.h') for p in self.sources]
+
+        c_cuda_sources = [p.endswith('.c') for p in self.cuda_sources]
+        c_cuda_headers = [p.endswith('.h') for p in self.cuda_sources]
+
+        cu_sources = [p.endswith('.cu') for p in self.cuda_sources]
+
+        cu_objects = [p + 'o' for p in cu_sources]
+
+
+yolo_layers_m = 'clab.models.yolo2.layers.'
+yolo_layers_p = yolo_layers_m.replace('.', os.path.sep)
+torch_ffi_ext_modules += [
+    TorchExtension(
+        yolo_layers_m + 'reorg._ext.reorg_layer',
+        sources=[
+            join(yolo_layers_p, 'reorg/src/reorg_cuda_kernel.cu'),
+            join(yolo_layers_p, 'reorg/src/reorg_cpu.c'),
+            join(yolo_layers_p, 'reorg/src/reorg_cpu.h')
+        ],
+        cuda_sources=[
+            join(yolo_layers_p, 'src/reorg_cuda.c'),
+            join(yolo_layers_p, 'src/reorg_cuda.h')
+        ],
+]
+
+
+ext_modules = []
+
+ext_modules += [
+    Extension(yolo_layers_m + 'reorg._ext.reorg_layer',
+              [
+                  join(yolo_layers_p, 'reorg/src/reorg_cuda_kernel.cu'),
+              ],
+              library_dirs=[CUDA['lib64']],
+              libraries=['cudart'],
+              language='c++',
+              runtime_library_dirs=[CUDA['lib64']],
+              # args for nvcc_customizer_compiler
+              extra_compile_args={'gcc': ["-Wno-unused-function"],
+                                  'nvcc': ['-arch=sm_35',
+                                           '--ptxas-options=-v',
+                                           '-c',
+                                           '--compiler-options',
+                                           "'-fPIC'"]},
+              include_dirs=[numpy_include, CUDA['include']]
+              ),
 ]
 
 
@@ -320,6 +398,11 @@ if __name__ == '__main__':
         url='https://github.com/Erotemic/clab',
         license='Apache 2',
         packages=find_packages(),
+
+        # inject our custom nvcc trigger
+        cmdclass={'build_ext': custom_build_ext},
+        ext_modules=ext_modules,
+
         classifiers=[
             # List of classifiers available at:
             # https://pypi.python.org/pypi?%3Aaction=list_classifiers
