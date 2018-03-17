@@ -4,13 +4,62 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .utils import network as net_utils
-from .cfgs import config as cfg
+# from .cfgs import config as cfg
 from .layers.reorg.reorg_layer import ReorgLayer
 from .utils.cython_bbox import bbox_ious, anchor_intersections
 from .utils.cython_yolo import yolo_to_bbox
 from functools import partial
 
 from multiprocessing import Pool
+
+
+class DarknetConfig(object):
+    def __init__(cfg):
+        cfg.object_scale = 5.0
+        cfg.noobject_scale = 1.0
+        cfg.class_scale = 1.0
+        cfg.coord_scale = 1.0
+        cfg.iou_thresh = 0.6
+
+        cfg.multi_scale_inp_size = [np.array([320, 320], dtype=np.int),
+                                    np.array([352, 352], dtype=np.int),
+                                    np.array([384, 384], dtype=np.int),
+                                    np.array([416, 416], dtype=np.int),
+                                    np.array([448, 448], dtype=np.int),
+                                    np.array([480, 480], dtype=np.int),
+                                    np.array([512, 512], dtype=np.int),
+                                    np.array([544, 544], dtype=np.int),
+                                    np.array([576, 576], dtype=np.int),
+                                    # np.array([608, 608], dtype=np.int),
+                                    ]   # w, h
+
+        multi_scale_inp_size = cfg.multi_scale_inp_size
+        cfg.multi_scale_out_size = [multi_scale_inp_size[0] / 32,
+                                    multi_scale_inp_size[1] / 32,
+                                    multi_scale_inp_size[2] / 32,
+                                    multi_scale_inp_size[3] / 32,
+                                    multi_scale_inp_size[4] / 32,
+                                    multi_scale_inp_size[5] / 32,
+                                    multi_scale_inp_size[6] / 32,
+                                    multi_scale_inp_size[7] / 32,
+                                    multi_scale_inp_size[8] / 32,
+                                    # multi_scale_inp_size[9] / 32,
+                                    ]   # w, h
+
+        # for voc
+        label_names = ('aeroplane', 'bicycle', 'bird', 'boat',
+                       'bottle', 'bus', 'car', 'cat', 'chair',
+                       'cow', 'diningtable', 'dog', 'horse',
+                       'motorbike', 'person', 'pottedplant',
+                       'sheep', 'sofa', 'train', 'tvmonitor')
+        # cfg.num_classes = len(label_names)
+        anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
+                              (6.63, 11.38), (9.42, 5.11), (16.62, 10.52)],
+                             dtype=np.float)
+        num_anchors = len(anchors)
+
+
+cfg = DarknetConfig()
 
 
 def _make_layers(in_channels, net_cfg):
@@ -37,7 +86,7 @@ def _make_layers(in_channels, net_cfg):
     return nn.Sequential(*layers), in_channels
 
 
-def _process_batch(data, size_index):
+def _process_batch(data, size_index, num_classes):
     W, H = cfg.multi_scale_out_size[size_index]
     inp_size = cfg.multi_scale_inp_size[size_index]
     out_size = cfg.multi_scale_out_size[size_index]
@@ -64,8 +113,7 @@ def _process_batch(data, size_index):
     bbox_pred_np = np.expand_dims(bbox_pred_np, 0)
     bbox_np = yolo_to_bbox(
         np.ascontiguousarray(bbox_pred_np, dtype=np.float),
-        anchors,
-        H, W)
+        anchors, H, W)
     # bbox_np = (hw, num_anchors, (x1, y1, x2, y2))   range: 0 ~ 1
     bbox_np = bbox_np[0]
     bbox_np[:, :, 0::2] *= float(inp_size[0])  # rescale x
@@ -137,8 +185,77 @@ def _process_batch(data, size_index):
     return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
 
-class Darknet19(nn.Module):
+class DarknetLoss(torch.nn.modules.loss._Loss):
     def __init__(self):
+        # train
+        self.bbox_loss = None
+        self.iou_loss = None
+        self.cls_loss = None
+        self.pool = Pool(processes=10)
+
+        self.mse = nn.MSELoss(size_average=False)
+
+    def forward(self, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
+                gt_classes=None, dontcare=None, size_index=0):
+        # for training
+        bbox_pred_np = bbox_pred.data.cpu().numpy()
+        iou_pred_np = iou_pred.data.cpu().numpy()
+
+        _tup = self._build_target(bbox_pred_np, gt_boxes, gt_classes, dontcare,
+                                  iou_pred_np, size_index)
+        _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
+
+        _boxes = net_utils.np_to_variable(_boxes)
+        _ious = net_utils.np_to_variable(_ious)
+        _classes = net_utils.np_to_variable(_classes)
+        box_mask = net_utils.np_to_variable(_box_mask,
+                                            dtype=torch.FloatTensor)
+        iou_mask = net_utils.np_to_variable(_iou_mask,
+                                            dtype=torch.FloatTensor)
+        class_mask = net_utils.np_to_variable(_class_mask,
+                                              dtype=torch.FloatTensor)
+
+        num_boxes = sum((len(boxes) for boxes in gt_boxes))
+
+        # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
+        box_mask = box_mask.expand_as(_boxes)
+
+        self.bbox_loss = self.mse(bbox_pred * box_mask, _boxes * box_mask) / num_boxes  # noqa
+        self.iou_loss = self.mse(iou_pred * iou_mask, _ious * iou_mask) / num_boxes  # noqa
+
+        class_mask = class_mask.expand_as(prob_pred)
+        self.cls_loss = self.mse(prob_pred * class_mask, _classes * class_mask) / num_boxes  # noqa
+
+        total_loss = self.bbox_loss + self.iou_loss + self.cls_loss
+        return total_loss
+
+    def _build_target(self, bbox_pred_np, gt_boxes, gt_classes, dontcare,
+                      iou_pred_np, size_index):
+        """
+        :param bbox_pred: shape: (bsize, h x w, num_anchors, 4) :
+                          (sig(tx), sig(ty), exp(tw), exp(th))
+        """
+
+        bsize = bbox_pred_np.shape[0]
+
+        func = partial(_process_batch, size_index=size_index)
+        args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
+                 iou_pred_np[b])
+                for b in range(bsize))
+        targets = self.pool.map(func, args)
+
+        _boxes = np.stack(tuple((row[0] for row in targets)))
+        _ious = np.stack(tuple((row[1] for row in targets)))
+        _classes = np.stack(tuple((row[2] for row in targets)))
+        _box_mask = np.stack(tuple((row[3] for row in targets)))
+        _iou_mask = np.stack(tuple((row[4] for row in targets)))
+        _class_mask = np.stack(tuple((row[5] for row in targets)))
+
+        return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
+
+
+class Darknet19(nn.Module):
+    def __init__(self, num_classes=None, anchors=None):
         super(Darknet19, self).__init__()
 
         net_cfgs = [
@@ -167,25 +284,18 @@ class Darknet19(nn.Module):
         # stride*stride times the channels of conv1s
         self.reorg = ReorgLayer(stride=2)
         # cat [conv1s, conv3]
-        self.conv4, c4 = _make_layers((c1*(stride*stride) + c3), net_cfgs[7])
+        self.conv4, c4 = _make_layers(
+            (c1 * (stride * stride) + c3), net_cfgs[7])
+
+        self.num_classes = num_classes
+        self.anchors = anchors
 
         # linear
         out_channels = cfg.num_anchors * (cfg.num_classes + 5)
         self.conv5 = net_utils.Conv2d(c4, out_channels, 1, 1, relu=False)
         self.global_average_pool = nn.AvgPool2d((1, 1))
 
-        # train
-        self.bbox_loss = None
-        self.iou_loss = None
-        self.cls_loss = None
-        self.pool = Pool(processes=10)
-
-    @property
-    def loss(self):
-        return self.bbox_loss + self.iou_loss + self.cls_loss
-
-    def forward(self, im_data, gt_boxes=None, gt_classes=None, dontcare=None,
-                size_index=0):
+    def forward(self, im_data, ):
         conv1s = self.conv1s(im_data)
         conv2 = self.conv2(conv1s)
         conv3 = self.conv3(conv2)
@@ -193,83 +303,27 @@ class Darknet19(nn.Module):
         cat_1_3 = torch.cat([conv1s_reorg, conv3], 1)
         conv4 = self.conv4(cat_1_3)
         conv5 = self.conv5(conv4)   # batch_size, out_channels, h, w
-        global_average_pool = self.global_average_pool(conv5)
+        gapooled = self.global_average_pool(conv5)
 
         # for detection
         # bsize, c, h, w -> bsize, h, w, c ->
         #                   bsize, h x w, num_anchors, 5+num_classes
-        bsize, _, h, w = global_average_pool.size()
+        bsize, _, h, w = gapooled.size()
         # assert bsize == 1, 'detection only support one image per batch'
-        global_average_pool_reshaped = \
-            global_average_pool.permute(0, 2, 3, 1).contiguous().view(bsize,
-                                                                      -1, cfg.num_anchors, cfg.num_classes + 5)  # noqa
+        num_anchors = len(self.anchors)
+        gapooled_reshaped = gapooled.permute(0, 2, 3, 1).contiguous().view(
+            bsize, -1, num_anchors, self.num_classes + 5)
 
         # tx, ty, tw, th, to -> sig(tx), sig(ty), exp(tw), exp(th), sig(to)
-        xy_pred = F.sigmoid(global_average_pool_reshaped[:, :, :, 0:2])
-        wh_pred = torch.exp(global_average_pool_reshaped[:, :, :, 2:4])
+        xy_pred = F.sigmoid(gapooled_reshaped[:, :, :, 0:2])
+        wh_pred = torch.exp(gapooled_reshaped[:, :, :, 2:4])
         bbox_pred = torch.cat([xy_pred, wh_pred], 3)
-        iou_pred = F.sigmoid(global_average_pool_reshaped[:, :, :, 4:5])
+        iou_pred = F.sigmoid(gapooled_reshaped[:, :, :, 4:5])
 
-        score_pred = global_average_pool_reshaped[:, :, :, 5:].contiguous()
+        score_pred = gapooled_reshaped[:, :, :, 5:].contiguous()
         prob_pred = F.softmax(score_pred.view(-1, score_pred.size()[-1]), dim=1).view_as(score_pred)  # noqa
 
-        # for training
-        if self.training:
-            bbox_pred_np = bbox_pred.data.cpu().numpy()
-            iou_pred_np = iou_pred.data.cpu().numpy()
-            _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = \
-                self._build_target(bbox_pred_np,
-                                   gt_boxes,
-                                   gt_classes,
-                                   dontcare,
-                                   iou_pred_np,
-                                   size_index)
-
-            _boxes = net_utils.np_to_variable(_boxes)
-            _ious = net_utils.np_to_variable(_ious)
-            _classes = net_utils.np_to_variable(_classes)
-            box_mask = net_utils.np_to_variable(_box_mask,
-                                                dtype=torch.FloatTensor)
-            iou_mask = net_utils.np_to_variable(_iou_mask,
-                                                dtype=torch.FloatTensor)
-            class_mask = net_utils.np_to_variable(_class_mask,
-                                                  dtype=torch.FloatTensor)
-
-            num_boxes = sum((len(boxes) for boxes in gt_boxes))
-
-            # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
-            box_mask = box_mask.expand_as(_boxes)
-
-            self.bbox_loss = nn.MSELoss(size_average=False)(bbox_pred * box_mask, _boxes * box_mask) / num_boxes  # noqa
-            self.iou_loss = nn.MSELoss(size_average=False)(iou_pred * iou_mask, _ious * iou_mask) / num_boxes  # noqa
-
-            class_mask = class_mask.expand_as(prob_pred)
-            self.cls_loss = nn.MSELoss(size_average=False)(prob_pred * class_mask, _classes * class_mask) / num_boxes  # noqa
-
         return bbox_pred, iou_pred, prob_pred
-
-    def _build_target(self, bbox_pred_np, gt_boxes, gt_classes, dontcare,
-                      iou_pred_np, size_index):
-        """
-        :param bbox_pred: shape: (bsize, h x w, num_anchors, 4) :
-                          (sig(tx), sig(ty), exp(tw), exp(th))
-        """
-
-        bsize = bbox_pred_np.shape[0]
-
-        targets = self.pool.map(partial(_process_batch, size_index=size_index),
-                                ((bbox_pred_np[b], gt_boxes[b],
-                                  gt_classes[b], dontcare[b], iou_pred_np[b])
-                                 for b in range(bsize)))
-
-        _boxes = np.stack(tuple((row[0] for row in targets)))
-        _ious = np.stack(tuple((row[1] for row in targets)))
-        _classes = np.stack(tuple((row[2] for row in targets)))
-        _box_mask = np.stack(tuple((row[3] for row in targets)))
-        _iou_mask = np.stack(tuple((row[4] for row in targets)))
-        _class_mask = np.stack(tuple((row[5] for row in targets)))
-
-        return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
     def load_from_npz(self, fname, num_conv=None):
         dest_src = {'conv.weight': 'kernel', 'conv.bias': 'biases',
@@ -283,7 +337,7 @@ class Darknet19(nn.Module):
         for i, start in enumerate(range(0, len(keys), 5)):
             if num_conv is not None and i >= num_conv:
                 break
-            end = min(start+5, len(keys))
+            end = min(start + 5, len(keys))
             for key in keys[start:end]:
                 list_key = key.split('.')
                 ptype = dest_src['{}.{}'.format(list_key[-2], list_key[-1])]
@@ -295,7 +349,7 @@ class Darknet19(nn.Module):
                 own_dict[key].copy_(param)
 
 
-if __name__ == '__main__':
-    net = Darknet19()
-    # net.load_from_npz('models/yolo-voc.weights.npz')
-    net.load_from_npz('models/darknet19.weights.npz', num_conv=18)
+# if __name__ == '__main__':
+#     net = Darknet19()
+#     # net.load_from_npz('models/yolo-voc.weights.npz')
+#     net.load_from_npz('models/darknet19.weights.npz', num_conv=18)
