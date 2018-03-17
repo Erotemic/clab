@@ -21,30 +21,9 @@ class DarknetConfig(object):
         cfg.coord_scale = 1.0
         cfg.iou_thresh = 0.6
 
-        cfg.multi_scale_inp_size = [np.array([320, 320], dtype=np.int),
-                                    np.array([352, 352], dtype=np.int),
-                                    np.array([384, 384], dtype=np.int),
-                                    np.array([416, 416], dtype=np.int),
-                                    np.array([448, 448], dtype=np.int),
-                                    np.array([480, 480], dtype=np.int),
-                                    np.array([512, 512], dtype=np.int),
-                                    np.array([544, 544], dtype=np.int),
-                                    np.array([576, 576], dtype=np.int),
-                                    # np.array([608, 608], dtype=np.int),
-                                    ]   # w, h
-
-        multi_scale_inp_size = cfg.multi_scale_inp_size
-        cfg.multi_scale_out_size = [multi_scale_inp_size[0] / 32,
-                                    multi_scale_inp_size[1] / 32,
-                                    multi_scale_inp_size[2] / 32,
-                                    multi_scale_inp_size[3] / 32,
-                                    multi_scale_inp_size[4] / 32,
-                                    multi_scale_inp_size[5] / 32,
-                                    multi_scale_inp_size[6] / 32,
-                                    multi_scale_inp_size[7] / 32,
-                                    multi_scale_inp_size[8] / 32,
-                                    # multi_scale_inp_size[9] / 32,
-                                    ]   # w, h
+        base_wh = np.array([320, 320], dtype=np.int)
+        cfg.multi_scale_inp_size = [base_wh + (32 * i) for i in range(8)]
+        cfg.multi_scale_out_size = [s / 32 for s in cfg.multi_scale_inp_size]
 
         # # for voc
         # label_names = ('aeroplane', 'bicycle', 'bird', 'boat',
@@ -101,11 +80,15 @@ def _process_batch(data, size_index, num_classes, anchors):
         >>> _process_batch(data, size_index, num_classes, anchors)
     """
 
-    W, H = cfg.multi_scale_out_size[size_index]
-    inp_size = cfg.multi_scale_inp_size[size_index]
-    out_size = cfg.multi_scale_out_size[size_index]
+    # W, H = cfg.multi_scale_out_size[size_index]
 
     bbox_pred_np, gt_boxes, gt_classes, dontcares, iou_pred_np = data
+
+    # inp_size = cfg.multi_scale_inp_size[size_index]
+    # out_size = cfg.multi_scale_out_size[size_index]
+    inp_size = [32 * int(np.sqrt(bbox_pred_np.shape[0]))] * 2
+    out_size = [s / 32 for s in inp_size]
+    W, H = out_size
 
     # net output
     hw, num_anchors, _ = bbox_pred_np.shape
