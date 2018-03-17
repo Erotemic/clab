@@ -47,5 +47,4 @@ cdef yolo_to_bbox_c(
                     bbox_out[b, ind, a, 1] = cy - bh
                     bbox_out[b, ind, a, 2] = cx + bw
                     bbox_out[b, ind, a, 3] = cy + bh
-
     return bbox_out

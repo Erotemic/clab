@@ -87,6 +87,20 @@ def _make_layers(in_channels, net_cfg):
 
 
 def _process_batch(data, size_index, num_classes, anchors):
+    """
+    Example:
+        >>> bbox_pred_np = np.random.randn(9, 5, 4)
+        >>> gt_boxes = np.random.randn(1, 4)
+        >>> gt_classes = (np.random.randn(1,) * 20).astype(np.int)
+        >>> dontcares = np.empty((0,))
+        >>> iou_pred_np = np.random.randn(9, 5, 1)
+        >>> data = (bbox_pred_np, gt_boxes, gt_classes, dontcares, iou_pred_np)
+        >>> size_index = 0
+        >>> num_classes = 20
+        >>> anchors = np.random.randn(5, 2)
+        >>> _process_batch(data, size_index, num_classes, anchors)
+    """
+
     W, H = cfg.multi_scale_out_size[size_index]
     inp_size = cfg.multi_scale_inp_size[size_index]
     out_size = cfg.multi_scale_out_size[size_index]
@@ -110,10 +124,35 @@ def _process_batch(data, size_index, num_classes, anchors):
 
     # scale pred_bbox
     anchors = np.ascontiguousarray(anchors, dtype=np.float)
-    bbox_pred_np = np.expand_dims(bbox_pred_np, 0)
-    bbox_np = yolo_to_bbox(
-        np.ascontiguousarray(bbox_pred_np, dtype=np.float),
-        anchors, H, W)
+    bbox_pred_np_ = np.expand_dims(bbox_pred_np, 0)
+    bbox_pred = np.ascontiguousarray(bbox_pred_np_, dtype=np.float)
+
+    def yolo_to_bbox_py(bbox_pred, anchors, H, W):
+        H = int(H)
+        W = int(W)
+        bsize = bbox_pred.shape[0]
+        num_anchors = anchors.shape[0]
+        bbox_out = np.zeros((bsize, H * W, num_anchors, 4), dtype=np.float)
+        for b in range(bsize):
+            for row in range(H):
+                for col in range(W):
+                    ind = row * W + col
+                    for a in range(num_anchors):
+                        cx = (bbox_pred[b, ind, a, 0] + col) / W
+                        cy = (bbox_pred[b, ind, a, 1] + row) / H
+                        bw = bbox_pred[b, ind, a, 2] * anchors[a][0] / W * 0.5
+                        bh = bbox_pred[b, ind, a, 3] * anchors[a][1] / H * 0.5
+
+                        bbox_out[b, ind, a, 0] = cx - bw
+                        bbox_out[b, ind, a, 1] = cy - bh
+                        bbox_out[b, ind, a, 2] = cx + bw
+                        bbox_out[b, ind, a, 3] = cy + bh
+        return bbox_out
+        pass
+
+
+
+    bbox_np = yolo_to_bbox(bbox_pred, anchors, H, W)
     # bbox_np = (hw, num_anchors, (x1, y1, x2, y2))   range: 0 ~ 1
     bbox_np = bbox_np[0]
     bbox_np[:, :, 0::2] *= float(inp_size[0])  # rescale x
@@ -143,10 +182,10 @@ def _process_batch(data, size_index, num_classes, anchors):
     target_boxes = np.empty(gt_boxes_b.shape, dtype=np.float)
     target_boxes[:, 0] = cx - np.floor(cx)  # cx
     target_boxes[:, 1] = cy - np.floor(cy)  # cy
-    target_boxes[:, 2] = \
-        (gt_boxes_b[:, 2] - gt_boxes_b[:, 0]) / inp_size[0] * out_size[0]  # tw
-    target_boxes[:, 3] = \
-        (gt_boxes_b[:, 3] - gt_boxes_b[:, 1]) / inp_size[1] * out_size[1]  # th
+    target_boxes[:, 2] = ((gt_boxes_b[:, 2] - gt_boxes_b[:, 0]) /
+                          inp_size[0] * out_size[0])  # tw
+    target_boxes[:, 3] = ((gt_boxes_b[:, 3] - gt_boxes_b[:, 1]) /
+                          inp_size[1] * out_size[1])  # th
 
     # for each gt boxes, match the best anchor
     gt_boxes_resize = np.copy(gt_boxes_b)
@@ -196,7 +235,7 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
         >>> bbox_pred, iou_pred, prob_pred = output
         >>> gt_boxes = np.array([[[0, 0, 10, 10]]])
         >>> gt_classes = np.array([[1]])
-        >>> dontcare = np.array([[1]])
+        >>> dontcare = np.array([[]])
         >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare)
     """
     def __init__(criterion, anchors, workers=None):
@@ -217,7 +256,6 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
 
     def forward(criterion, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
                 gt_classes=None, dontcare=None, size_index=0):
-        # for training
         bbox_pred_np = bbox_pred.data.cpu().numpy()
         iou_pred_np = iou_pred.data.cpu().numpy()
 
@@ -243,11 +281,14 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
         # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
         box_mask = box_mask.expand_as(_boxes)
 
-        criterion.bbox_loss = criterion.mse(bbox_pred * box_mask, _boxes * box_mask) / num_boxes  # noqa
-        criterion.iou_loss = criterion.mse(iou_pred * iou_mask, _ious * iou_mask) / num_boxes  # noqa
+        criterion.bbox_loss = criterion.mse(bbox_pred * box_mask,
+                                            _boxes * box_mask) / num_boxes
+        criterion.iou_loss = criterion.mse(iou_pred * iou_mask,
+                                           _ious * iou_mask) / num_boxes
 
         class_mask = class_mask.expand_as(prob_pred)
-        criterion.cls_loss = criterion.mse(prob_pred * class_mask, _classes * class_mask) / num_boxes  # noqa
+        criterion.cls_loss = criterion.mse(prob_pred * class_mask,
+                                           _classes * class_mask) / num_boxes
 
         total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
         return total_loss
@@ -260,12 +301,12 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
         """
 
         bsize = bbox_pred_np.shape[0]
-
         func = partial(_process_batch, size_index=size_index,
                        num_classes=num_classes, anchors=anchors)
         args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
                  iou_pred_np[b])
                 for b in range(bsize))
+        args = list(args)
 
         if criterion.pool:
             targets = criterion.pool.map(func, args)
@@ -362,7 +403,8 @@ class Darknet19(nn.Module):
 
         score_pred = gapooled_reshaped[:, :, :, 5:].contiguous()
         # TODO: do we do heirarchy stuff here?
-        prob_pred = F.softmax(score_pred.view(-1, score_pred.size()[-1]), dim=1).view_as(score_pred)  # noqa
+        score_energy = score_pred.view(-1, score_pred.size()[-1])
+        prob_pred = F.softmax(score_energy, dim=1).view_as(score_pred)
 
         return bbox_pred, iou_pred, prob_pred
 
