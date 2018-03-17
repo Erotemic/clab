@@ -37,8 +37,9 @@ Pypi:
 """
 from setuptools import setup, find_packages
 import os
+import sys
 import numpy as np
-from os.path import dirname, join, exists
+from os.path import dirname, join, exists, abspath
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 
@@ -187,7 +188,7 @@ def locate_cuda():
     return cudaconfig
 
 
-CUDA = locate_cuda()
+CUDACONFIG = locate_cuda()
 
 # Obtain the numpy include directory.  This logic works across numpy versions.
 try:
@@ -220,7 +221,7 @@ def customize_compiler_for_nvcc(self):
         print(extra_postargs)
         if os.path.splitext(src)[1] == '.cu':
             # use the cuda for .cu files
-            self.set_executable('compiler_so', CUDA['nvcc'])
+            self.set_executable('compiler_so', CUDACONFIG['nvcc'])
             # use only a subset of the extra_postargs, which are 1-1 translated
             # from the extra_compile_args in the Extension class
             postargs = extra_postargs['nvcc']
@@ -251,23 +252,25 @@ class custom_build_ext(build_ext):
 ext_modules = []
 
 
-yolo_util_prefix = 'clab.models.yolo2.utils.'
+yolo_util_m = 'clab.models.yolo2.utils.'
+yolo_util_p = yolo_util_m.replace('.', os.path.sep)
+
 ext_modules += [
     Extension(
-        yolo_util_prefix + "nms.cython_bbox",
-        ["clab/models/yolo2/utils/nms/cython_bbox.pyx"],
+        yolo_util_m + "cython_bbox",
+        [join(yolo_util_p, "cython_bbox.pyx")],
         extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
         include_dirs=[numpy_include]
     ),
     Extension(
-        "clab.models.yolo2.utils.nms.cython_yolo",
-        ["clab/models/yolo2/utils/nms/cython_yolo.pyx"],
+        yolo_util_m + "cython_yolo",
+        [join(yolo_util_p, "cython_yolo.pyx")],
         extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
         include_dirs=[numpy_include]
     ),
     Extension(
-        "clab.models.yolo2.utils.nms.cpu_nms",
-        ["clab/models/yolo2/utils/nms/cpu_nms.pyx"],
+        yolo_util_m + "nms.cpu_nms",
+        [join(yolo_util_p, "nms/cpu_nms.pyx")],
         extra_compile_args={'gcc': ["-Wno-cpp", "-Wno-unused-function"]},
         include_dirs=[numpy_include]
     ),
@@ -275,23 +278,25 @@ ext_modules += [
 
 ext_modules += [
     Extension(
-        'clab.models.yolo2.utils.pycocotools._mask',
-        sources=['clab/models/yolo2/utils/pycocotools/maskApi.c',
-                 'clab/models/yolo2/utils/pycocotools/_mask.pyx'],
-        include_dirs=[numpy_include, 'clab/models/yolo2/utils/pycocotools'],
+        yolo_util_m + 'pycocotools._mask',
+        sources=[
+            join(yolo_util_p, 'pycocotools/maskApi.c'),
+            join(yolo_util_p, 'pycocotools/_mask.pyx'),
+        ],
+        include_dirs=[numpy_include, join(yolo_util_p, 'pycocotools')],
         extra_compile_args={
             'gcc': ['-Wno-cpp', '-Wno-unused-function', '-std=c99']},
     ),
 ]
 
 ext_modules += [
-    Extension('clab.models.yolo2.utils.nms.gpu_nms',
-              ['clab/models/yolo2/utils/nms/nms_kernel.cu',
-               'clab/models/yolo2/utils/nms/gpu_nms.pyx'],
-              library_dirs=[CUDA['lib64']],
+    Extension(yolo_util_m + 'nms.gpu_nms',
+              [join(yolo_util_p, 'nms/nms_kernel.cu'),
+               join(yolo_util_p, 'nms/gpu_nms.pyx')],
+              library_dirs=[CUDACONFIG['lib64']],
               libraries=['cudart'],
               language='c++',
-              runtime_library_dirs=[CUDA['lib64']],
+              runtime_library_dirs=[CUDACONFIG['lib64']],
               # this syntax is specific to this build system
               # we're only going to use certain compiler args with
               # nvcc and not with gcc
@@ -303,7 +308,7 @@ ext_modules += [
                                            '-c',
                                            '--compiler-options',
                                            "'-fPIC'"]},
-              include_dirs=[numpy_include, CUDA['include']]
+              include_dirs=[numpy_include, CUDACONFIG['include']]
               ),
 ]
 
@@ -315,7 +320,7 @@ class TorchExtension(object):
     TODO: is there a better way to do this?
     """
 
-    def __init__(self, name, sources, cuda_sources, extra_compile_args,
+    def __init__(self, name, sources, cuda_sources, extra_compile_args={},
                  with_cuda=True):
         self.name = name
         self.sources = sources
@@ -324,57 +329,89 @@ class TorchExtension(object):
         self.with_cuda = with_cuda
 
     def build(self):
+        from torch.utils.ffi import create_extension
+        import ubelt as ub
 
-        c_sources = [p.endswith('.c') for p in self.sources]
-        c_headers = [p.endswith('.h') for p in self.sources]
+        sources = [p for p in self.sources if p.endswith('.c')]
+        headers = [p for p in self.sources if p.endswith('.h')]
+        cu_sources = [p for p in self.cuda_sources if p.endswith('.cu')]
 
-        c_cuda_sources = [p.endswith('.c') for p in self.cuda_sources]
-        c_cuda_headers = [p.endswith('.h') for p in self.cuda_sources]
+        extra_objects = []
+        defines = []
+        if self.with_cuda:
+            sources = [p for p in self.cuda_sources if p.endswith('.c')]
+            headers = [p for p in self.cuda_sources if p.endswith('.h')]
+            cu_objects = [p + '.o' for p in cu_sources]
 
-        cu_sources = [p.endswith('.cu') for p in self.cuda_sources]
+            extra = ' '.join(self.extra_compile_args.get('nvcc', []))
+            command_fmt = '{nvcc_exe} -c -o {cu_objects} {cu_sources} {extra}'
+            command = command_fmt.format(
+                nvcc_exe=CUDACONFIG['nvcc'],
+                cu_objects=' '.join(cu_objects),
+                cu_sources=' '.join(cu_sources),
+                extra=extra,
+            )
+            info = ub.cmd(command, verbout=1, verbose=2)
+            if info['ret'] != 0:
+                raise Exception('Failed to build extension ' + self.name)
 
-        cu_objects = [p + 'o' for p in cu_sources]
+            for fpath in cu_objects:
+                if not exists(fpath):
+                    raise Exception('Object {} does not exist'.format(fpath))
 
+            extra_objects += [abspath(p) for p in cu_objects]
+            defines += [('WITH_CUDA', None)]
+
+        ffi = create_extension(
+            self.name,
+            headers=headers,
+            sources=sources,
+            define_macros=defines,
+            relative_to=__file__,
+            with_cuda=self.with_cuda,
+            extra_objects=extra_objects,
+            # extra_compile_args=self.extra_compile_args
+        )
+        ffi.build()
 
 yolo_layers_m = 'clab.models.yolo2.layers.'
 yolo_layers_p = yolo_layers_m.replace('.', os.path.sep)
-torch_ffi_ext_modules += [
+
+# Is there a better way to incorporate these into normal ext_modules
+torch_ffi_ext_modules = [
+    TorchExtension(
+        yolo_layers_m + 'roi_pooling._ext.roi_pooling',
+        sources=[
+            join(yolo_layers_p, 'roi_pooling/src/roi_pooling.c'),
+            join(yolo_layers_p, 'roi_pooling/src/roi_pooling.h')
+        ],
+        cuda_sources=[
+            join(yolo_layers_p, 'roi_pooling/src/cuda/roi_pooling_kernel.cu'),
+            join(yolo_layers_p, 'roi_pooling/src/roi_pooling_cuda.c'),
+            join(yolo_layers_p, 'roi_pooling/src/roi_pooling_cuda.h')
+        ],
+        extra_compile_args={
+            'gcc': ["-Wno-unused-function"],
+            'nvcc': '-x cu -Xcompiler -fPIC -arch=sm_52'.split(' ')
+        }
+    ),
     TorchExtension(
         yolo_layers_m + 'reorg._ext.reorg_layer',
         sources=[
-            join(yolo_layers_p, 'reorg/src/reorg_cuda_kernel.cu'),
             join(yolo_layers_p, 'reorg/src/reorg_cpu.c'),
             join(yolo_layers_p, 'reorg/src/reorg_cpu.h')
         ],
         cuda_sources=[
-            join(yolo_layers_p, 'src/reorg_cuda.c'),
-            join(yolo_layers_p, 'src/reorg_cuda.h')
+            join(yolo_layers_p, 'reorg/src/reorg_cuda_kernel.cu'),
+            join(yolo_layers_p, 'reorg/src/reorg_cuda.c'),
+            join(yolo_layers_p, 'reorg/src/reorg_cuda.h')
         ],
+        extra_compile_args={
+            'gcc': ["-Wno-unused-function"],
+            'nvcc': '-x cu -Xcompiler -fPIC -arch=sm_52'.split(' ')
+        }
+    ),
 ]
-
-
-ext_modules = []
-
-ext_modules += [
-    Extension(yolo_layers_m + 'reorg._ext.reorg_layer',
-              [
-                  join(yolo_layers_p, 'reorg/src/reorg_cuda_kernel.cu'),
-              ],
-              library_dirs=[CUDA['lib64']],
-              libraries=['cudart'],
-              language='c++',
-              runtime_library_dirs=[CUDA['lib64']],
-              # args for nvcc_customizer_compiler
-              extra_compile_args={'gcc': ["-Wno-unused-function"],
-                                  'nvcc': ['-arch=sm_35',
-                                           '--ptxas-options=-v',
-                                           '-c',
-                                           '--compiler-options',
-                                           "'-fPIC'"]},
-              include_dirs=[numpy_include, CUDA['include']]
-              ),
-]
-
 
 if __name__ == '__main__':
 
@@ -383,6 +420,11 @@ if __name__ == '__main__':
         ('opencv_python', 'cv2'),
         ('pytorch', 'torch'),
     ]))
+
+    if 'build_ext' in sys.argv:
+        # hack hack hack
+        for ext in torch_ffi_ext_modules:
+            ext.build()
 
     setup(
         name='clab',
