@@ -7,7 +7,7 @@ from .utils import network as net_utils
 # from .cfgs import config as cfg
 from .layers.reorg.reorg_layer import ReorgLayer
 from .utils.cython_bbox import bbox_ious, anchor_intersections
-from .utils.cython_yolo import yolo_to_bbox
+from .utils import yolo
 from functools import partial
 
 from multiprocessing import Pool
@@ -110,32 +110,7 @@ def _process_batch(data, size_index, num_classes, anchors):
     bbox_pred_np_ = np.expand_dims(bbox_pred_np, 0)
     bbox_pred = np.ascontiguousarray(bbox_pred_np_, dtype=np.float)
 
-    def yolo_to_bbox_py(bbox_pred, anchors, H, W):
-        H = int(H)
-        W = int(W)
-        bsize = bbox_pred.shape[0]
-        num_anchors = anchors.shape[0]
-        bbox_out = np.zeros((bsize, H * W, num_anchors, 4), dtype=np.float)
-        for b in range(bsize):
-            for row in range(H):
-                for col in range(W):
-                    ind = row * W + col
-                    for a in range(num_anchors):
-                        cx = (bbox_pred[b, ind, a, 0] + col) / W
-                        cy = (bbox_pred[b, ind, a, 1] + row) / H
-                        bw = bbox_pred[b, ind, a, 2] * anchors[a][0] / W * 0.5
-                        bh = bbox_pred[b, ind, a, 3] * anchors[a][1] / H * 0.5
-
-                        bbox_out[b, ind, a, 0] = cx - bw
-                        bbox_out[b, ind, a, 1] = cy - bh
-                        bbox_out[b, ind, a, 2] = cx + bw
-                        bbox_out[b, ind, a, 3] = cy + bh
-        return bbox_out
-        pass
-
-
-
-    bbox_np = yolo_to_bbox(bbox_pred, anchors, H, W)
+    bbox_np = yolo.yolo_to_bbox(bbox_pred, anchors, H, W)
     # bbox_np = (hw, num_anchors, (x1, y1, x2, y2))   range: 0 ~ 1
     bbox_np = bbox_np[0]
     bbox_np[:, :, 0::2] *= float(inp_size[0])  # rescale x

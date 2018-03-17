@@ -6,6 +6,29 @@ from ..nms_wrapper import nms
 from ..cython_yolo import yolo_to_bbox
 
 
+def yolo_to_bbox_py(bbox_pred, anchors, H, W):
+    H = int(H)
+    W = int(W)
+    bsize = bbox_pred.shape[0]
+    num_anchors = anchors.shape[0]
+    bbox_out = np.zeros((bsize, H * W, num_anchors, 4), dtype=np.float)
+    for b in range(bsize):
+        for row in range(H):
+            for col in range(W):
+                ind = row * W + col
+                for a in range(num_anchors):
+                    cx = (bbox_pred[b, ind, a, 0] + col) / W
+                    cy = (bbox_pred[b, ind, a, 1] + row) / H
+                    bw = bbox_pred[b, ind, a, 2] * anchors[a][0] / W * 0.5
+                    bh = bbox_pred[b, ind, a, 3] * anchors[a][1] / H * 0.5
+
+                    bbox_out[b, ind, a, 0] = cx - bw
+                    bbox_out[b, ind, a, 1] = cy - bh
+                    bbox_out[b, ind, a, 2] = cx + bw
+                    bbox_out[b, ind, a, 3] = cy + bh
+    return bbox_out
+
+
 def clip_boxes(boxes, im_shape):
     """
     Clip boxes to image boundaries.
