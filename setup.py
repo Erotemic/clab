@@ -339,8 +339,8 @@ class TorchExtension(object):
         extra_objects = []
         defines = []
         if self.with_cuda:
-            sources = [p for p in self.cuda_sources if p.endswith('.c')]
-            headers = [p for p in self.cuda_sources if p.endswith('.h')]
+            sources += [p for p in self.cuda_sources if p.endswith('.c')]
+            headers += [p for p in self.cuda_sources if p.endswith('.h')]
             cu_objects = [p + '.o' for p in cu_sources]
 
             extra = ' '.join(self.extra_compile_args.get('nvcc', []))
@@ -378,40 +378,50 @@ yolo_layers_m = 'clab.models.yolo2.layers.'
 yolo_layers_p = yolo_layers_m.replace('.', os.path.sep)
 
 # Is there a better way to incorporate these into normal ext_modules
-torch_ffi_ext_modules = [
-    TorchExtension(
-        yolo_layers_m + 'roi_pooling._ext.roi_pooling',
-        sources=[
-            join(yolo_layers_p, 'roi_pooling/src/roi_pooling.c'),
-            join(yolo_layers_p, 'roi_pooling/src/roi_pooling.h')
-        ],
-        cuda_sources=[
-            join(yolo_layers_p, 'roi_pooling/src/cuda/roi_pooling_kernel.cu'),
-            join(yolo_layers_p, 'roi_pooling/src/roi_pooling_cuda.c'),
-            join(yolo_layers_p, 'roi_pooling/src/roi_pooling_cuda.h')
-        ],
-        extra_compile_args={
-            'gcc': ["-Wno-unused-function"],
-            'nvcc': '-x cu -Xcompiler -fPIC -arch=sm_52'.split(' ')
-        }
-    ),
-    TorchExtension(
-        yolo_layers_m + 'reorg._ext.reorg_layer',
-        sources=[
-            join(yolo_layers_p, 'reorg/src/reorg_cpu.c'),
-            join(yolo_layers_p, 'reorg/src/reorg_cpu.h')
-        ],
-        cuda_sources=[
-            join(yolo_layers_p, 'reorg/src/reorg_cuda_kernel.cu'),
-            join(yolo_layers_p, 'reorg/src/reorg_cuda.c'),
-            join(yolo_layers_p, 'reorg/src/reorg_cuda.h')
-        ],
-        extra_compile_args={
-            'gcc': ["-Wno-unused-function"],
-            'nvcc': '-x cu -Xcompiler -fPIC -arch=sm_52'.split(' ')
-        }
-    ),
-]
+reorg_ext = TorchExtension(
+    yolo_layers_m + 'reorg._ext.reorg_layer',
+    sources=[
+        join(yolo_layers_p, 'reorg/src/reorg_cpu.c'),
+        join(yolo_layers_p, 'reorg/src/reorg_cpu.h')
+    ],
+    cuda_sources=[
+        join(yolo_layers_p, 'reorg/src/reorg_cuda_kernel.cu'),
+        join(yolo_layers_p, 'reorg/src/reorg_cuda.c'),
+        join(yolo_layers_p, 'reorg/src/reorg_cuda.h')
+    ],
+    extra_compile_args={
+        'gcc': ["-Wno-unused-function"],
+        'nvcc': '-x cu -Xcompiler -fPIC -arch=sm_52'.split(' ')
+    }
+)
+
+# reorg_ext.build()
+# from clab.models.yolo2.layers.reorg import reorg_layer
+# from clab.models.yolo2.layers.reorg._ext.reorg_layer import _reorg_layer
+# print('reorg_layer = {!r}'.format(dir(reorg_layer)))
+# print('reorg_layer.reorg_layer = {!r}'.format(dir(reorg_layer.reorg_layer)))
+# import ubelt as ub
+# print('_reorg_layer = {}'.format(ub.repr2(dir(_reorg_layer.lib))))
+# sys.exit(0)
+
+roi_ext = TorchExtension(
+    yolo_layers_m + 'roi_pooling._ext.roi_pooling',
+    sources=[
+        join(yolo_layers_p, 'roi_pooling/src/roi_pooling.c'),
+        join(yolo_layers_p, 'roi_pooling/src/roi_pooling.h')
+    ],
+    cuda_sources=[
+        join(yolo_layers_p, 'roi_pooling/src/cuda/roi_pooling_kernel.cu'),
+        join(yolo_layers_p, 'roi_pooling/src/roi_pooling_cuda.c'),
+        join(yolo_layers_p, 'roi_pooling/src/roi_pooling_cuda.h')
+    ],
+    extra_compile_args={
+        'gcc': ["-Wno-unused-function"],
+        'nvcc': '-x cu -Xcompiler -fPIC -arch=sm_52'.split(' ')
+    }
+)
+
+torch_ffi_ext_modules = [reorg_ext, roi_ext]
 
 if __name__ == '__main__':
 

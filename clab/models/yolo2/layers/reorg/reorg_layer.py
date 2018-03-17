@@ -4,6 +4,14 @@ from ._ext import reorg_layer
 
 
 class ReorgFunction(Function):
+    """
+    Example:
+        >>> x = torch.randn(5, 512, 13, 13)
+        >>> self = ReorgFunction()
+        >>> out = self.forward(x)
+        >>> print(tuple(out.shape))
+        (5, 2048, 6, 6)
+    """
     def __init__(self, stride=2):
         self.stride = stride
 

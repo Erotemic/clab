@@ -46,17 +46,17 @@ class DarknetConfig(object):
                                     # multi_scale_inp_size[9] / 32,
                                     ]   # w, h
 
-        # for voc
-        label_names = ('aeroplane', 'bicycle', 'bird', 'boat',
-                       'bottle', 'bus', 'car', 'cat', 'chair',
-                       'cow', 'diningtable', 'dog', 'horse',
-                       'motorbike', 'person', 'pottedplant',
-                       'sheep', 'sofa', 'train', 'tvmonitor')
-        # cfg.num_classes = len(label_names)
-        anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
-                              (6.63, 11.38), (9.42, 5.11), (16.62, 10.52)],
-                             dtype=np.float)
-        num_anchors = len(anchors)
+        # # for voc
+        # label_names = ('aeroplane', 'bicycle', 'bird', 'boat',
+        #                'bottle', 'bus', 'car', 'cat', 'chair',
+        #                'cow', 'diningtable', 'dog', 'horse',
+        #                'motorbike', 'person', 'pottedplant',
+        #                'sheep', 'sofa', 'train', 'tvmonitor')
+        # # cfg.num_classes = len(label_names)
+        # anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
+        #                       (6.63, 11.38), (9.42, 5.11), (16.62, 10.52)],
+        #                      dtype=np.float)
+        # num_anchors = len(anchors)
 
 
 cfg = DarknetConfig()
@@ -86,7 +86,7 @@ def _make_layers(in_channels, net_cfg):
     return nn.Sequential(*layers), in_channels
 
 
-def _process_batch(data, size_index, num_classes):
+def _process_batch(data, size_index, num_classes, anchors):
     W, H = cfg.multi_scale_out_size[size_index]
     inp_size = cfg.multi_scale_inp_size[size_index]
     out_size = cfg.multi_scale_out_size[size_index]
@@ -97,7 +97,7 @@ def _process_batch(data, size_index, num_classes):
     hw, num_anchors, _ = bbox_pred_np.shape
 
     # gt
-    _classes = np.zeros([hw, num_anchors, cfg.num_classes], dtype=np.float)
+    _classes = np.zeros([hw, num_anchors, num_classes], dtype=np.float)
     _class_mask = np.zeros([hw, num_anchors, 1], dtype=np.float)
 
     _ious = np.zeros([hw, num_anchors, 1], dtype=np.float)
@@ -109,7 +109,7 @@ def _process_batch(data, size_index, num_classes):
     _box_mask = np.zeros([hw, num_anchors, 1], dtype=np.float) + 0.01
 
     # scale pred_bbox
-    anchors = np.ascontiguousarray(cfg.anchors, dtype=np.float)
+    anchors = np.ascontiguousarray(anchors, dtype=np.float)
     bbox_pred_np = np.expand_dims(bbox_pred_np, 0)
     bbox_np = yolo_to_bbox(
         np.ascontiguousarray(bbox_pred_np, dtype=np.float),
@@ -186,23 +186,46 @@ def _process_batch(data, size_index, num_classes):
 
 
 class DarknetLoss(torch.nn.modules.loss._Loss):
-    def __init__(self):
+    """
+    Example:
+        >>> from clab.models.yolo2.darknet import *
+        >>> self = Darknet19(num_classes=20)
+        >>> criterion = DarknetLoss(self.anchors)
+        >>> im_data = torch.randn(1, 3, 100, 100)
+        >>> output = self(im_data)
+        >>> bbox_pred, iou_pred, prob_pred = output
+        >>> gt_boxes = np.array([[[0, 0, 10, 10]]])
+        >>> gt_classes = np.array([[1]])
+        >>> dontcare = np.array([[1]])
+        >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare)
+    """
+    def __init__(criterion, anchors, workers=None):
         # train
-        self.bbox_loss = None
-        self.iou_loss = None
-        self.cls_loss = None
-        self.pool = Pool(processes=10)
+        super(DarknetLoss, criterion).__init__()
+        criterion.bbox_loss = None
+        criterion.iou_loss = None
+        criterion.cls_loss = None
 
-        self.mse = nn.MSELoss(size_average=False)
+        if workers is None:
+            criterion.pool = None
+        else:
+            criterion.pool = Pool(processes=workers)
 
-    def forward(self, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
+        criterion.anchors = anchors
+
+        criterion.mse = nn.MSELoss(size_average=False)
+
+    def forward(criterion, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
                 gt_classes=None, dontcare=None, size_index=0):
         # for training
         bbox_pred_np = bbox_pred.data.cpu().numpy()
         iou_pred_np = iou_pred.data.cpu().numpy()
 
-        _tup = self._build_target(bbox_pred_np, gt_boxes, gt_classes, dontcare,
-                                  iou_pred_np, size_index)
+        num_classes = prob_pred.shape[-1]
+
+        _tup = criterion._build_target(bbox_pred_np, gt_boxes, gt_classes,
+                                       dontcare, iou_pred_np, size_index,
+                                       num_classes, criterion.anchors)
         _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
 
         _boxes = net_utils.np_to_variable(_boxes)
@@ -220,17 +243,17 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
         # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
         box_mask = box_mask.expand_as(_boxes)
 
-        self.bbox_loss = self.mse(bbox_pred * box_mask, _boxes * box_mask) / num_boxes  # noqa
-        self.iou_loss = self.mse(iou_pred * iou_mask, _ious * iou_mask) / num_boxes  # noqa
+        criterion.bbox_loss = criterion.mse(bbox_pred * box_mask, _boxes * box_mask) / num_boxes  # noqa
+        criterion.iou_loss = criterion.mse(iou_pred * iou_mask, _ious * iou_mask) / num_boxes  # noqa
 
         class_mask = class_mask.expand_as(prob_pred)
-        self.cls_loss = self.mse(prob_pred * class_mask, _classes * class_mask) / num_boxes  # noqa
+        criterion.cls_loss = criterion.mse(prob_pred * class_mask, _classes * class_mask) / num_boxes  # noqa
 
-        total_loss = self.bbox_loss + self.iou_loss + self.cls_loss
+        total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
         return total_loss
 
-    def _build_target(self, bbox_pred_np, gt_boxes, gt_classes, dontcare,
-                      iou_pred_np, size_index):
+    def _build_target(criterion, bbox_pred_np, gt_boxes, gt_classes, dontcare,
+                      iou_pred_np, size_index, num_classes, anchors):
         """
         :param bbox_pred: shape: (bsize, h x w, num_anchors, 4) :
                           (sig(tx), sig(ty), exp(tw), exp(th))
@@ -238,11 +261,16 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
 
         bsize = bbox_pred_np.shape[0]
 
-        func = partial(_process_batch, size_index=size_index)
+        func = partial(_process_batch, size_index=size_index,
+                       num_classes=num_classes, anchors=anchors)
         args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
                  iou_pred_np[b])
                 for b in range(bsize))
-        targets = self.pool.map(func, args)
+
+        if criterion.pool:
+            targets = criterion.pool.map(func, args)
+        else:
+            targets = list(map(func, args))
 
         _boxes = np.stack(tuple((row[0] for row in targets)))
         _ious = np.stack(tuple((row[1] for row in targets)))
@@ -255,8 +283,20 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
 
 
 class Darknet19(nn.Module):
+    """
+    Example:
+        >>> from clab.models.yolo2.darknet import *
+        >>> self = Darknet19(num_classes=20)
+        >>> im_data = torch.randn(1, 3, 221, 221)
+        >>> output = self(im_data)
+        >>> bbox_pred, iou_pred, prob_pred = output
+    """
     def __init__(self, num_classes=None, anchors=None):
         super(Darknet19, self).__init__()
+
+        if anchors is None:
+            anchors = np.array([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
+                                (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
 
         net_cfgs = [
             # conv1s
@@ -287,15 +327,16 @@ class Darknet19(nn.Module):
         self.conv4, c4 = _make_layers(
             (c1 * (stride * stride) + c3), net_cfgs[7])
 
-        self.num_classes = num_classes
         self.anchors = anchors
+        self.num_classes = num_classes
+        self.num_anchors = len(self.anchors)
 
         # linear
-        out_channels = cfg.num_anchors * (cfg.num_classes + 5)
+        out_channels = self.num_anchors * (self.num_classes + 5)
         self.conv5 = net_utils.Conv2d(c4, out_channels, 1, 1, relu=False)
         self.global_average_pool = nn.AvgPool2d((1, 1))
 
-    def forward(self, im_data, ):
+    def forward(self, im_data):
         conv1s = self.conv1s(im_data)
         conv2 = self.conv2(conv1s)
         conv3 = self.conv3(conv2)
@@ -310,9 +351,8 @@ class Darknet19(nn.Module):
         #                   bsize, h x w, num_anchors, 5+num_classes
         bsize, _, h, w = gapooled.size()
         # assert bsize == 1, 'detection only support one image per batch'
-        num_anchors = len(self.anchors)
         gapooled_reshaped = gapooled.permute(0, 2, 3, 1).contiguous().view(
-            bsize, -1, num_anchors, self.num_classes + 5)
+            bsize, -1, self.num_anchors, self.num_classes + 5)
 
         # tx, ty, tw, th, to -> sig(tx), sig(ty), exp(tw), exp(th), sig(to)
         xy_pred = F.sigmoid(gapooled_reshaped[:, :, :, 0:2])
@@ -321,6 +361,7 @@ class Darknet19(nn.Module):
         iou_pred = F.sigmoid(gapooled_reshaped[:, :, :, 4:5])
 
         score_pred = gapooled_reshaped[:, :, :, 5:].contiguous()
+        # TODO: do we do heirarchy stuff here?
         prob_pred = F.softmax(score_pred.view(-1, score_pred.size()[-1]), dim=1).view_as(score_pred)  # noqa
 
         return bbox_pred, iou_pred, prob_pred
