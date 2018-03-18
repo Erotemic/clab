@@ -515,7 +515,19 @@ def setup_harness():
 
 
 def train():
+    """
+    python ~/code/clab/examples/yolo.py train
+    """
     harn = setup_harness()
-
     harn.setup_dpath(ub.ensuredir(cfg.workdir))
-    # harn.run()
+    harn.run()
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        export PYTHONPATH=$PYTHONPATH:/home/joncrall/code/clab/examples
+        python ~/code/clab/examples/yolo.py
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
