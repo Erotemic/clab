@@ -315,7 +315,10 @@ class HyperParams(object):
                     v = v.numpy()
                 if isinstance(v, np.ndarray):
                     if v.dtype.kind == 'f':
-                        v = list(map(float, v))
+                        try:
+                            v = list(map(float, v))
+                        except Exception:
+                            v = v.tolist()
                     else:
                         raise NotImplementedError()
                 d[k] = v
