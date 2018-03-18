@@ -141,6 +141,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
 
         self.num_classes = len(self.label_names)
         self.num_anchors = len(self.anchors)
+        self.input_id = 'voc2007_' + self.split
 
     @classmethod
     def ensure_voc2007(cls, dpath=None, force=False):
