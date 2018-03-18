@@ -475,7 +475,6 @@ def train():
             >>> harn.initialize_training()
             >>> batch = harn._demo_batch(0, 'train')
             >>> inputs, labels = batch
-            >>> inputs = [inputs]
         """
         outputs = harn.model(*inputs)
 

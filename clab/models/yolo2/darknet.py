@@ -182,31 +182,31 @@ def _process_batch(data, inp_size, num_classes, anchors):
     return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
 
-class TrackCudaMixin(object):
+class TrackCudaLoss(torch.nn.modules.loss._Loss):
     def __init__(self):
+        super(TrackCudaLoss, self).__init__()
         self._iscuda = False
         self._device_num = None
 
-    def cuda(self, device_num=None):
+    def cuda(self, device_num=None, **kwargs):
         self._iscuda = True
         self._device_num = device_num
-        return super(TrackCudaMixin, self).cuda(device_num)
+        return super(TrackCudaLoss, self).cuda(device_num, **kwargs)
 
     def cpu(self):
         self._iscuda = False
         self._device_num = None
-        return super(TrackCudaMixin, self).cpu()
+        return super(TrackCudaLoss, self).cpu()
 
     @property
     def is_cuda(self):
         return self._iscuda
 
-    @property
     def get_device(self):
         return self._device_num
 
 
-class DarknetLoss(torch.nn.modules.loss._Loss, TrackCudaMixin):
+class DarknetLoss(TrackCudaLoss):
     """
     Example:
         >>> from clab.models.yolo2.darknet import *
@@ -224,7 +224,6 @@ class DarknetLoss(torch.nn.modules.loss._Loss, TrackCudaMixin):
     def __init__(criterion, anchors, workers=None):
         # train
         super(DarknetLoss, criterion).__init__()
-        TrackCudaMixin.__init__(criterion)
         criterion.bbox_loss = None
         criterion.iou_loss = None
         criterion.cls_loss = None
