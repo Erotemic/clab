@@ -65,7 +65,7 @@ def _make_layers(in_channels, net_cfg):
     return nn.Sequential(*layers), in_channels
 
 
-def _process_batch(data, size_index, num_classes, anchors):
+def _process_batch(data, inp_size, num_classes, anchors):
     """
     Example:
         >>> bbox_pred_np = np.random.randn(9, 5, 4)
@@ -74,7 +74,7 @@ def _process_batch(data, size_index, num_classes, anchors):
         >>> dontcares = np.empty((0,))
         >>> iou_pred_np = np.random.randn(9, 5, 1)
         >>> data = (bbox_pred_np, gt_boxes, gt_classes, dontcares, iou_pred_np)
-        >>> size_index = 0
+        >>> inp_size = (96, 96)
         >>> num_classes = 20
         >>> anchors = np.random.randn(5, 2)
         >>> _process_batch(data, size_index, num_classes, anchors)
@@ -86,8 +86,8 @@ def _process_batch(data, size_index, num_classes, anchors):
 
     # inp_size = cfg.multi_scale_inp_size[size_index]
     # out_size = cfg.multi_scale_out_size[size_index]
-    inp_size = [32 * int(np.sqrt(bbox_pred_np.shape[0]))] * 2
-    out_size = [s / 32 for s in inp_size]
+    # inp_size = [32 * int(np.sqrt(bbox_pred_np.shape[0]))] * 2
+    out_size = [s // 32 for s in inp_size]
     W, H = out_size
 
     # net output
@@ -182,23 +182,49 @@ def _process_batch(data, size_index, num_classes, anchors):
     return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
 
-class DarknetLoss(torch.nn.modules.loss._Loss):
+class TrackCudaMixin(object):
+    def __init__(self):
+        self._iscuda = False
+        self._device_num = None
+
+    def cuda(self, device_num=None):
+        self._iscuda = True
+        self._device_num = device_num
+        return super(TrackCudaMixin, self).cuda(device_num)
+
+    def cpu(self):
+        self._iscuda = False
+        self._device_num = None
+        return super(TrackCudaMixin, self).cpu()
+
+    @property
+    def is_cuda(self):
+        return self._iscuda
+
+    @property
+    def get_device(self):
+        return self._device_num
+
+
+class DarknetLoss(torch.nn.modules.loss._Loss, TrackCudaMixin):
     """
     Example:
         >>> from clab.models.yolo2.darknet import *
-        >>> self = Darknet19(num_classes=20)
-        >>> criterion = DarknetLoss(self.anchors)
+        >>> model = Darknet19(num_classes=20)
+        >>> criterion = DarknetLoss(model.anchors)
         >>> im_data = torch.randn(1, 3, 100, 100)
-        >>> output = self(im_data)
+        >>> output = model(im_data)
         >>> bbox_pred, iou_pred, prob_pred = output
         >>> gt_boxes = np.array([[[0, 0, 10, 10]]])
         >>> gt_classes = np.array([[1]])
         >>> dontcare = np.array([[]])
-        >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare)
+        >>> inp_size = (100, 100)
+        >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
     """
     def __init__(criterion, anchors, workers=None):
         # train
         super(DarknetLoss, criterion).__init__()
+        TrackCudaMixin.__init__(criterion)
         criterion.bbox_loss = None
         criterion.iou_loss = None
         criterion.cls_loss = None
@@ -213,25 +239,27 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
         criterion.mse = nn.MSELoss(size_average=False)
 
     def forward(criterion, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
-                gt_classes=None, dontcare=None, size_index=0):
+                gt_classes=None, dontcare=None, inp_size=None):
         bbox_pred_np = bbox_pred.data.cpu().numpy()
         iou_pred_np = iou_pred.data.cpu().numpy()
 
         num_classes = prob_pred.shape[-1]
 
         _tup = criterion._build_target(bbox_pred_np, gt_boxes, gt_classes,
-                                       dontcare, iou_pred_np, size_index,
+                                       dontcare, iou_pred_np, inp_size,
                                        num_classes, criterion.anchors)
         _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
 
-        _boxes = net_utils.np_to_variable(_boxes)
-        _ious = net_utils.np_to_variable(_ious)
-        _classes = net_utils.np_to_variable(_classes)
-        box_mask = net_utils.np_to_variable(_box_mask,
+        is_cuda = criterion.is_cuda
+
+        _boxes = net_utils.np_to_variable(_boxes, is_cuda)
+        _ious = net_utils.np_to_variable(_ious, is_cuda)
+        _classes = net_utils.np_to_variable(_classes, is_cuda)
+        box_mask = net_utils.np_to_variable(_box_mask, is_cuda,
                                             dtype=torch.FloatTensor)
-        iou_mask = net_utils.np_to_variable(_iou_mask,
+        iou_mask = net_utils.np_to_variable(_iou_mask, is_cuda,
                                             dtype=torch.FloatTensor)
-        class_mask = net_utils.np_to_variable(_class_mask,
+        class_mask = net_utils.np_to_variable(_class_mask, is_cuda,
                                               dtype=torch.FloatTensor)
 
         num_boxes = sum((len(boxes) for boxes in gt_boxes))
@@ -252,14 +280,14 @@ class DarknetLoss(torch.nn.modules.loss._Loss):
         return total_loss
 
     def _build_target(criterion, bbox_pred_np, gt_boxes, gt_classes, dontcare,
-                      iou_pred_np, size_index, num_classes, anchors):
+                      iou_pred_np, inp_size, num_classes, anchors):
         """
         :param bbox_pred: shape: (bsize, h x w, num_anchors, 4) :
                           (sig(tx), sig(ty), exp(tw), exp(th))
         """
 
         bsize = bbox_pred_np.shape[0]
-        func = partial(_process_batch, size_index=size_index,
+        func = partial(_process_batch, inp_size=inp_size,
                        num_classes=num_classes, anchors=anchors)
         args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
                  iou_pred_np[b])

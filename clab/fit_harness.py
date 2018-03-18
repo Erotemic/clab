@@ -449,20 +449,8 @@ class FitHarness(object):
         prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
         with grad_context(learn):
-            for bx, (inputs, labels) in enumerate(iter(loader)):
-                # iter_idx = (harn.epoch * len(loader) + bx)
-
-                # The dataset should return a inputs/target 2-tuple of lists.
-                # In most cases each list will be length 1, unless there are
-                # multiple input branches or multiple output branches.
-                if not isinstance(inputs, (list, tuple)):
-                    inputs = [inputs]
-                if not isinstance(labels, (list, tuple)):
-                    labels = [labels]
-
-                # note volatile is depricated
-                inputs = list(harn.xpu.variables(*inputs))
-                labels = list(harn.xpu.variables(*labels))
+            for bx, batch in enumerate(iter(loader)):
+                inputs, labels = harn._standardize_batch(batch)
 
                 # Core learning / backprop
                 outputs, loss = harn.run_batch(inputs, labels, learn=learn)
@@ -482,6 +470,7 @@ class FitHarness(object):
                                          loader.batch_size)
                     prog.set_description(tag + ' ' + msg)
 
+                    # iter_idx = (harn.epoch * len(loader) + bx)
                     # for key, value in ave_metrics.items():
                     #     harn.log_value(tag + ' iter ' + key, value, iter_idx)
 
@@ -501,6 +490,41 @@ class FitHarness(object):
             harn.log_value(tag + ' epoch ' + key, value, harn.epoch)
 
         return epoch_metrics
+
+    def _standardize_batch(harn, batch):
+        """ ensure batch is in a standardized structure """
+        batch_inputs, batch_labels = batch
+
+        # The dataset should return a inputs/target 2-tuple of lists.
+        # In most cases each list will be length 1, unless there are
+        # multiple input branches or multiple output branches.
+        if not isinstance(batch_inputs, (list, tuple)):
+            batch_inputs = [batch_inputs]
+        if not isinstance(batch_labels, (list, tuple)):
+            batch_labels = [batch_labels]
+
+        def _tovar(data):
+            # Handle cases when labels are unstructured
+            if isinstance(data, list):
+                # handle one level of nesting
+                return [harn.xpu.variable(d) for d in data]
+            else:
+                return harn.xpu.variable(data)
+
+        inputs = [harn.xpu.variable(d) for d in batch_inputs]
+        labels = [_tovar(d) for d in batch_labels]
+
+        return (inputs, labels)
+
+    def _demo_batch(harn, index=0, tag='train'):
+        """
+        Returns a single batch for testing / demo purposes.
+        """
+        loader = harn.loaders[tag]
+        for bx, batch in enumerate(iter(loader)):
+            if bx >= index:
+                break
+        return harn._standardize_batch(batch)
 
     def run_batch(harn, inputs, labels, learn=False):
         """

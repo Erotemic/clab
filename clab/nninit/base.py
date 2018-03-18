@@ -370,7 +370,8 @@ def apply_initializer(input, func, funckw):
         input.bias.data.zero_()
 
     if isinstance(input, (Variable, torch.Tensor)):
-        assert False, ('input is tensor? does this make sense?')
+        # assert False, ('input is tensor? does this make sense?')
+        func(input, **funckw)
         # data = input
     elif isinstance(input, (torch.nn.modules.conv._ConvNd)):
         func(input.weight, **funckw)
@@ -774,6 +775,7 @@ def trainable_layers(model, names=False):
 
 
 def init_he_normal(model):
+    # DEPRICATE
     for item in trainable_layers(model):
         if isinstance(item, torch.nn.modules.conv._ConvNd):
             he_normal(item.weight)
@@ -798,8 +800,35 @@ def load_partial_state(model, model_state_dict, initializer=None, shock_partial=
         initializer = he_normal
 
     self_state = model.state_dict()
-    unused_keys = set(self_state.keys())
 
+    def _fix_keys(model_state_dict):
+        """
+        Hack around DataParallel wrapper. If there is nothing in common between
+        the two models check to see if prepending 'module.' to other keys fixes
+        it.
+        """
+        other_keys = set(model_state_dict)
+        self_keys = set(self_state)
+
+        if not other_keys.intersection(self_keys):
+            prefix = 'module.'
+            def smap(f, ss):
+                return set(map(f, ss))
+            def fix1(k):
+                return prefix + k
+            def fix2(k):
+                if k.startswith(prefix):
+                    return k[len(prefix):]
+            if smap(fix1, other_keys).intersection(self_keys):
+                model_state_dict = ub.map_keys(fix1, model_state_dict)
+            elif smap(fix2, other_keys).intersection(self_keys):
+                model_state_dict = ub.map_keys(fix2, model_state_dict)
+
+        return model_state_dict
+
+    model_state_dict = _fix_keys(model_state_dict)
+
+    unused_keys = set(self_state.keys())
     for key, other_value in model_state_dict.items():
         if key in self_state:
             self_value = self_state[key]
@@ -830,10 +859,11 @@ def load_partial_state(model, model_state_dict, initializer=None, shock_partial=
         else:
             print('Skipping {} because it does not exist'.format(key))
 
-    print('Initializing unused keys {} using he normal'.format(unused_keys))
-    for key in unused_keys:
-        if key.endswith('.bias'):
-            self_state[key].fill_(0)
-        else:
-            initializer(self_state[key])
+    if unused_keys:
+        print('Initializing unused keys {} using he normal'.format(unused_keys))
+        for key in unused_keys:
+            if key.endswith('.bias'):
+                self_state[key].fill_(0)
+            else:
+                initializer(self_state[key])
     model.load_state_dict(self_state)
