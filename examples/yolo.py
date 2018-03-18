@@ -403,7 +403,7 @@ class cfg(object):
     devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
 
 
-def train():
+def setup_harness():
     cfg.pretrained_fpath = grab_darknet19_initial_weights()
     datasets = {
         'train': VOCDataset(cfg.devkit_dpath, split='train'),
@@ -472,6 +472,10 @@ def train():
         Custom function to compute the output of a batch and its loss.
 
         Example:
+            >>> import sys
+            >>> sys.path.append('/home/joncrall/code/clab/examples')
+            >>> from yolo import *
+            >>> harn = setup_harness()
             >>> harn.initialize_training()
             >>> batch = harn._demo_batch(0, 'train')
             >>> inputs, labels = batch
@@ -503,6 +507,11 @@ def train():
     #     metrics_dict['global_acc'] = global_acc
     #     metrics_dict['class_acc'] = class_accuracy
     #     return metrics_dict
+    return harn
+
+
+def train():
+    harn = setup_harness()
 
     harn.setup_dpath(ub.ensuredir(cfg.workdir))
     # harn.run()
