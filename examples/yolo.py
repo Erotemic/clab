@@ -485,7 +485,7 @@ def train():
         # assert np.sqrt(outputs[1].shape[1]) == inp_size[0] / 32
 
         bbox_pred, iou_pred, prob_pred = outputs
-        gt_boxes, gt_clases = labels
+        gt_boxes, gt_classes = labels
         dontcare = np.array([[]] * len(gt_boxes))
 
         loss = harn.criterion(*outputs, *labels, dontcare=dontcare,
