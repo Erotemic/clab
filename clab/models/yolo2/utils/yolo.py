@@ -2,8 +2,8 @@ import cv2
 import numpy as np
 from .im_transform import imcv2_affine_trans, imcv2_recolor
 # from box import BoundBox, box_iou, prob_compare
-from ..nms_wrapper import nms
-from ..cython_yolo import yolo_to_bbox
+from .nms_wrapper import nms
+from .cython_yolo import yolo_to_bbox
 
 
 def yolo_to_bbox_py(bbox_pred, anchors, H, W):
