@@ -479,6 +479,7 @@ def setup_harness():
             >>> harn.initialize_training()
             >>> batch = harn._demo_batch(0, 'train')
             >>> inputs, labels = batch
+            >>> criterion = harn.criterion
         """
         outputs = harn.model(*inputs)
 
@@ -495,18 +496,21 @@ def setup_harness():
                               inp_size=inp_size)
         return outputs, loss
 
-    # @harn.add_metric_hook
-    # def custom_metrics(harn, outputs, labels):
-    #     label = labels[0]
-    #     output = outputs[0]
+    @harn.add_metric_hook
+    def custom_metrics(harn, outputs, labels):
+        # label = labels[0]
+        # output = outputs[0]
 
-    #     y_pred = output.data.max(dim=1)[1].cpu().numpy()
-    #     y_true = label.data.cpu().numpy()
+        # y_pred = output.data.max(dim=1)[1].cpu().numpy()
+        # y_true = label.data.cpu().numpy()
 
-    #     metrics_dict = ub.odict()
-    #     metrics_dict['global_acc'] = global_acc
-    #     metrics_dict['class_acc'] = class_accuracy
-    #     return metrics_dict
+        metrics_dict = ub.odict()
+        metrics_dict['L_bbox'] = float(harn.criterion.bbox_loss.data.cpu().numpy())
+        metrics_dict['L_iou'] = float(harn.criterion.iou_loss.data.cpu().numpy())
+        metrics_dict['L_cls'] = float(harn.criterion.cls_loss.data.cpu().numpy())
+        # metrics_dict['global_acc'] = global_acc
+        # metrics_dict['class_acc'] = class_accuracy
+        return metrics_dict
     return harn
 
 
