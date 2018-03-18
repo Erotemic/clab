@@ -370,41 +370,41 @@ def grab_darknet19_initial_weights():
     return torch_fpath
 
 
+class cfg(object):
+    start_step = 0
+    lr_decay = 1. / 10
+
+    workers = 0
+
+    max_epoch = 160
+
+    weight_decay = 0.0005
+    momentum = 0.9
+    init_learning_rate = 1e-3
+
+    # for training yolo2
+    # object_scale = 5.
+    # noobject_scale = 1.
+    # class_scale = 1.
+    # coord_scale = 1.
+    # iou_thresh = 0.6
+
+    # dataset
+    vali_batch_size = 1
+    train_batch_size = 16
+
+    lr_step_points = {
+        0: init_learning_rate * lr_decay ** 0,
+        60: init_learning_rate * lr_decay ** 1,
+        90: init_learning_rate * lr_decay ** 2,
+    }
+
+    workdir = ub.truepath('~/work/VOC2007')
+    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
+
+
 def train():
-
-    class cfg(object):
-        start_step = 0
-        lr_decay = 1. / 10
-
-        pretrained_fpath = grab_darknet19_initial_weights()
-        workers = 0
-
-        max_epoch = 160
-
-        weight_decay = 0.0005
-        momentum = 0.9
-        init_learning_rate = 1e-3
-
-        # for training yolo2
-        # object_scale = 5.
-        # noobject_scale = 1.
-        # class_scale = 1.
-        # coord_scale = 1.
-        # iou_thresh = 0.6
-
-        # dataset
-        vali_batch_size = 1
-        train_batch_size = 16
-
-        lr_step_points = {
-            0: init_learning_rate * lr_decay ** 0,
-            60: init_learning_rate * lr_decay ** 1,
-            90: init_learning_rate * lr_decay ** 2,
-        }
-
-        workdir = ub.truepath('~/work/VOC2007')
-        devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
-
+    cfg.pretrained_fpath = grab_darknet19_initial_weights()
     datasets = {
         'train': VOCDataset(cfg.devkit_dpath, split='train'),
         'vali': VOCDataset(cfg.devkit_dpath, split='val'),
@@ -478,12 +478,18 @@ def train():
             >>> inputs = [inputs]
         """
         outputs = harn.model(*inputs)
-        # bbox_pred, iou_pred, prob_pred = outputs
 
         # darknet criterion needs to know the input image shape
         inp_size = tuple(inputs[0].shape[-2:])
 
-        loss = harn.criterion(*outputs, inp_size, *labels)
+        # assert np.sqrt(outputs[1].shape[1]) == inp_size[0] / 32
+
+        bbox_pred, iou_pred, prob_pred = outputs
+        gt_boxes, gt_clases = labels
+        dontcare = np.array([[]] * len(gt_boxes))
+
+        loss = harn.criterion(*outputs, *labels, dontcare=dontcare,
+                              inp_size=inp_size)
         return outputs, loss
 
     # @harn.add_metric_hook
