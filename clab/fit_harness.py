@@ -662,7 +662,10 @@ class FitHarness(object):
         harn.model.load_state_dict(snapshot['model_state_dict'])
 
         if 'monitor_state_dict' in snapshot:
+            # Dont override patience, use whatever the current val is
+            patience = monitor.patience
             harn.monitor.load_state_dict(snapshot['monitor_state_dict'])
+            monitor.patience = patience
 
         if 'optimizer_state_dict' in snapshot:
             harn.optimizer.load_state_dict(snapshot['optimizer_state_dict'])
