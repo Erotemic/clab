@@ -258,9 +258,6 @@ def grab_darknet19_initial_weights():
 
 
 class cfg(object):
-    start_step = 0
-    lr_decay = 1. / 10
-
     workers = 0
 
     max_epoch = 160
@@ -269,21 +266,25 @@ class cfg(object):
     momentum = 0.9
     init_learning_rate = 1e-3
 
-    # for training yolo2
-    # object_scale = 5.
-    # noobject_scale = 1.
-    # class_scale = 1.
-    # coord_scale = 1.
-    # iou_thresh = 0.6
-
     # dataset
     vali_batch_size = 4
     train_batch_size = 16
 
+    # lr_decay = 1. / 10
+    # lr_step_points = {
+    #     0: init_learning_rate * lr_decay ** 0,
+    #     60: init_learning_rate * lr_decay ** 1,
+    #     90: init_learning_rate * lr_decay ** 2,
+    # }
     lr_step_points = {
-        0: init_learning_rate * lr_decay ** 0,
-        60: init_learning_rate * lr_decay ** 1,
-        90: init_learning_rate * lr_decay ** 2,
+        # warmup learning rate
+        0: 0.0001,
+        1: 0.0005,
+        2: 0.001,
+        # cooldown learning rate
+        30: 0.0005,
+        60: 0.0001,
+        90: 0.00001,
     }
 
     workdir = ub.truepath('~/work/VOC2007')
@@ -356,7 +357,12 @@ def setup_harness():
         }),
 
         criterion=(darknet.DarknetLoss, {
-            'anchors': datasets['train'].anchors
+            'anchors': datasets['train'].anchors,
+            'object_scale': 5.0,
+            'noobject_scale': 1.0,
+            'class_scale': 1.0,
+            'coord_scale': 1.0,
+            'iou_thresh': 0.6,
         }),
 
         optimizer=(torch.optim.SGD, dict(
@@ -375,7 +381,7 @@ def setup_harness():
         )),
 
         other={
-            'train_batch_size': cfg.train_batch_size,
+            'batch_size': datasets['train'].dataset.batch_sampler.batch_size,
         },
         centering=None,
 
