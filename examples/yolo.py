@@ -258,7 +258,7 @@ def grab_darknet19_initial_weights():
 
 
 class cfg(object):
-    workers = 0
+    workers = 8
 
     max_epoch = 160
 
