@@ -110,7 +110,7 @@ class YoloVOCDataset(voc.VOCDataset):
         if split == 'train':
             augmentors = [
                 iaa.Fliplr(p=.5),
-                iaa.Affine(
+                iaa.AffineCv2(
                     scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
                     translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
                     rotate=(-7, 7),
@@ -118,7 +118,7 @@ class YoloVOCDataset(voc.VOCDataset):
                     order=[0, 1, 3],
                     cval=(0, 255),
                     mode=ia.ALL,  # use any of scikit-image's warping modes (see 2nd image from the top for examples)
-                    backend='cv2',
+                    # backend='cv2',
                 ),
             ]
             self.augmenter = iaa.Sequential(augmentors)
