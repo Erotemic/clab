@@ -10,6 +10,7 @@ cd $HOME/code/clab/clab/models/yolo2
 """
 from os.path import exists
 from clab.util import profiler  # NOQA
+import psutil
 import torch
 import cv2
 import ubelt as ub
@@ -258,7 +259,9 @@ def grab_darknet19_initial_weights():
 
 
 class cfg(object):
-    workers = 8
+    n_cpus = psutil.cpu_count(logical=True)
+
+    workers = n_cpus / 4
 
     max_epoch = 160
 
