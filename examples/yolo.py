@@ -261,7 +261,7 @@ def grab_darknet19_initial_weights():
 class cfg(object):
     n_cpus = psutil.cpu_count(logical=True)
 
-    workers = n_cpus / 2
+    workers = int(n_cpus / 2)
 
     max_epoch = 160
 
