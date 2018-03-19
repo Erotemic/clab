@@ -107,7 +107,7 @@ def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
 
         # 0 ~ 1, should be close to 1
         iou_pred_cell_anchor = iou_pred_np[cell_ind, a, :]
-        _iou_mask[cell_ind, a, :] = cfg.object_scale * (1 - iou_pred_cell_anchor)  # noqa
+        _iou_mask[cell_ind, a, :] = object_scale * (1 - iou_pred_cell_anchor)  # noqa
         # _ious[cell_ind, a, :] = anchor_ious[a, i]
         _ious[cell_ind, a, :] = ious_reshaped[cell_ind, a, i]
 
