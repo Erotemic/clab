@@ -1,3 +1,8 @@
+"""
+Simple dataset for loading the VOC 2007 object detection dataset without extra
+bells and whistles. Simply loads the images, boxes, and class labels and
+resizes images to a standard size.
+"""
 from os.path import exists
 from os.path import join
 import re
@@ -52,13 +57,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         self._class_to_ind = ub.invert_dict(dict(enumerate(self.label_names)))
         self.base_size = [320, 320]
 
-        self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
-                                   (6.63, 11.38), (9.42, 5.11),
-                                   (16.62, 10.52)],
-                                  dtype=np.float)
-
         self.num_classes = len(self.label_names)
-        self.num_anchors = len(self.anchors)
         self.input_id = 'voc2007_' + self.split
 
     def _read_split_indices(self, split):
@@ -164,7 +163,18 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             image, (bbox, class_idxs)
 
             bbox and class_idxs are variable-length
-            bbox is in x1,y1,x2,y2 format
+            bbox is in x1,y1,x2,y2 (i.e. tlbr) format
+
+        Example:
+            >>> self = VOCDataset()
+            >>> chw, label = self[1]
+            >>> hwc = chw.numpy().transpose(1, 2, 0)
+            >>> boxes, class_idxs = label
+            >>> # xdoc: +REQUIRES(--show)
+            >>> from clab.util import mplutil
+            >>> mplutil.qtensure()  # xdoc: +SKIP
+            >>> mplutil.imshow(hwc, colorspace='rgb')
+            >>> mplutil.draw_boxes(boxes.numpy(), box_format='tlbr')
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -180,7 +190,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         label = (boxes, gt_classes,)
         return chw, label
 
-    def _load_item(self, index, inp_size):
+    def _load_item(self, index, inp_size=None):
         # from clab.models.yolo2.utils.yolo import _offset_boxes
         image = self._load_image(index)
         annot = self._load_annotation(index)
@@ -189,23 +199,24 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         gt_classes = annot['gt_classes']
 
         # squish the bounding box and image into a standard size
-        w, h = inp_size
-        sx = float(w) / image.shape[1]
-        sy = float(h) / image.shape[0]
-        boxes[:, 0::2] *= sx
-        boxes[:, 1::2] *= sy
-
-        # TODO: postpone resize until augmentation
-        interpolation = cv2.INTER_AREA if (sx + sy) <= 2 else cv2.INTER_CUBIC
-        hwc = cv2.resize(image, (w, h), interpolation=interpolation)
-        return hwc, boxes, gt_classes
+        if inp_size is None:
+            return image, boxes, gt_classes
+        else:
+            w, h = inp_size
+            sx = float(w) / image.shape[1]
+            sy = float(h) / image.shape[0]
+            boxes[:, 0::2] *= sx
+            boxes[:, 1::2] *= sy
+            interpolation = cv2.INTER_AREA if (sx + sy) <= 2 else cv2.INTER_CUBIC
+            hwc = cv2.resize(image, (w, h), interpolation=interpolation)
+            return hwc, boxes, gt_classes
 
     def _load_image(self, index):
         fpath = self.gpaths[index]
         imbgr = cv2.imread(fpath)
-        imrgb = cv2.cvtColor(imbgr, cv2.COLOR_BGR2RGB)
-        imrgb_01 = imrgb.astype(np.float32) / 255.0
-        return imrgb_01
+        imrgb_255 = cv2.cvtColor(imbgr, cv2.COLOR_BGR2RGB)
+        return imrgb_255
+        # imrgb_01 = imrgb.astype(np.float32) / 255.0
 
     def _load_annotation(self, index):
         import xml.etree.ElementTree as ET
@@ -251,3 +262,12 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
                   'flipped': False,
                   'seg_areas': seg_areas}
         return annots
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.data.voc
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

@@ -4,68 +4,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .utils import network as net_utils
-# from .cfgs import config as cfg
 from .layers.reorg.reorg_layer import ReorgLayer
 from .utils.cython_bbox import bbox_ious, anchor_intersections
-from .utils import yolo
+from .utils import yolo_utils
 from functools import partial
-
 from multiprocessing import Pool
 
 
-class DarknetConfig(object):
-    def __init__(cfg):
-        cfg.object_scale = 5.0
-        cfg.noobject_scale = 1.0
-        cfg.class_scale = 1.0
-        cfg.coord_scale = 1.0
-        cfg.iou_thresh = 0.6
-
-        base_wh = np.array([320, 320], dtype=np.int)
-        cfg.multi_scale_inp_size = [base_wh + (32 * i) for i in range(8)]
-        cfg.multi_scale_out_size = [s / 32 for s in cfg.multi_scale_inp_size]
-
-        # # for voc
-        # label_names = ('aeroplane', 'bicycle', 'bird', 'boat',
-        #                'bottle', 'bus', 'car', 'cat', 'chair',
-        #                'cow', 'diningtable', 'dog', 'horse',
-        #                'motorbike', 'person', 'pottedplant',
-        #                'sheep', 'sofa', 'train', 'tvmonitor')
-        # # cfg.num_classes = len(label_names)
-        # anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
-        #                       (6.63, 11.38), (9.42, 5.11), (16.62, 10.52)],
-        #                      dtype=np.float)
-        # num_anchors = len(anchors)
-
-
-cfg = DarknetConfig()
-
-
-def _make_layers(in_channels, net_cfg):
-    layers = []
-
-    if len(net_cfg) > 0 and isinstance(net_cfg[0], list):
-        for sub_cfg in net_cfg:
-            layer, in_channels = _make_layers(in_channels, sub_cfg)
-            layers.append(layer)
-    else:
-        for item in net_cfg:
-            if item == 'M':
-                layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
-            else:
-                out_channels, ksize = item
-                layers.append(net_utils.Conv2d_BatchNorm(in_channels,
-                                                         out_channels,
-                                                         ksize,
-                                                         same_padding=True))
-                # layers.append(net_utils.Conv2d(in_channels, out_channels,
-                #     ksize, same_padding=True))
-                in_channels = out_channels
-
-    return nn.Sequential(*layers), in_channels
-
-
-def _process_batch(data, inp_size, num_classes, anchors):
+def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
+                   noobject_scale=1.0, class_scale=1.0, coord_scale=1.0,
+                   iou_thresh=0.6):
     """
     Example:
         >>> bbox_pred_np = np.random.randn(9, 5, 4)
@@ -79,14 +27,8 @@ def _process_batch(data, inp_size, num_classes, anchors):
         >>> anchors = np.random.randn(5, 2)
         >>> _process_batch(data, size_index, num_classes, anchors)
     """
-
-    # W, H = cfg.multi_scale_out_size[size_index]
-
     bbox_pred_np, gt_boxes, gt_classes, dontcares, iou_pred_np = data
 
-    # inp_size = cfg.multi_scale_inp_size[size_index]
-    # out_size = cfg.multi_scale_out_size[size_index]
-    # inp_size = [32 * int(np.sqrt(bbox_pred_np.shape[0]))] * 2
     out_size = [s // 32 for s in inp_size]
     W, H = out_size
 
@@ -110,7 +52,7 @@ def _process_batch(data, inp_size, num_classes, anchors):
     bbox_pred_np_ = np.expand_dims(bbox_pred_np, 0)
     bbox_pred = np.ascontiguousarray(bbox_pred_np_, dtype=np.float)
 
-    bbox_np = yolo.yolo_to_bbox(bbox_pred, anchors, H, W)
+    bbox_np = yolo_utils.yolo_to_bbox(bbox_pred, anchors, H, W)
     # bbox_np = (hw, num_anchors, (x1, y1, x2, y2))   range: 0 ~ 1
     bbox_np = bbox_np[0]
     bbox_np[:, :, 0::2] *= float(inp_size[0])  # rescale x
@@ -126,8 +68,8 @@ def _process_batch(data, inp_size, num_classes, anchors):
         np.ascontiguousarray(gt_boxes_b, dtype=np.float)
     )
     best_ious = np.max(ious, axis=1).reshape(_iou_mask.shape)
-    iou_penalty = 0 - iou_pred_np[best_ious < cfg.iou_thresh]
-    _iou_mask[best_ious <= cfg.iou_thresh] = cfg.noobject_scale * iou_penalty
+    iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
+    _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
 
     # locate the cell of each gt_boxe
     cell_w = float(inp_size[0]) / W
@@ -169,11 +111,11 @@ def _process_batch(data, inp_size, num_classes, anchors):
         # _ious[cell_ind, a, :] = anchor_ious[a, i]
         _ious[cell_ind, a, :] = ious_reshaped[cell_ind, a, i]
 
-        _box_mask[cell_ind, a, :] = cfg.coord_scale
+        _box_mask[cell_ind, a, :] = coord_scale
         target_boxes[i, 2:4] /= anchors[a]
         _boxes[cell_ind, a, :] = target_boxes[i]
 
-        _class_mask[cell_ind, a, :] = cfg.class_scale
+        _class_mask[cell_ind, a, :] = class_scale
         _classes[cell_ind, a, gt_classes[i]] = 1.
 
     # _boxes[:, :, 2:4] = np.maximum(_boxes[:, :, 2:4], 0.001)
@@ -221,12 +163,20 @@ class DarknetLoss(TrackCudaLoss):
         >>> inp_size = (100, 100)
         >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
     """
-    def __init__(criterion, anchors, workers=None):
+    def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
+                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.6,
+                 workers=None):
         # train
         super(DarknetLoss, criterion).__init__()
         criterion.bbox_loss = None
         criterion.iou_loss = None
         criterion.cls_loss = None
+
+        criterion.object_scale = object_scale
+        criterion.noobject_scale = noobject_scale
+        criterion.class_scale = class_scale
+        criterion.coord_scale = coord_scale
+        criterion.iou_thresh = iou_thresh
 
         if workers is None:
             criterion.pool = None
@@ -286,8 +236,15 @@ class DarknetLoss(TrackCudaLoss):
         """
 
         bsize = bbox_pred_np.shape[0]
+        losskw = dict(object_scale=criterion.object_scale,
+                      noobject_scale=criterion.noobject_scale,
+                      class_scale=criterion.class_scale,
+                      coord_scale=criterion.coord_scale,
+                      iou_thresh=criterion.iou_thresh)
+
         func = partial(_process_batch, inp_size=inp_size,
-                       num_classes=num_classes, anchors=anchors)
+                       num_classes=num_classes, anchors=anchors, **losskw)
+
         args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
                  iou_pred_np[b])
                 for b in range(bsize))
@@ -339,6 +296,29 @@ class Darknet19(nn.Module):
             # conv4
             [(1024, 3)]
         ]
+
+        def _make_layers(in_channels, net_cfg):
+            layers = []
+
+            if len(net_cfg) > 0 and isinstance(net_cfg[0], list):
+                for sub_cfg in net_cfg:
+                    layer, in_channels = _make_layers(in_channels, sub_cfg)
+                    layers.append(layer)
+            else:
+                for item in net_cfg:
+                    if item == 'M':
+                        layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
+                    else:
+                        out_channels, ksize = item
+                        layers.append(net_utils.Conv2d_BatchNorm(in_channels,
+                                                                 out_channels,
+                                                                 ksize,
+                                                                 same_padding=True))
+                        # layers.append(net_utils.Conv2d(in_channels, out_channels,
+                        #     ksize, same_padding=True))
+                        in_channels = out_channels
+
+            return nn.Sequential(*layers), in_channels
 
         # darknet
         self.conv1s, c1 = _make_layers(3, net_cfgs[0:5])
@@ -415,9 +395,3 @@ class Darknet19(nn.Module):
                 if ptype == 'kernel':
                     param = param.permute(3, 2, 0, 1)
                 own_dict[key].copy_(param)
-
-
-# if __name__ == '__main__':
-#     net = Darknet19()
-#     # net.load_from_npz('models/yolo-voc.weights.npz')
-#     net.load_from_npz('models/darknet19.weights.npz', num_conv=18)

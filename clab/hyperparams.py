@@ -219,6 +219,7 @@ class HyperParams(object):
 
         hyper.train = train
         hyper.vali = vali
+
         hyper.augment = augment
         hyper.centering = centering
 

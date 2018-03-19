@@ -1530,12 +1530,16 @@ def qtensure():
         if ipython is None:
             # we must have exited ipython at some point
             return
+        import matplotlib as mpl
+
         if 'PyQt4' in sys.modules:
             #IPython.get_ipython().magic('pylab qt4')
-            ipython.magic('pylab qt4 --no-import-all')
+            if not mpl.get_backend().startswith('Qt4'):
+                ipython.magic('pylab qt4 --no-import-all')
         else:
             # if gt.__PYQT__.GUITOOL_PYQT_VERSION == 5:
-            ipython.magic('pylab qt5 --no-import-all')
+            if not mpl.get_backend().startswith('Qt5'):
+                ipython.magic('pylab qt5 --no-import-all')
 
 
 def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
@@ -2204,6 +2208,48 @@ def draw_border(ax, color, lw=2, offset=None, adjust=True):
     rect.set_fill(False)
     rect.set_edgecolor(color)
     return rect
+
+
+def draw_boxes(boxes, box_format='xywh', color='blue', ax=None):
+    """
+    Args:
+        boxes (list): list of coordindates in xywh or tlbr format
+        box_format (str): specify how boxes are formated
+        color (str): edge color of the boxes
+
+    Example:
+        >>> from clab.util.mplutil import *
+        >>> qtensure()  # xdoc: +SKIP
+        >>> bboxes = [[.1, .1, .6, .3], [.3, .5, .5, .6]]
+        >>> col = draw_boxes(bboxes)
+    """
+    import matplotlib as mpl
+    from matplotlib import pyplot as plt
+    if ax is None:
+        ax = plt.gca()
+
+    boxes = np.asarray(boxes)
+
+    if box_format == 'xywh':
+        xywh = boxes
+    elif box_format == 'tlbr':
+        x1, y1 = boxes.T[0:2]
+        w, h = boxes.T[2:4] - boxes.T[0:2]
+        xywh = np.vstack([x1, y1, w, h]).T
+    else:
+        raise KeyError(box_format)
+
+    edgecolor = Color(color).as01('rgba')
+    facecolor = Color((0, 0, 0, 0)).as01('rgba')
+
+    rectkw = dict(ec=edgecolor, fc=facecolor, lw=2, linestyle='solid')
+
+    patches = [mpl.patches.Rectangle((x, y), w, h, **rectkw)
+               for x, y, w, h in xywh]
+
+    col = mpl.collections.PatchCollection(patches, match_original=True)
+    ax.add_collection(col)
+    return col
 
 
 def draw_line_segments(pts1, pts2, ax=None, **kwargs):
