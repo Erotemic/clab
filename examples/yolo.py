@@ -381,7 +381,7 @@ def setup_harness():
         )),
 
         other={
-            'batch_size': datasets['train'].dataset.batch_sampler.batch_size,
+            'batch_size': datasets['train'].batch_sampler.batch_size,
         },
         centering=None,
 
