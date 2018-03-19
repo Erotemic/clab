@@ -65,7 +65,7 @@ class grad_context(object):
 class FitHarness(object):
     def __init__(harn, datasets, batch_size=None, hyper=None, xpu=None,
                  loaders=None, train_dpath='./train', dry=False,
-                 max_keys=[], min_keys=['loss']):
+                 max_keys=[], min_keys=['loss'], max_iter=1000):
 
         harn.datasets = None
         harn.loaders = None
@@ -128,7 +128,7 @@ class FitHarness(object):
         }
         harn.config = {
             'show_prog': True,
-            'max_iter': 1000,
+            'max_iter': max_iter,
         }
         harn.epoch = 0
 
