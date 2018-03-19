@@ -20,6 +20,8 @@ import numpy as np
 import torch.utils.data as torch_data
 import torch.utils.data.sampler as torch_sampler
 
+from clab.data import voc
+
 
 class MultiScaleBatchSampler(torch_sampler.BatchSampler):
     """
@@ -75,21 +77,47 @@ class MultiScaleBatchSampler(torch_sampler.BatchSampler):
             yield batch
 
 
-class VOCDataset(torch_data.Dataset, ub.NiceRepr):
+class YoloMixin(voc.VOCDataset):
     """
+    Extends localization datasets with multiscale input selection.
+    """
+    def __init__(self):
+        base_wh = np.array([320, 320], dtype=np.int)
+        self.multi_scale_inp_size = [base_wh + (32 * i) for i in range(8)]
+        self.multi_scale_out_size = [s / 32 for s in self.multi_scale_inp_size]
+
+    def __getitem__(self, index):
+        if isinstance(index, tuple):
+            # Get size index from the batch loader
+            index, size_index = index
+            inp_size = self.multi_scale_inp_size[size_index]
+        else:
+            inp_size = self.base_size
+
+        return super(YoloMixin, self).__getitem__((index, inp_size))
+
+
+class YoloMixin(voc.VOCDataset, YoloMixin):
+    """
+
     Example:
         >>> assert len(VOCDataset(split='train')) == 2501
         >>> assert len(VOCDataset(split='test')) == 4952
         >>> assert len(VOCDataset(split='val')) == 2510
 
     Example:
-        >>> self = VOCDataset()
+        >>> self = YoloVOC()
         >>> for i in range(10):
         ...     a, bc = self[i]
         ...     #print(bc[0].shape)
         ...     print(bc[1].shape)
         ...     print(a.shape)
     """
+    def __init__(self):
+        pass
+
+
+class VOCDataset(torch_data.Dataset, ub.NiceRepr):
     def __init__(self, devkit_dpath=None, split='train'):
         if devkit_dpath is None:
             # ub.truepath('~/data/VOC/VOCdevkit')
