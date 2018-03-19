@@ -39,7 +39,9 @@ class FolderStructure(object):
         # TODO: hash this to some degree
         other_id = hyper.other_id()
 
-        aug_brief = 'AU' + ub.hash_data(hyper.augment)[0:6]
+        augment_json = hyper.augment_json()
+
+        aug_brief = 'AU' + ub.hash_data(augment_json)[0:6]
         extra_hash = ub.hash_data([hyper.centering])[0:6]
 
         train_id = '{}_{}_{}_{}_{}'.format(
@@ -105,7 +107,7 @@ class FolderStructure(object):
             ('centering', hyper.centering),
 
             # HACKED IN
-            ('augment', hyper.augment),
+            ('augment', hyper.augment_json()),
         ])
         return train_info
 

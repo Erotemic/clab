@@ -298,6 +298,55 @@ class HyperParams(object):
         otherid = util.make_short_idstr(hyper.other, precision=4)
         return otherid
 
+    def augment_json(hyper):
+        """
+        Get augmentation info in json format
+
+        Example:
+            >>> from clab.hyperparams import *
+            >>> import imgaug
+            >>> augment = imgaug.augmenters.Affine()
+            >>> hyper = HyperParams(augment=augment)
+            >>> info = hyper.augment_json()
+            >>> assert info['__class__'] == 'Affine'
+            >>> hyper = HyperParams(augment={})
+            >>> assert hyper.augment_json() == {}
+        """
+        if hyper.augment is None:
+            return None
+        if isinstance(hyper.augment, (dict, list)):
+            # already specified in json format
+            augment_json = hyper.augment
+        else:
+            try:
+                import imgaug
+
+                def imgaug_json_id(aug):
+                    # TODO: submit a PR to imgaug that registers parameters
+                    # with classes
+                    if isinstance(aug, tuple):
+                        return [imgaug_json_id(item) for item in aug]
+                    if isinstance(aug, imgaug.parameters.StochasticParameter):
+                        return str(aug)
+                    else:
+                        info = ub.odict()
+                        info['__class__'] = aug.__class__.__name__
+                        params = aug.get_parameters()
+                        if params:
+                            info['params'] = [imgaug_json_id(p) for p in params]
+                        if isinstance(aug, list):
+                            children = aug[:]
+                            children = [imgaug_json_id(c) for c in children]
+                            info['children'] = children
+                        return info
+            except ImportError:
+                augment_json = str(hyper.augment)
+            else:
+                if isinstance(hyper.augment, imgaug.augmenters.meta.Augmenter):
+                    augment_json = imgaug_json_id(hyper.augment)
+        return augment_json
+        # print(ub.repr2(augment))
+
     def get_initkw(hyper):
         initkw = ub.odict()
         def _append_part(key, cls, params):

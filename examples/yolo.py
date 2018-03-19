@@ -15,67 +15,18 @@ import torch
 import cv2
 import ubelt as ub
 import numpy as np
-import torch.utils.data.sampler as torch_sampler
 import imgaug as ia
 import imgaug.augmenters as iaa
 from clab.models.yolo2.utils import yolo_utils as yolo_utils
-
+from clab.models.yolo2 import multiscale_batch_sampler
 from clab.data import voc
-
-
-class MultiScaleBatchSampler(torch_sampler.BatchSampler):
-    """
-    Indicies returned in the batch are tuples indicating data index and scale
-    index.
-
-    Example:
-        >>> class DummyDatset(torch_data.Dataset):
-        >>>     def __init__(self):
-        >>>         super(DummyDatset, self).__init__()
-        >>>         self.multi_scale_inp_size = [1, 2, 3, 4]
-        >>>     def __len__(self):
-        >>>         return 34
-        >>> batch_size = 16
-        >>> data_source = DummyDatset()
-        >>> rand = MultiScaleBatchSampler(data_source, shuffle=1)
-        >>> seq = MultiScaleBatchSampler(data_source, shuffle=0)
-        >>> rand_idxs = list(iter(rand))
-        >>> seq_idxs = list(iter(seq))
-        >>> assert len(rand_idxs[0]) == 16
-        >>> assert len(rand_idxs[0][0]) == 2
-        >>> assert len(rand_idxs[-1]) == 2
-        >>> assert {len({x[1] for x in xs}) for xs in rand_idxs} == {1}
-        >>> assert {x[1] for xs in seq_idxs for x in xs} == {0}
-    """
-
-    def __init__(self, data_source, shuffle=False, batch_size=16,
-                 drop_last=False):
-        if shuffle:
-            self.sampler = torch_sampler.RandomSampler(data_source)
-        else:
-            self.sampler = torch_sampler.SequentialSampler(data_source)
-        self.shuffle = shuffle
-        self.batch_size = batch_size
-        self.drop_last = drop_last
-        self.num_scales = len(data_source.multi_scale_inp_size)
-
-    def __iter__(self):
-        batch = []
-        if self.shuffle:
-            scale_index = int(torch.rand(1) * self.num_scales)
-        else:
-            scale_index = 0
-
-        for idx in self.sampler:
-            batch.append((int(idx), scale_index))
-            if len(batch) == self.batch_size:
-                yield batch
-                if self.shuffle:
-                    # choose a new scale index
-                    scale_index = int(torch.rand(1) * self.num_scales)
-                batch = []
-        if len(batch) > 0 and not self.drop_last:
-            yield batch
+from clab import hyperparams
+from clab import xpu_device
+from clab import fit_harness
+from clab import monitor
+from clab import nninit
+from clab.lr_scheduler import ListedLR
+from clab.models.yolo2 import darknet
 
 
 class YoloVOCDataset(voc.VOCDataset):
@@ -113,17 +64,20 @@ class YoloVOCDataset(voc.VOCDataset):
         if split == 'train':
             augmentors = [
                 iaa.Fliplr(p=.5),
+                iaa.Flipud(p=.5),
                 iaa.Affine(
                     scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
                     translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
-                    rotate=(-7, 7),
-                    shear=(-3, 3),
+                    rotate=(-15, 15),
+                    shear=(-7, 7),
                     order=[0, 1, 3],
                     cval=(0, 255),
                     mode=ia.ALL,  # use any of scikit-image's warping modes (see 2nd image from the top for examples)
                     # Note: currently requires imgaug master version
                     backend='cv2',
                 ),
+                iaa.AddToHueAndSaturation((-20, 20)),  # change hue and saturation
+                iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),  # improve or worsen the contrast
             ]
             self.augmenter = iaa.Sequential(augmentors)
 
@@ -233,7 +187,7 @@ def make_loaders(datasets, train_batch_size=16, vali_batch_size=1, workers=0):
         assert len(dset) > 0, 'must have some data'
         batch_size = train_batch_size if key == 'train' else vali_batch_size
         # use custom sampler that does multiscale training
-        batch_sampler = MultiScaleBatchSampler(
+        batch_sampler = multiscale_batch_sampler.MultiScaleBatchSampler(
             dset, batch_size=batch_size, shuffle=(key == 'train')
         )
         loader = dset.make_loader(batch_sampler=batch_sampler,
@@ -308,49 +262,16 @@ def setup_harness():
     """
     cfg.pretrained_fpath = grab_darknet19_initial_weights()
     datasets = {
-        'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
-        'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
+        # 'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
+        # 'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
+        'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
+        'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
     }
 
     loaders = make_loaders(datasets,
                            train_batch_size=cfg.train_batch_size,
                            vali_batch_size=cfg.vali_batch_size,
                            workers=cfg.workers)
-
-    from clab import hyperparams
-    from clab import xpu_device
-    from clab import fit_harness
-    from clab import monitor
-    from clab import nninit
-    from clab.lr_scheduler import ListedLR
-    from clab.models.yolo2 import darknet
-
-    # Try to hack in a nicer representation of the augmentation used
-    try:
-        import imgaug  # NOQA
-    except ImportError:
-        augment = str(datasets['train'].augmenter)
-    else:
-        def imgaug_json_id(aug):
-            # TODO: submit a PR to imgaug that registers parameters with
-            # classes
-            if isinstance(aug, tuple):
-                return [imgaug_json_id(item) for item in aug]
-            if isinstance(aug, imgaug.parameters.StochasticParameter):
-                return str(aug)
-            else:
-                info = ub.odict()
-                info['__class__'] = aug.__class__.__name__
-                params = aug.get_parameters()
-                if params:
-                    info['params'] = [imgaug_json_id(p) for p in params]
-                if isinstance(aug, list):
-                    children = aug[:]
-                    children = [imgaug_json_id(c) for c in children]
-                    info['children'] = children
-                return info
-        augment = imgaug_json_id(datasets['train'].augmenter)
-        # print(ub.repr2(augment))
 
     hyper = hyperparams.HyperParams(
 
@@ -389,7 +310,7 @@ def setup_harness():
         centering=None,
 
         # centering=datasets['train'].centering,
-        augment=augment,
+        augment=datasets['train'].augmenter,
     )
 
     xpu = xpu_device.XPU.cast('auto')
@@ -437,6 +358,8 @@ def setup_harness():
 
         # y_pred = output.data.max(dim=1)[1].cpu().numpy()
         # y_true = label.data.cpu().numpy()
+
+        # TODO: measure actual test criterion
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = float(

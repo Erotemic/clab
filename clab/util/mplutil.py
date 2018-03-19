@@ -1518,7 +1518,11 @@ def save_parts(fig, fpath, grouped_axes=None, dpi=None):
     return subpaths
 
 
+_qtensured = False
+
+
 def qtensure():
+    global _qtensured
     try:
         __IPYTHON__
     except NameError:
@@ -1530,16 +1534,20 @@ def qtensure():
         if ipython is None:
             # we must have exited ipython at some point
             return
-        import matplotlib as mpl
+        # import matplotlib as mpl
 
         if 'PyQt4' in sys.modules:
             #IPython.get_ipython().magic('pylab qt4')
-            if not mpl.get_backend().startswith('Qt4'):
+            # if not mpl.get_backend().startswith('Qt4'):
+            if not _qtensured:
                 ipython.magic('pylab qt4 --no-import-all')
+                _qtensured = True
         else:
             # if gt.__PYQT__.GUITOOL_PYQT_VERSION == 5:
-            if not mpl.get_backend().startswith('Qt5'):
+            # if not mpl.get_backend().startswith('Qt5'):
+            if not _qtensured:
                 ipython.magic('pylab qt5 --no-import-all')
+                _qtensured = True
 
 
 def imshow(img, fnum=None, title=None, figtitle=None, pnum=None,
