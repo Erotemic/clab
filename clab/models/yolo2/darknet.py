@@ -25,7 +25,7 @@ def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
         >>> inp_size = (96, 96)
         >>> num_classes = 20
         >>> anchors = np.random.randn(5, 2)
-        >>> _process_batch(data, size_index, num_classes, anchors)
+        >>> _process_batch(data, inp_size, num_classes, anchors)
     """
     bbox_pred_np, gt_boxes, gt_classes, dontcares, iou_pred_np = data
 

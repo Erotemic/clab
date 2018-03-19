@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NOTE: pip install -U --pre h5py
 """
 Installation:
     pip install git+https://github.com/Erotemic/clab.git
@@ -276,18 +277,18 @@ ext_modules += [
     ),
 ]
 
-ext_modules += [
-    Extension(
-        yolo_util_m + 'pycocotools._mask',
-        sources=[
-            join(yolo_util_p, 'pycocotools/maskApi.c'),
-            join(yolo_util_p, 'pycocotools/_mask.pyx'),
-        ],
-        include_dirs=[numpy_include, join(yolo_util_p, 'pycocotools')],
-        extra_compile_args={
-            'gcc': ['-Wno-cpp', '-Wno-unused-function', '-std=c99']},
-    ),
-]
+# ext_modules += [
+#     Extension(
+#         yolo_util_m + 'pycocotools._mask',
+#         sources=[
+#             join(yolo_util_p, 'pycocotools/maskApi.c'),
+#             join(yolo_util_p, 'pycocotools/_mask.pyx'),
+#         ],
+#         include_dirs=[numpy_include, join(yolo_util_p, 'pycocotools')],
+#         extra_compile_args={
+#             'gcc': ['-Wno-cpp', '-Wno-unused-function', '-std=c99']},
+#     ),
+# ]
 
 ext_modules += [
     Extension(yolo_util_m + 'nms.gpu_nms',
@@ -311,6 +312,49 @@ ext_modules += [
               include_dirs=[numpy_include, CUDACONFIG['include']]
               ),
 ]
+
+
+def clean():
+    """
+    __file__ = ub.truepath('~/code/clab/setup.py')
+    """
+    import ubelt as ub
+    import os
+
+    modname = 'clab'
+    repodir = dirname(__file__)
+    # pkgdir = join(repodir, modname)
+
+    toremove = []
+    for root, dnames, fnames in os.walk(repodir):
+
+        if os.path.basename(root) == modname + '.egg-info':
+            toremove.append(root)
+            del dnames[:]
+
+        if os.path.basename(root) == '__pycache__':
+            toremove.append(root)
+            del dnames[:]
+
+        if os.path.basename(root) == '_ext':
+            # Remove torch extensions
+            toremove.append(root)
+            del dnames[:]
+
+        if os.path.basename(root) == 'build':
+            # Remove python c extensions
+            if len(dnames) == 1 and dnames[0].startswith('temp.'):
+                toremove.append(root)
+                del dnames[:]
+
+        # Remove simple pyx inplace extensions
+        for fname in fnames:
+            if fname.endswith('.so') or fname.endswith('.c'):
+                if fname.split('.')[0] + '.pyx' in fnames:
+                    toremove.append(join(root, fname))
+
+    for dpath in toremove:
+        ub.delete(dpath, verbose=1)
 
 
 class TorchExtension(object):
@@ -430,6 +474,11 @@ if __name__ == '__main__':
         ('opencv_python', 'cv2'),
         ('pytorch', 'torch'),
     ]))
+
+    if 'clean' in sys.argv:
+        # hack
+        clean()
+        sys.exit(0)
 
     if 'build_ext' in sys.argv:
         # hack hack hack

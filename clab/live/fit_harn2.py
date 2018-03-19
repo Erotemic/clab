@@ -324,7 +324,7 @@ class FitHarness(object):
         if harn.tlogger:
             harn.tlogger.log_images(key, value, n_iter)
 
-    def initialize_training(harn):
+    def initialize(harn):
         harn.xpu.set_as_default()
 
         if tensorboard_logger:
@@ -397,7 +397,7 @@ class FitHarness(object):
 
         harn.log('Begin training')
 
-        harn.initialize_training()
+        harn.initialize()
 
         if harn.early_stop.is_done():
             harn.log('The early stopping criterion already triggered')

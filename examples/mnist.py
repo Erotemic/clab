@@ -171,11 +171,24 @@ def train_mnist():
         }
     )
 
+    loaders = ub.odict()
+    data_kw = {'batch_size': batch_size}
+    if xpu.is_gpu():
+        data_kw.update({'num_workers': 6, 'pin_memory': True})
+    for tag in ['train', 'vali', 'test']:
+        dset = datasets[tag]
+        shuffle = tag == 'train'
+        data_kw_ = data_kw.copy()
+        if tag != 'train':
+            data_kw_['batch_size'] = max(batch_size // 4, 1)
+        loader = torch.utils.data.DataLoader(dset, shuffle=shuffle,
+                                             **data_kw_)
+        loaders[tag] = loader
+
     workdir = os.path.expanduser('~/data/work/mnist/')
 
     harn = clab.fit_harness.FitHarness(
-        datasets=datasets, batch_size=batch_size,
-        xpu=xpu, hyper=hyper, dry=dry,
+        xpu=xpu, hyper=hyper, loaders=loaders, dry=dry,
         min_keys=['loss'], max_keys=['global_acc', 'class_acc'],
     )
 

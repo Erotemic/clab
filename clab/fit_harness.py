@@ -14,14 +14,21 @@ from torch.autograd import Variable
 import tensorboard_logger
 import torchvision  # NOQA
 import itertools as it
+import logging
+import warnings
 from clab import metrics
 from clab import xpu_device
 from clab import monitor
 from clab import util  # NOQA
+from clab.util import profiler  # NOQA
 from clab import getLogger
 import time
 logger = getLogger(__name__)
 print = util.protect_print(logger.info)
+
+Prog = tqdm.tqdm
+# import functools
+# Prog = functools.partial(ub.ProgIter, verbose=3)
 
 
 def number_of_parameters(model, trainable=True):
@@ -63,32 +70,29 @@ class grad_context(object):
 
 
 class FitHarness(object):
-    def __init__(harn, datasets, batch_size=None, hyper=None, xpu=None,
-                 loaders=None, train_dpath='./train', dry=False,
-                 max_keys=[], min_keys=['loss'], max_iter=1000):
+    def __init__(harn, hyper=None, xpu=None, loaders=None, workdir=None,
+                 nice=None, dry=False, max_keys=[], min_keys=['loss'],
+                 max_iter=1000):
+
+        harn.flog = None  # file logger
 
         harn.datasets = None
         harn.loaders = None
 
-        harn.dry = dry
-        if harn.dry:
-            train_dpath = ub.ensure_app_cache_dir('clab/dry')
-            ub.delete(train_dpath)
-            train_dpath = ub.ensure_app_cache_dir('clab/dry')
+        harn.nice = nice  # specify a nice name if you want
 
         harn.dry = dry
-        harn.train_dpath = train_dpath
+        harn.xpu = xpu_device.XPU.cast(xpu)
 
-        if harn.dry:
-            harn.xpu = xpu_device.XPU.cast('cpu')
-        else:
-            harn.xpu = xpu_device.XPU.cast(xpu)
+        harn.workdir = workdir
+        harn.train_dpath = None
+        harn.nice_dpath = None
 
-        harn.datasets = datasets
         if loaders is None:
-            harn.loaders = harn._setup_loaders(datasets, batch_size)
+            assert ValueError('must sepcify loaders')
         else:
             harn.loaders = loaders
+        harn.datasets = {key: val.dataset for key, val in harn.loaders.items()}
 
         harn.hyper = hyper
 
@@ -132,19 +136,26 @@ class FitHarness(object):
         }
         harn.epoch = 0
 
-    def setup_dpath(harn, workdir='.', **kwargs):
+    def setup_dpath(harn, workdir=None, **kwargs):
         from clab import folder_structure
+        workdir = workdir or harn.workdir or './harn'
         structure = folder_structure.FolderStructure(
             workdir=workdir, hyper=harn.hyper, datasets=harn.datasets,
+            nice=harn.nice
         )
         train_info = structure.setup_dpath(**kwargs)
+        harn.train_info = train_info
+        harn.nice_dpath = train_info['nice_dpath']
         harn.train_dpath = train_info['train_dpath']
         harn.link_dpath = train_info['link_dpath']
         return harn.train_dpath
 
     def _setup_loaders(harn, datasets, batch_size):
         """ automatic loader setup. Can be overriden by specifying loaders """
+        raise Exception('Depricated')
+        warnings.warn('Set loaders up  yourself yourself', DeprecationWarning)
         data_kw = {'batch_size': batch_size}
+
         if harn.xpu.is_gpu():
             data_kw.update({'num_workers': 6, 'pin_memory': True})
 
@@ -164,13 +175,31 @@ class FitHarness(object):
             loaders[tag] = loader
         return loaders
 
-    def initialize_training(harn):
+    def initialize(harn):
         # TODO: Initialize the classes and then have a different function move
         # everything to GPU
         harn.xpu.set_as_default()
 
+        if harn.train_dpath is None:
+            harn.setup_dpath(harn.workdir)
+
+        use_file_logger = True
+        if use_file_logger and harn.flog is None:
+            # setup a file logger
+            flog = logging.getLogger('fit_harn')
+            flog.propagate = False
+            # flog.handlers = []  # remove all other handlers
+            formatter = logging.Formatter('%(asctime)s : %(message)s')
+            log_fpath = join(harn.train_dpath, 'fitlog_{}.log'.format(ub.timestamp()))
+            fileHandler = logging.FileHandler(log_fpath, mode='w')
+            fileHandler.setFormatter(formatter)
+            flog.setLevel(logging.DEBUG)
+            flog.addHandler(fileHandler)
+            harn.flog = flog
+            harn.debug('setup file logger (should not print to stdout)')
+
         if tensorboard_logger:
-            train_base = os.path.dirname(harn.train_dpath)
+            train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)
             harn.log('dont forget to start: tensorboard --logdir ' + train_base)
             harn.log('Initializing tensorboard')
             harn.tlogger = tensorboard_logger.Logger(harn.train_dpath,
@@ -261,37 +290,41 @@ class FitHarness(object):
                 lrs = [.01]
             else:
                 lrs = set(map(lambda group: group['lr'], harn.optimizer.param_groups))
+        elif hasattr(harn.scheduler, 'current_lrs'):
+            lrs = set(harn.scheduler.current_lrs())
         elif hasattr(harn.scheduler, 'get_lr'):
             lrs = set(harn.scheduler.get_lr())
         else:
             # workaround for ReduceLROnPlateau
-            lrs = set(map(lambda group: group['lr'], harn.scheduler.optimizer.param_groups))
+            lrs = {group['lr'] for group in harn.scheduler.optimizer.param_groups}
         return lrs
 
     def update_prog_description(harn):
         lrs = harn.current_lrs()
         lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
         desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())
+        harn.debug(desc)
         harn.main_prog.set_description(desc)
         harn.main_prog.set_postfix(
             {'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
         harn.main_prog.refresh()
 
+    @profiler.profile
     def run(harn):
         """
         Main training loop
         """
         harn.log('Begin training')
 
-        harn.initialize_training()
+        harn.initialize()
 
         if harn._check_termination():
             return
 
-        harn.main_prog = tqdm.tqdm(desc='epoch', total=harn.config['max_iter'],
-                                   disable=not harn.config['show_prog'],
-                                   leave=True, dynamic_ncols=True, position=1,
-                                   initial=harn.epoch)
+        harn.main_prog = Prog(desc='epoch', total=harn.config['max_iter'],
+                              disable=not harn.config['show_prog'],
+                              leave=True, dynamic_ncols=True, position=1,
+                              initial=harn.epoch)
         harn.update_prog_description()
 
         train_loader = harn.loaders['train']
@@ -311,8 +344,14 @@ class FitHarness(object):
             for tag, loader in harn.loaders.items()
         }
 
+        # if harn.scheduler:
+        #     # prestep scheduler?
+        #     if getattr(harn.scheduler, 'last_epoch', 0) == -1:
+        #         harn.scheduler.step()
+
         try:
             for harn.epoch in it.count(harn.epoch):
+                harn.debug('=== START EPOCH {} ==='.format(harn.epoch))
 
                 harn.log_value('epoch lr', np.mean(list(harn.current_lrs())),
                                harn.epoch)
@@ -341,6 +380,7 @@ class FitHarness(object):
                 save_path = harn.save_snapshot()
                 if improved:
                     if save_path:
+                        harn.debug('New best_snapshot {}'.format(save_path))
                         # Copy the best snapshot the the main directory
                         shutil.copy2(save_path, join(harn.train_dpath,
                                      'best_snapshot.pt'))
@@ -374,6 +414,9 @@ class FitHarness(object):
         Helper function to change the learning rate that handles the way that
         different schedulers might be used.
         """
+        # print("\n\n\n\nSTEP SCEHDULER")
+        # print('harn.scheduler = {!r}'.format(harn.scheduler))
+        # print("\n\n\n\n")
         if harn.scheduler is None:
             pass
         elif harn.scheduler.__class__.__name__ == 'ReduceLROnPlateau':
@@ -424,10 +467,15 @@ class FitHarness(object):
         else:
             harn.scheduler.step()
 
+    @profiler.profile
     def run_epoch(harn, loader, tag, learn=False):
         """
         Evaluate the model on test / train / or validation data
         """
+        harn.debug('RUN_EPOCH {}, tag={}, learn={}'.format(harn.epoch, tag, learn))
+        harn.debug(' * len(loader) = {}'.format(len(loader)))
+        harn.debug(' * loader.batch_size = {}'.format(loader.batch_size))
+
         # Use exponentially weighted or windowed moving averages across epochs
         iter_moving_metircs = harn._run_metrics[tag]
         # Use simple moving average within an epoch
@@ -439,13 +487,13 @@ class FitHarness(object):
             if harn.model.training != learn or learn:
                 harn.model.train(learn)
 
-        msg = harn.batch_msg({'loss': -1}, loader.batch_size)
+        msg = harn.batch_msg({'loss': -1}, loader.batch_sampler.batch_size)
         desc = tag + ' ' + msg
         position = (list(harn.loaders.keys()).index(tag) +
                     harn.main_prog.pos + 1)
-        prog = tqdm.tqdm(desc=desc, total=len(loader),
-                         disable=not harn.config['show_prog'],
-                         position=position, leave=True, dynamic_ncols=True)
+        prog = Prog(desc=desc, total=len(loader),
+                    disable=not harn.config['show_prog'],
+                    position=position, leave=True, dynamic_ncols=True)
         prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
         with grad_context(learn):
@@ -467,7 +515,7 @@ class FitHarness(object):
                     ave_metrics = iter_moving_metircs.average()
 
                     msg = harn.batch_msg({'loss': ave_metrics['loss']},
-                                         loader.batch_size)
+                                         loader.batch_sampler.batch_size)
                     prog.set_description(tag + ' ' + msg)
 
                     # iter_idx = (harn.epoch * len(loader) + bx)
@@ -526,6 +574,7 @@ class FitHarness(object):
                 break
         return harn._standardize_batch(batch)
 
+    @profiler.profile
     def run_batch(harn, inputs, labels, learn=False):
         """
         Batch with weight updates
@@ -660,15 +709,18 @@ class FitHarness(object):
         # the snapshot holds the previous epoch, so add one to move to current
         harn.epoch = snapshot['epoch'] + 1
         harn.model.load_state_dict(snapshot['model_state_dict'])
+        harn.debug('loaded model_state_dict')
 
         if 'monitor_state_dict' in snapshot:
             # Dont override patience, use whatever the current val is
             patience = harn.monitor.patience
             harn.monitor.load_state_dict(snapshot['monitor_state_dict'])
             harn.monitor.patience = patience
+            harn.debug('loaded monitor_state_dict')
 
         if 'optimizer_state_dict' in snapshot:
             harn.optimizer.load_state_dict(snapshot['optimizer_state_dict'])
+            harn.debug('loaded optimizer_state_dict')
         harn.log('Resuming training...')
 
     def save_snapshot(harn):
@@ -677,7 +729,7 @@ class FitHarness(object):
         save_path = join(harn.snapshot_dpath, '_epoch_{:08d}.pt'.format(harn.epoch))
         if harn.dry:
             # harn.log('VERY VERY VERY VERY VERY LONG MESSAGE ' * 5)
-            harn.log('Would save snapshot to {}'.format(save_path))
+            harn.debug('Would save snapshot to {}'.format(save_path))
             pass
         else:
             train = harn.datasets['train']
@@ -696,26 +748,23 @@ class FitHarness(object):
                 'monitor_state_dict': harn.monitor.state_dict(),
             }
             torch.save(snapshot, save_path)
+            harn.debug('Snapshot saved to {}'.format(save_path))
             return save_path
-            # harn.log('Snapshot saved to {}'.format(save_path))
 
     def log(harn, msg):
-        # if harn.main_prog:
-        #     harn.main_prog.write(str(msg), file=sys.stdout)
-        # else:
+        harn.debug(msg)
         print(msg)
-        # for line in msg.split('\n'):
-        #     print(line)
-        # print('line = {!r}'.format(line))
 
     def debug(harn, msg):
-        # TODO: add in a file logging mechanism here
-        # print(msg)
-        pass
+        if harn.flog:
+            from xdoctest.utils import strip_ansi
+            msg = strip_ansi(msg)
+            harn.flog.debug(msg)
 
     def log_value(harn, key, value, n_iter):
         if harn.tlogger:
             harn.tlogger.log_value(key, value, n_iter)
+        harn.debug('log_value({}, {}, {}'.format(key, value, n_iter))
 
     def log_histogram(harn, key, value, n_iter):
         if harn.tlogger:

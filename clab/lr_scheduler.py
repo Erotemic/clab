@@ -51,6 +51,10 @@ class ListedLR(_LRScheduler2):
     def get_lr(self):
         return self._get_epoch_lr(self.last_epoch)
 
+    # def step(self):
+    #     print('STEPING = {!r}'.format(self))
+    #     super().step()
+
     def _get_epoch_lr(self, epoch):
         """ return lr based on the epoch """
         key_epochs = self.key_epochs

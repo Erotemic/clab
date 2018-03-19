@@ -9,7 +9,9 @@ cd $HOME/code/clab/clab/models/yolo2
 ./make.sh
 """
 from os.path import exists
+from clab.util import profiler  # NOQA
 import torch
+import cv2
 import ubelt as ub
 import numpy as np
 import torch.utils.data.sampler as torch_sampler
@@ -124,6 +126,10 @@ class YoloVOCDataset(voc.VOCDataset):
             ]
             self.augmenter = iaa.Sequential(augmentors)
 
+    # def __len__(self):
+    #     return 16
+
+    @profiler.profile
     def __getitem__(self, index):
         """
         Example:
@@ -149,8 +155,22 @@ class YoloVOCDataset(voc.VOCDataset):
         else:
             inp_size = self.base_size
 
-        # load the raw data and requested scale factor (sf)
-        hwc255, boxes, gt_classes = self._load_item(index, inp_size)
+        # load the raw data
+        # hwc255, boxes, gt_classes = self._load_item(index, inp_size)
+        image = self._load_image(index)
+        annot = self._load_annotation(index)
+
+        boxes = annot['boxes'].astype(np.float32)
+        gt_classes = annot['gt_classes']
+
+        # squish the bounding box and image into a standard size
+        w, h = inp_size
+        sx = float(w) / image.shape[1]
+        sy = float(h) / image.shape[0]
+        boxes[:, 0::2] *= sx
+        boxes[:, 1::2] *= sy
+        interpolation = cv2.INTER_AREA if (sx + sy) <= 2 else cv2.INTER_CUBIC
+        hwc255 = cv2.resize(image, (w, h), interpolation=interpolation)
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
@@ -173,6 +193,14 @@ class YoloVOCDataset(voc.VOCDataset):
         boxes = torch.LongTensor(boxes.astype(np.int32))
         label = (boxes, gt_classes,)
         return chw01, label
+
+    @ub.memoize_method
+    def _load_image(self, index):
+        return super(YoloVOCDataset, self)._load_image(index)
+
+    @ub.memoize_method
+    def _load_annotation(self, index):
+        return super(YoloVOCDataset, self)._load_annotation(index)
 
 
 def make_loaders(datasets, train_batch_size=16, vali_batch_size=1, workers=0):
@@ -209,6 +237,7 @@ def make_loaders(datasets, train_batch_size=16, vali_batch_size=1, workers=0):
         )
         loader = dset.make_loader(batch_sampler=batch_sampler,
                                   num_workers=workers)
+        loader.batch_size = batch_size
         loaders[key] = loader
     return loaders
 
@@ -248,7 +277,7 @@ class cfg(object):
     # iou_thresh = 0.6
 
     # dataset
-    vali_batch_size = 1
+    vali_batch_size = 4
     train_batch_size = 16
 
     lr_step_points = {
@@ -262,6 +291,17 @@ class cfg(object):
 
 
 def setup_harness():
+    """
+    CommandLine:
+        python ~/code/clab/examples/yolo.py setup_harness
+        python ~/code/clab/examples/yolo.py setup_harness --profile
+
+    Example:
+        >>> harn = setup_harness()
+        >>> harn.initialize()
+        >>> harn.dry = True
+        >>> harn.run()
+    """
     cfg.pretrained_fpath = grab_darknet19_initial_weights()
     datasets = {
         'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
@@ -345,8 +385,7 @@ def setup_harness():
 
     xpu = xpu_device.XPU.cast('auto')
     harn = fit_harness.FitHarness(
-        hyper=hyper, datasets=datasets, xpu=xpu,
-        loaders=loaders, max_iter=100,
+        hyper=hyper, xpu=xpu, loaders=loaders, max_iter=100,
     )
     harn.monitor = monitor.Monitor(min_keys=['loss'],
                                    # max_keys=['global_acc', 'class_acc'],
@@ -362,7 +401,7 @@ def setup_harness():
             >>> sys.path.append('/home/joncrall/code/clab/examples')
             >>> from yolo import *
             >>> harn = setup_harness()
-            >>> harn.initialize_training()
+            >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'train')
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
