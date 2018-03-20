@@ -333,7 +333,7 @@ class HyperParams(object):
                     # with classes
                     if isinstance(aug, tuple):
                         return [imgaug_json_id(item) for item in aug]
-                    if isinstance(aug, imgaug.parameters.StochasticParameter):
+                    elif isinstance(aug, imgaug.parameters.StochasticParameter):
                         return str(aug)
                     else:
                         info = ub.odict()
