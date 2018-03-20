@@ -3,12 +3,53 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .utils import network as net_utils
 from .layers.reorg.reorg_layer import ReorgLayer
 from .utils.cython_bbox import bbox_ious, anchor_intersections
 from .utils import yolo_utils
 from functools import partial
 from multiprocessing import Pool
+
+
+class Conv2d_Noli(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 relu=True, same_padding=False):
+        super(Conv2d_Noli, self).__init__()
+        padding = int((kernel_size - 1) / 2) if same_padding else 0
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size,
+                              stride, padding=padding)
+        self.relu = nn.LeakyReLU(0.1, inplace=True) if relu else None
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.relu is not None:
+            x = self.relu(x)
+        return x
+
+
+class Conv2d_Norm_Noli(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 relu=True, same_padding=False):
+        super(Conv2d_Norm_Noli, self).__init__()
+        padding = int((kernel_size - 1) / 2) if same_padding else 0
+
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size,
+                              stride, padding=padding, bias=False)
+        self.bn = nn.BatchNorm2d(out_channels, momentum=0.01)
+        self.relu = nn.LeakyReLU(0.1, inplace=True) if relu else None
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        if self.relu is not None:
+            x = self.relu(x)
+        return x
+
+
+def np_to_variable(x, is_cuda=True, dtype=torch.FloatTensor):
+    v = torch.autograd.Variable(torch.from_numpy(x).type(dtype))
+    if is_cuda:
+        v = v.cuda()
+    return v
 
 
 def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
@@ -164,7 +205,7 @@ class DarknetLoss(TrackCudaLoss):
         >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
     """
     def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
-                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.6,
+                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
                  workers=None):
         # train
         super(DarknetLoss, criterion).__init__()
@@ -201,15 +242,13 @@ class DarknetLoss(TrackCudaLoss):
 
         is_cuda = criterion.is_cuda
 
-        _boxes = net_utils.np_to_variable(_boxes, is_cuda)
-        _ious = net_utils.np_to_variable(_ious, is_cuda)
-        _classes = net_utils.np_to_variable(_classes, is_cuda)
-        box_mask = net_utils.np_to_variable(_box_mask, is_cuda,
-                                            dtype=torch.FloatTensor)
-        iou_mask = net_utils.np_to_variable(_iou_mask, is_cuda,
-                                            dtype=torch.FloatTensor)
-        class_mask = net_utils.np_to_variable(_class_mask, is_cuda,
-                                              dtype=torch.FloatTensor)
+        _boxes = np_to_variable(_boxes, is_cuda)
+        _ious = np_to_variable(_ious, is_cuda)
+        _classes = np_to_variable(_classes, is_cuda)
+        box_mask = np_to_variable(_box_mask, is_cuda, dtype=torch.FloatTensor)
+        iou_mask = np_to_variable(_iou_mask, is_cuda, dtype=torch.FloatTensor)
+        class_mask = np_to_variable(_class_mask, is_cuda,
+                                    dtype=torch.FloatTensor)
 
         num_boxes = sum((len(boxes) for boxes in gt_boxes))
 
@@ -310,11 +349,10 @@ class Darknet19(nn.Module):
                         layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
                     else:
                         out_channels, ksize = item
-                        layers.append(net_utils.Conv2d_BatchNorm(in_channels,
-                                                                 out_channels,
-                                                                 ksize,
-                                                                 same_padding=True))
-                        # layers.append(net_utils.Conv2d(in_channels, out_channels,
+                        layers.append(Conv2d_Norm_Noli(in_channels,
+                                                       out_channels, ksize,
+                                                       same_padding=True))
+                        # layers.append(Conv2d_Noli(in_channels, out_channels,
                         #     ksize, same_padding=True))
                         in_channels = out_channels
 
@@ -339,7 +377,7 @@ class Darknet19(nn.Module):
 
         # linear
         out_channels = self.num_anchors * (self.num_classes + 5)
-        self.conv5 = net_utils.Conv2d(c4, out_channels, 1, 1, relu=False)
+        self.conv5 = Conv2d_Noli(c4, out_channels, 1, 1, relu=False)
         self.global_average_pool = nn.AvgPool2d((1, 1))
 
     def forward(self, im_data):

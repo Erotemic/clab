@@ -1,12 +1,10 @@
 """
 Need to compile yolo first.
 
-Currently its hacked into the system.
-
+Currently setup is a bit hacked.
 
 pip install cffi
-cd $HOME/code/clab/clab/models/yolo2
-./make.sh
+python setup.py build_ext --inplace
 """
 from os.path import exists
 from clab.util import profiler  # NOQA
@@ -90,7 +88,7 @@ class YoloVOCDataset(voc.VOCDataset):
         Example:
             >>> import sys
             >>> sys.path.append('/home/joncrall/code/clab/examples')
-            >>> from yolo import *
+            >>> from yolo_voc import *
             >>> self = YoloVOCDataset(split='train')
             >>> chw01, label = self[1]
             >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
@@ -251,8 +249,8 @@ class cfg(object):
 def setup_harness():
     """
     CommandLine:
-        python ~/code/clab/examples/yolo.py setup_harness
-        python ~/code/clab/examples/yolo.py setup_harness --profile
+        python ~/code/clab/examples/yolo_voc.py setup_harness
+        python ~/code/clab/examples/yolo_voc.py setup_harness --profile
 
     Example:
         >>> harn = setup_harness()
@@ -280,13 +278,14 @@ def setup_harness():
             'anchors': datasets['train'].anchors
         }),
 
+        # https://github.com/longcw/yolo2-pytorch/issues/1#issuecomment-286410772
         criterion=(darknet.DarknetLoss, {
             'anchors': datasets['train'].anchors,
             'object_scale': 5.0,
             'noobject_scale': 1.0,
             'class_scale': 1.0,
             'coord_scale': 1.0,
-            'iou_thresh': 0.6,
+            'iou_thresh': 0.5,
         }),
 
         optimizer=(torch.optim.SGD, dict(
@@ -329,7 +328,7 @@ def setup_harness():
         Example:
             >>> import sys
             >>> sys.path.append('/home/joncrall/code/clab/examples')
-            >>> from yolo import *
+            >>> from yolo_voc import *
             >>> harn = setup_harness()
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'train')
@@ -376,7 +375,7 @@ def setup_harness():
 
 def train():
     """
-    python ~/code/clab/examples/yolo.py train
+    python ~/code/clab/examples/yolo_voc.py train
     """
     harn = setup_harness()
     harn.setup_dpath(ub.ensuredir(cfg.workdir))
@@ -387,7 +386,7 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         export PYTHONPATH=$PYTHONPATH:/home/joncrall/code/clab/examples
-        python ~/code/clab/examples/yolo.py
+        python ~/code/clab/examples/yolo_voc.py
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
