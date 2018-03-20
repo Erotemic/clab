@@ -447,7 +447,7 @@ class Darknet19(nn.Module):
         # ---
         self.conv3, c3 = _make_layers(c2, [(1024, 3), (1024, 3)])
 
-        self.reorg = ReorgLayer(stride=2)
+        self.reorg = ReorgLayer(in_channels=c1, stride=2)
         reorg_n_feat_out = self.reorg.out_channels
 
         # cat [conv1s, conv3]
