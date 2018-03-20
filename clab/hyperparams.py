@@ -316,6 +316,10 @@ class HyperParams(object):
             return None
         if isinstance(hyper.augment, (dict, list)):
             # already specified in json format
+            try:
+                ub.hash_data(hyper.augment)
+            except TypeError:
+                raise TypeError('NOT IN JSON FORMAT hyper.augment={}'.format(hyper.augment))
             augment_json = hyper.augment
         else:
             try:
