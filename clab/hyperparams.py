@@ -304,25 +304,48 @@ class HyperParams(object):
 
         Example:
             >>> from clab.hyperparams import *
+            >>> import imgaug as ia
+            >>> import imgaug.augmenters as iaa
             >>> import imgaug
             >>> augment = imgaug.augmenters.Affine()
             >>> hyper = HyperParams(augment=augment)
             >>> info = hyper.augment_json()
             >>> assert info['__class__'] == 'Affine'
-            >>> hyper = HyperParams(augment={})
+            >>> hyper = HyperParams(augment=ub.odict())
             >>> assert hyper.augment_json() == {}
+            >>> #####
+            >>> augmentors = [
+            >>>     iaa.Fliplr(p=.5),
+            >>>     iaa.Flipud(p=.5),
+            >>>     iaa.Affine(
+            >>>         scale={"x": (1.0, 1.01), "y": (1.0, 1.01)},
+            >>>         translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
+            >>>         rotate=(-15, 15),
+            >>>         shear=(-7, 7),
+            >>>         order=[0, 1, 3],
+            >>>         cval=(0, 255),
+            >>>         mode=ia.ALL,  # use any of scikit-image's warping modes (see 2nd image from the top for examples)
+            >>>         # Note: currently requires imgaug master version
+            >>>         backend='cv2',
+            >>>     ),
+            >>>     iaa.AddToHueAndSaturation((-20, 20)),  # change hue and saturation
+            >>>     iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),  # improve or worsen the contrast
+            >>> ]
+            >>> augment = iaa.Sequential(augmentors)
+            >>> hyper = HyperParams(augment=augment)
+            >>> info = hyper.augment_json()
         """
         if hyper.augment is None:
             return None
         elif isinstance(hyper.augment, str):
             return hyper.augment
         # if isinstance(hyper.augment, (dict, list)):  # cant check for list because Seq inherits from it
-        elif isinstance(hyper.augment, dict):
+        elif isinstance(hyper.augment, ub.odict):
             # already specified in json format
             try:
                 ub.hash_data(hyper.augment)
             except TypeError:
-                raise TypeError('NOT IN JSON FORMAT hyper.augment={}'.format(hyper.augment))
+                raise TypeError('NOT IN ORDERED JSON FORMAT hyper.augment={}'.format(hyper.augment))
             augment_json = hyper.augment
         else:
             try:
@@ -336,16 +359,20 @@ class HyperParams(object):
                     elif isinstance(aug, imgaug.parameters.StochasticParameter):
                         return str(aug)
                     else:
-                        info = ub.odict()
-                        info['__class__'] = aug.__class__.__name__
-                        params = aug.get_parameters()
-                        if params:
-                            info['params'] = [imgaug_json_id(p) for p in params]
-                        if isinstance(aug, list):
-                            children = aug[:]
-                            children = [imgaug_json_id(c) for c in children]
-                            info['children'] = children
-                        return info
+                        try:
+                            info = ub.odict()
+                            info['__class__'] = aug.__class__.__name__
+                            params = aug.get_parameters()
+                            if params:
+                                info['params'] = [imgaug_json_id(p) for p in params]
+                            if isinstance(aug, list):
+                                children = aug[:]
+                                children = [imgaug_json_id(c) for c in children]
+                                info['children'] = children
+                            return info
+                        except Exception:
+                            # imgaug is weird and buggy
+                            return str(aug)
             except ImportError:
                 augment_json = str(hyper.augment)
             else:
@@ -354,9 +381,10 @@ class HyperParams(object):
                 else:
                     raise TypeError('Specify augment in json format')
                 try:
-                    ub.hash_data(hyper.augment)
+                    ub.hash_data(augment_json)
                 except TypeError:
-                    raise TypeError('FAILED TO PRODUCE JSON FORMAT for hyper.augment={}'.format(hyper.augment))
+                    print('FAILED TO PRODUCE JSON FORMAT for hyper.augment={}'.format(hyper.augment))
+                    raise
         return augment_json
         # print(ub.repr2(augment))
 
