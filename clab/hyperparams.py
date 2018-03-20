@@ -314,7 +314,8 @@ class HyperParams(object):
         """
         if hyper.augment is None:
             return None
-        if isinstance(hyper.augment, (dict, list)):
+        # if isinstance(hyper.augment, (dict, list)):  # cant check for list because Seq inherits from it
+        if isinstance(hyper.augment, dict):
             # already specified in json format
             try:
                 ub.hash_data(hyper.augment)
@@ -348,6 +349,12 @@ class HyperParams(object):
             else:
                 if isinstance(hyper.augment, imgaug.augmenters.meta.Augmenter):
                     augment_json = imgaug_json_id(hyper.augment)
+                else:
+                    raise TypeError('Specify augment in json format')
+                try:
+                    ub.hash_data(hyper.augment)
+                except TypeError:
+                    raise TypeError('FAILED TO PRODUCE JSON FORMAT for hyper.augment={}'.format(hyper.augment))
         return augment_json
         # print(ub.repr2(augment))
 
