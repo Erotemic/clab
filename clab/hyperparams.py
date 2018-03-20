@@ -314,8 +314,10 @@ class HyperParams(object):
         """
         if hyper.augment is None:
             return None
+        elif isinstance(hyper.augment, str):
+            return hyper.augment
         # if isinstance(hyper.augment, (dict, list)):  # cant check for list because Seq inherits from it
-        if isinstance(hyper.augment, dict):
+        elif isinstance(hyper.augment, dict):
             # already specified in json format
             try:
                 ub.hash_data(hyper.augment)
