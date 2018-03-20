@@ -271,6 +271,12 @@ def setup_harness():
                            vali_batch_size=cfg.vali_batch_size,
                            workers=cfg.workers)
 
+    """
+    Reference:
+        Original YOLO9000 hyperparameters are defined here:
+        https://github.com/pjreddie/darknet/blob/master/cfg/yolo-voc.2.0.cfg
+    """
+
     hyper = hyperparams.HyperParams(
 
         model=(darknet.Darknet19, {
@@ -359,6 +365,8 @@ def setup_harness():
         # y_true = label.data.cpu().numpy()
 
         # TODO: measure actual test criterion
+
+        # bbox_pred, iou_pred, prob_pred = outputs
 
         metrics_dict = ub.odict()
         metrics_dict['L_bbox'] = float(

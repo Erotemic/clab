@@ -52,9 +52,150 @@ def np_to_variable(x, is_cuda=True, dtype=torch.FloatTensor):
     return v
 
 
+class TrackCudaLoss(torch.nn.modules.loss._Loss):
+    """
+    Keep track of if the module is in cpu or gpu mode
+    """
+    def __init__(self):
+        super(TrackCudaLoss, self).__init__()
+        self._iscuda = False
+        self._device_num = None
+
+    def cuda(self, device_num=None, **kwargs):
+        self._iscuda = True
+        self._device_num = device_num
+        return super(TrackCudaLoss, self).cuda(device_num, **kwargs)
+
+    def cpu(self):
+        self._iscuda = False
+        self._device_num = None
+        return super(TrackCudaLoss, self).cpu()
+
+    @property
+    def is_cuda(self):
+        return self._iscuda
+
+    def get_device(self):
+        return self._device_num
+
+
+class DarknetLoss(TrackCudaLoss):
+    """
+    Example:
+        >>> from clab.models.yolo2.darknet import *
+        >>> model = Darknet19(num_classes=20)
+        >>> criterion = DarknetLoss(model.anchors)
+        >>> im_data = torch.randn(1, 3, 100, 100)
+        >>> output = model(im_data)
+        >>> bbox_pred, iou_pred, prob_pred = output
+        >>> gt_boxes = np.array([[[0, 0, 10, 10]]])
+        >>> gt_classes = np.array([[1]])
+        >>> dontcare = np.array([[]])
+        >>> inp_size = (100, 100)
+        >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
+    """
+    def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
+                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
+                 workers=None):
+        # train
+        super(DarknetLoss, criterion).__init__()
+        criterion.bbox_loss = None
+        criterion.iou_loss = None
+        criterion.cls_loss = None
+
+        criterion.object_scale = object_scale
+        criterion.noobject_scale = noobject_scale
+        criterion.class_scale = class_scale
+        criterion.coord_scale = coord_scale
+        criterion.iou_thresh = iou_thresh
+
+        if workers is None:
+            criterion.pool = None
+        else:
+            criterion.pool = Pool(processes=workers)
+
+        criterion.anchors = np.ascontiguousarray(anchors, dtype=np.float)
+        criterion.mse = nn.MSELoss(size_average=False)
+
+    def forward(criterion, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
+                gt_classes=None, dontcare=None, inp_size=None):
+        bbox_pred_np = bbox_pred.data.cpu().numpy()
+        iou_pred_np = iou_pred.data.cpu().numpy()
+
+        num_classes = prob_pred.shape[-1]
+
+        _tup = criterion._build_target(bbox_pred_np, gt_boxes, gt_classes,
+                                       dontcare, iou_pred_np, inp_size,
+                                       num_classes, criterion.anchors)
+        _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
+
+        is_cuda = criterion.is_cuda
+
+        _boxes = np_to_variable(_boxes, is_cuda)
+        _ious = np_to_variable(_ious, is_cuda)
+        _classes = np_to_variable(_classes, is_cuda)
+        box_mask = np_to_variable(_box_mask, is_cuda, dtype=torch.FloatTensor)
+        iou_mask = np_to_variable(_iou_mask, is_cuda, dtype=torch.FloatTensor)
+        class_mask = np_to_variable(_class_mask, is_cuda,
+                                    dtype=torch.FloatTensor)
+
+        num_boxes = sum((len(boxes) for boxes in gt_boxes))
+
+        # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
+        box_mask = box_mask.expand_as(_boxes)
+
+        criterion.bbox_loss = criterion.mse(bbox_pred * box_mask,
+                                            _boxes * box_mask) / num_boxes
+        criterion.iou_loss = criterion.mse(iou_pred * iou_mask,
+                                           _ious * iou_mask) / num_boxes
+
+        class_mask = class_mask.expand_as(prob_pred)
+        criterion.cls_loss = criterion.mse(prob_pred * class_mask,
+                                           _classes * class_mask) / num_boxes
+
+        total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
+        return total_loss
+
+    def _build_target(criterion, bbox_pred_np, gt_boxes, gt_classes, dontcare,
+                      iou_pred_np, inp_size, num_classes, anchors):
+        """
+        :param bbox_pred: shape: (bsize, h x w, num_anchors, 4) :
+                          (sig(tx), sig(ty), exp(tw), exp(th))
+        """
+
+        bsize = bbox_pred_np.shape[0]
+        losskw = dict(object_scale=criterion.object_scale,
+                      noobject_scale=criterion.noobject_scale,
+                      class_scale=criterion.class_scale,
+                      coord_scale=criterion.coord_scale,
+                      iou_thresh=criterion.iou_thresh)
+
+        func = partial(_process_batch, inp_size=inp_size,
+                       num_classes=num_classes, anchors=anchors, **losskw)
+
+        args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
+                 iou_pred_np[b])
+                for b in range(bsize))
+        args = list(args)
+
+        if criterion.pool:
+            targets = criterion.pool.map(func, args)
+        else:
+            targets = list(map(func, args))
+
+        _boxes = np.stack(tuple((row[0] for row in targets)))
+        _ious = np.stack(tuple((row[1] for row in targets)))
+        _classes = np.stack(tuple((row[2] for row in targets)))
+        _box_mask = np.stack(tuple((row[3] for row in targets)))
+        _iou_mask = np.stack(tuple((row[4] for row in targets)))
+        _class_mask = np.stack(tuple((row[5] for row in targets)))
+
+        return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
+
+
 def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
                    noobject_scale=1.0, class_scale=1.0, coord_scale=1.0,
-                   iou_thresh=0.6):
+                   iou_thresh=0.5):
     """
     Example:
         >>> bbox_pred_np = np.random.randn(9, 5, 4)
@@ -165,145 +306,6 @@ def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
     return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
 
-class TrackCudaLoss(torch.nn.modules.loss._Loss):
-    def __init__(self):
-        super(TrackCudaLoss, self).__init__()
-        self._iscuda = False
-        self._device_num = None
-
-    def cuda(self, device_num=None, **kwargs):
-        self._iscuda = True
-        self._device_num = device_num
-        return super(TrackCudaLoss, self).cuda(device_num, **kwargs)
-
-    def cpu(self):
-        self._iscuda = False
-        self._device_num = None
-        return super(TrackCudaLoss, self).cpu()
-
-    @property
-    def is_cuda(self):
-        return self._iscuda
-
-    def get_device(self):
-        return self._device_num
-
-
-class DarknetLoss(TrackCudaLoss):
-    """
-    Example:
-        >>> from clab.models.yolo2.darknet import *
-        >>> model = Darknet19(num_classes=20)
-        >>> criterion = DarknetLoss(model.anchors)
-        >>> im_data = torch.randn(1, 3, 100, 100)
-        >>> output = model(im_data)
-        >>> bbox_pred, iou_pred, prob_pred = output
-        >>> gt_boxes = np.array([[[0, 0, 10, 10]]])
-        >>> gt_classes = np.array([[1]])
-        >>> dontcare = np.array([[]])
-        >>> inp_size = (100, 100)
-        >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
-    """
-    def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
-                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
-                 workers=None):
-        # train
-        super(DarknetLoss, criterion).__init__()
-        criterion.bbox_loss = None
-        criterion.iou_loss = None
-        criterion.cls_loss = None
-
-        criterion.object_scale = object_scale
-        criterion.noobject_scale = noobject_scale
-        criterion.class_scale = class_scale
-        criterion.coord_scale = coord_scale
-        criterion.iou_thresh = iou_thresh
-
-        if workers is None:
-            criterion.pool = None
-        else:
-            criterion.pool = Pool(processes=workers)
-
-        criterion.anchors = anchors
-
-        criterion.mse = nn.MSELoss(size_average=False)
-
-    def forward(criterion, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
-                gt_classes=None, dontcare=None, inp_size=None):
-        bbox_pred_np = bbox_pred.data.cpu().numpy()
-        iou_pred_np = iou_pred.data.cpu().numpy()
-
-        num_classes = prob_pred.shape[-1]
-
-        _tup = criterion._build_target(bbox_pred_np, gt_boxes, gt_classes,
-                                       dontcare, iou_pred_np, inp_size,
-                                       num_classes, criterion.anchors)
-        _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
-
-        is_cuda = criterion.is_cuda
-
-        _boxes = np_to_variable(_boxes, is_cuda)
-        _ious = np_to_variable(_ious, is_cuda)
-        _classes = np_to_variable(_classes, is_cuda)
-        box_mask = np_to_variable(_box_mask, is_cuda, dtype=torch.FloatTensor)
-        iou_mask = np_to_variable(_iou_mask, is_cuda, dtype=torch.FloatTensor)
-        class_mask = np_to_variable(_class_mask, is_cuda,
-                                    dtype=torch.FloatTensor)
-
-        num_boxes = sum((len(boxes) for boxes in gt_boxes))
-
-        # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
-        box_mask = box_mask.expand_as(_boxes)
-
-        criterion.bbox_loss = criterion.mse(bbox_pred * box_mask,
-                                            _boxes * box_mask) / num_boxes
-        criterion.iou_loss = criterion.mse(iou_pred * iou_mask,
-                                           _ious * iou_mask) / num_boxes
-
-        class_mask = class_mask.expand_as(prob_pred)
-        criterion.cls_loss = criterion.mse(prob_pred * class_mask,
-                                           _classes * class_mask) / num_boxes
-
-        total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
-        return total_loss
-
-    def _build_target(criterion, bbox_pred_np, gt_boxes, gt_classes, dontcare,
-                      iou_pred_np, inp_size, num_classes, anchors):
-        """
-        :param bbox_pred: shape: (bsize, h x w, num_anchors, 4) :
-                          (sig(tx), sig(ty), exp(tw), exp(th))
-        """
-
-        bsize = bbox_pred_np.shape[0]
-        losskw = dict(object_scale=criterion.object_scale,
-                      noobject_scale=criterion.noobject_scale,
-                      class_scale=criterion.class_scale,
-                      coord_scale=criterion.coord_scale,
-                      iou_thresh=criterion.iou_thresh)
-
-        func = partial(_process_batch, inp_size=inp_size,
-                       num_classes=num_classes, anchors=anchors, **losskw)
-
-        args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
-                 iou_pred_np[b])
-                for b in range(bsize))
-        args = list(args)
-
-        if criterion.pool:
-            targets = criterion.pool.map(func, args)
-        else:
-            targets = list(map(func, args))
-
-        _boxes = np.stack(tuple((row[0] for row in targets)))
-        _ious = np.stack(tuple((row[1] for row in targets)))
-        _classes = np.stack(tuple((row[2] for row in targets)))
-        _box_mask = np.stack(tuple((row[3] for row in targets)))
-        _iou_mask = np.stack(tuple((row[4] for row in targets)))
-        _class_mask = np.stack(tuple((row[5] for row in targets)))
-
-        return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
-
-
 class Darknet19(nn.Module):
     """
     Example:
@@ -409,7 +411,134 @@ class Darknet19(nn.Module):
         score_energy = score_pred.view(-1, score_pred.size()[-1])
         prob_pred = F.softmax(score_energy, dim=1).view_as(score_pred)
 
-        return bbox_pred, iou_pred, prob_pred
+        # Note: bbox_pred are relative offsets to the anchors.
+        output = (bbox_pred, iou_pred, prob_pred)
+        return output
+
+    def postprocess(self, output, inp_size, im_shapes, conf_thresh=0.001,
+                    nms_thresh=0.5):
+        """
+        Postprocess the raw network output into usable bounding boxes
+
+        Args:
+            bbox_pred: (bsize, HxW, num_anchors, 4)
+                        ndarray of float (sig(tx), sig(ty), exp(tw), exp(th))
+
+            iou_pred:  (bsize, HxW, num_anchors, 1)
+
+            prob_pred: (bsize, HxW, num_anchors, num_classes)
+
+            inp_size (tuple): size of input to network
+
+            im_shapes (list): size of each in image in the batch before rescale
+
+            conf_thresh (float): threshold for filtering bboxes. Keep only the
+                detections above this confidence value.
+
+            nms_thresh (float): nonmax supression iou threshold
+
+        Notes:
+            Original params for nms_thresh (iou_thresh) and conf_thresh
+            (thresh) are here:
+                https://github.com/pjreddie/darknet/blob/master/examples/yolo.c#L213
+
+        CommandLine:
+            python -m clab.models.yolo2.darknet Darknet19.postprocess
+
+        Example:
+            >>> from clab.models.yolo2.darknet import *
+            >>> inp_size = (288, 288)
+            >>> self = Darknet19(num_classes=20)
+            >>> state_dict = torch.load(demo_weights())['model_state_dict']
+            >>> self.load_state_dict(state_dict)
+            >>> im_data, rgb255 = demo_image(inp_size)
+            >>> output = self(im_data)
+            >>> # Define remaining params
+            >>> conf_thresh = 0.01
+            >>> nms_thresh = 0.5
+            >>> im_shapes = [rgb255.shape[0:2]]
+            >>> postout = self.postprocess(output, inp_size, im_shapes, conf_thresh, nms_thresh)
+            >>> bbox_abs, scores, cls_inds = postout
+            >>> # xdoc: +REQUIRES(--show)
+            >>> from clab.util import mplutil
+            >>> mplutil.qtensure()  # xdoc: +SKIP
+            >>> mplutil.figure(fnum=1, doclf=True)
+            >>> mplutil.imshow(rgb255, colorspace='rgb')
+            >>> mplutil.draw_boxes(bbox_abs)
+        """
+        bbox_pred_, iou_pred_, prob_pred_ = output
+
+        assert bbox_pred_.shape[0] == 1, (
+            'postprocess only support one image per batch')  # noqa
+
+        # num_classes, num_anchors = cfg.num_classes, cfg.num_anchors
+        num_classes = self.num_classes
+        anchors = self.anchors
+        out_size = np.array(inp_size) // 32  # hacked
+        W, H = out_size
+
+        bbox_pred = bbox_pred_.data.cpu().numpy()
+        iou_pred  = iou_pred_.data.cpu().numpy()
+        prob_pred = prob_pred_.data.cpu().numpy()
+        bbox_pred = np.ascontiguousarray(bbox_pred, dtype=np.float)
+
+        # Convert anchored predictions to absolute bounding boxes
+        bbox_abs = yolo_utils.yolo_to_bbox(bbox_pred, anchors, H, W)
+
+        # Scale the bounding boxes to the size of the original image.
+        # and convert to integer representation.
+        im_shape = im_shapes[0]
+        bbox_abs[..., 0::2] *= float(im_shape[1])
+        bbox_abs[..., 1::2] *= float(im_shape[0])
+        bbox_abs = bbox_abs.astype(np.int)
+
+        # converts (1, G, A, 4) to (G * A, 4), where G is the number of grid
+        # cells and A is the number of anchor boxes.
+        bbox_abs = np.reshape(bbox_abs, [-1, 4])
+        iou_pred = np.reshape(iou_pred, [-1])
+        prob_pred = np.reshape(prob_pred, [-1, num_classes])
+
+        cls_inds = np.argmax(prob_pred, axis=1)
+        prob_pred = prob_pred[(np.arange(prob_pred.shape[0]), cls_inds)]
+
+        """
+        Reference: arXiv:1506.02640 [cs.CV] (Yolo 1):
+            Formally we define confidence as $Pr(Object) ∗ IOU^truth_pred$.
+            If no object exists in that cell, the confidence scores should be
+            zero. Otherwise we want the confidence score to equal the
+            intersection over union (IOU) between the predicted box and the
+            ground truth
+        """
+        scores = iou_pred * prob_pred
+
+        # filter boxes based on confidence threshold
+        keep = np.where(scores >= conf_thresh)
+        bbox_abs = bbox_abs[keep]
+        scores = scores[keep]
+        cls_inds = cls_inds[keep]
+
+        # nonmax supression (pre-class)
+        keep = np.zeros(len(bbox_abs), dtype=np.int)
+        for i in range(num_classes):
+            inds = np.where(cls_inds == i)[0]
+            if len(inds) == 0:
+                continue
+            c_bboxes = bbox_abs[inds]
+            c_scores = scores[inds]
+            c_keep = yolo_utils.nms_detections(c_bboxes, c_scores, nms_thresh)
+            keep[inds[c_keep]] = 1
+
+        keep = np.where(keep > 0)
+        # keep = nms_detections(bbox_abs, scores, 0.3)
+        bbox_abs = bbox_abs[keep]
+        scores = scores[keep]
+        cls_inds = cls_inds[keep]
+
+        # clip
+        bbox_abs = yolo_utils.clip_boxes(bbox_abs, im_shape)
+
+        postout = bbox_abs, scores, cls_inds
+        return postout
 
     def load_from_npz(self, fname, num_conv=None):
         dest_src = {'conv.weight': 'kernel', 'conv.bias': 'biases',
@@ -433,3 +562,49 @@ class Darknet19(nn.Module):
                 if ptype == 'kernel':
                     param = param.permute(3, 2, 0, 1)
                 own_dict[key].copy_(param)
+
+    def load_from_h5py(self, fname):
+        """
+
+        Ignore:
+            # convert the h5 to a pt model and host it
+            >>> fname = '/home/joncrall/Downloads/yolo-voc.weights.h5'
+            >>> self = Darknet19(num_classes=20)
+            >>> self.load_from_h5py(fname)
+            >>> # from clab import xpu_device
+            >>> # xpu = xpu_device.XPU()
+            >>> # self = xpu.mount(self)
+            >>> data = {
+            ...     'model_state_dict': self.state_dict(),
+            ...     'num_classes': self.num_classes,
+            ... }
+            >>> torch.save(data, 'yolo-voc.weights.pt')
+
+        """
+        import h5py
+        h5f = h5py.File(fname, mode='r')
+        for k, v in list(self.state_dict().items()):
+            param = torch.from_numpy(np.asarray(h5f[k]))
+            v.copy_(param)
+
+
+def demo_weights():
+    import ubelt as ub
+    import os
+    url = 'https://data.kitware.com/api/v1/item/5ab13b0e8d777f068578e251/download'
+    dpath = ub.ensure_app_cache_dir('clab')
+    fname = 'yolo-voc.weights.pt'
+    dest = os.path.join(dpath, fname)
+    if not os.path.exists(dest):
+        command = 'curl -X GET {} > {}'.format(url, dest)
+        ub.cmd(command, verbout=1, shell=True)
+    return dest
+
+
+def demo_image(inp_size):
+    from clab import util
+    import cv2
+    rgb255 = util.grab_test_image('astro', 'rgb')
+    rgb01 = cv2.resize(rgb255, inp_size).astype(np.float32) / 255
+    im_data = torch.FloatTensor([rgb01.transpose(2, 0, 1)])
+    return im_data, rgb255

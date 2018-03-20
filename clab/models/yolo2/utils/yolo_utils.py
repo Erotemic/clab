@@ -7,6 +7,10 @@ from .cython_yolo import yolo_to_bbox
 
 
 def yolo_to_bbox_py(bbox_pred, anchors, H, W):
+    """
+    Transform anchored predictions and predicted relative offsets into absolute
+    bounding boxes. A cython version is available.
+    """
     H = int(H)
     W = int(W)
     bsize = bbox_pred.shape[0]
