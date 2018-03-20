@@ -194,7 +194,7 @@ def train_mnist():
 
     all_labels = np.arange(n_classes)
 
-    @harn.add_metric_hook
+    @harn.add_batch_metric_hook
     def custom_metrics(harn, output, labels):
         # ignore_label = datasets['train'].ignore_label
         # labels = datasets['train'].task.labels

@@ -688,7 +688,7 @@ class FitHarness(object):
                 # import torch.nn.functional as F
                 # probs = torch.exp(F.log_softmax(outputs, dim=1))
 
-    def add_metric_hook(harn, hook):
+    def add_batch_metric_hook(harn, hook):
         """
         Adds a hook that should take arguments
         (harn, outputs, labels) and return a dictionary of scalar metrics

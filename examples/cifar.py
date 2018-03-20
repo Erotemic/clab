@@ -851,7 +851,7 @@ def train():
                               pixel_accuracy_from_confusion,
                               perclass_accuracy_from_confusion)
 
-    @harn.add_metric_hook
+    @harn.add_batch_metric_hook
     def custom_metrics(harn, outputs, labels):
         label = labels[0]
         output = outputs[0]

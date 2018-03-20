@@ -706,7 +706,7 @@ def urban_fit():
             loss = harn.criterion(outputs, labels[1])
             return outputs, loss
 
-        # @harn.add_metric_hook
+        # @harn.add_batch_metric_hook
         # def custom_metrics(harn, output, label):
         #     ignore_label = datasets['train'].ignore_label
         #     labels = datasets['train'].task.labels
@@ -723,7 +723,7 @@ def urban_fit():
             return outputs, loss
 
         # if datasets['train'].use_aux_diff:
-        #     @harn.add_metric_hook
+        #     @harn.add_batch_metric_hook
         #     def custom_metrics(harn, output, label):
         #         ignore_label = datasets['train'].ignore_label
         #         labels = datasets['train'].task.labels
@@ -733,7 +733,7 @@ def urban_fit():
         #                                              ignore_label=ignore_label)
         #         return metrics_dict
         # else:
-        #     @harn.add_metric_hook
+        #     @harn.add_batch_metric_hook
         #     def custom_metrics(harn, output, label):
         #         ignore_label = datasets['train'].ignore_label
         #         labels = datasets['train'].task.labels

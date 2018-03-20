@@ -991,7 +991,7 @@ def fit_networks(datasets, xpu):
                                                  ignore_label=ignore_label)
             return metrics_dict
 
-        harn.add_metric_hook(custom_metrics)
+        harn.add_batch_metric_hook(custom_metrics)
 
         harn.run()
         arch_to_best_epochs[arch] = harn.early_stop.best_epochs()

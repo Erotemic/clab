@@ -98,8 +98,8 @@ class FitHarness(object):
 
         harn.main_prog = None
 
-        harn._tensorboard_hooks = []
-        harn._metric_hooks = []
+        harn._batch_metric_hooks = []
+        # harn._epoch_metric_hooks = []
         harn._run_metrics = None
         harn._custom_run_batch = None
 
@@ -477,7 +477,7 @@ class FitHarness(object):
         harn.debug(' * loader.batch_size = {}'.format(loader.batch_size))
 
         # Use exponentially weighted or windowed moving averages across epochs
-        iter_moving_metircs = harn._run_metrics[tag]
+        iter_moving_metrics = harn._run_metrics[tag]
         # Use simple moving average within an epoch
         epoch_moving_metrics = metrics.CumMovingAve()
 
@@ -496,6 +496,9 @@ class FitHarness(object):
                     position=position, leave=True, dynamic_ncols=True)
         prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
+        # TODO: optionally accumulate some subset of inputs, outputs, and
+        # labels?
+        # accumulated = []
         with grad_context(learn):
             for bx, batch in enumerate(iter(loader)):
                 inputs, labels = harn._standardize_batch(batch)
@@ -504,15 +507,16 @@ class FitHarness(object):
                 outputs, loss = harn.run_batch(inputs, labels, learn=learn)
 
                 # Measure train accuracy and other informative metrics
-                cur_metrics = harn._call_metric_hooks(outputs, labels, loss)
+                cur_metrics = harn._call_batch_metric_hooks(outputs, labels,
+                                                            loss)
 
                 # Accumulate measures
                 epoch_moving_metrics.update(cur_metrics)
-                iter_moving_metircs.update(cur_metrics)
+                iter_moving_metrics.update(cur_metrics)
 
                 # display_train training info
                 if harn.check_interval('display_' + tag, bx):
-                    ave_metrics = iter_moving_metircs.average()
+                    ave_metrics = iter_moving_metrics.average()
 
                     msg = harn.batch_msg({'loss': ave_metrics['loss']},
                                          loader.batch_sampler.batch_size)
@@ -529,6 +533,10 @@ class FitHarness(object):
                 for _hook in harn._tensorboard_hooks:
                     _hook(harn, tag, inputs, outputs, labels, bx, loader)
 
+                # Call custom hooks on each iteration
+                for hook in harn._iter_callbacks:
+                    hook(harn, tag, loader, bx, inputs, labels, outputs, loss)
+
         prog.close()
 
         # Record a true average for the entire batch
@@ -536,6 +544,10 @@ class FitHarness(object):
 
         for key, value in epoch_metrics.items():
             harn.log_value(tag + ' epoch ' + key, value, harn.epoch)
+
+        # call hooks after every epoch
+        for hook in harn._epoch_callbacks:
+            hook(harn, loader, tag)
 
         return epoch_metrics
 
@@ -642,14 +654,45 @@ class FitHarness(object):
         harn._custom_run_batch = func
         return func
 
-    def add_metric_hook(harn, hook):
+    def add_batch_metric_hook(harn, hook):
         """
-        Adds a hook that should take arguments
-        (harn, output, label) and return a dictionary of scalar metrics
-        """
-        harn._metric_hooks.append(hook)
+        Adds a hook to measure performance after each batch iteration
 
-    def _call_metric_hooks(harn, output, label, loss):
+        The hook should take arguments
+        (harn, output, label) and return a dictionary of scalar metrics
+
+        These scalars will be summarized by a moving average over all batches
+        """
+        harn._batch_metric_hooks.append(hook)
+
+    def add_epoch_callback(harn, hook):
+        """
+        Adds a generic hook called after each epoch.
+        The hook should take arguments (harn, loader, tag) and return None.
+        """
+        harn._epoch_callbacks.append(hook)
+
+    def add_iter_callback(harn, hook):
+        """
+        Adds a generic hook called after each batch iteration.
+        The hook should take arguments
+        (harn, tag, loader, bx, inputs, labels, outputs, loss) and return None.
+        """
+        harn._iter_callbacks.append(hook)
+
+    # def add_epoch_metric_hook(harn, hook):
+    #     """
+    #     Adds a hook to measure performance after each epoch
+
+    #     The hook should take arguments
+    #     (harn, accumulated) and return a dictionary of scalar metrics
+
+    #     by default `accumulated` is a list of outputs and labels gathered over
+    #     all batches with each item representing the result of a batch.
+    #     """
+    #     harn._epoch_metric_hooks.append(hook)
+
+    def _call_batch_metric_hooks(harn, output, label, loss):
         loss_sum = loss.data.sum()
         inf = float("inf")
         if loss_sum == inf or loss_sum == -inf:
@@ -662,8 +705,8 @@ class FitHarness(object):
             'loss': loss_value,
         }
         if not harn.dry:
-            for hook in harn._metric_hooks:
-                _custom_dict = hook(harn, output, label)
+            for custom_metrics in harn._batch_metric_hooks:
+                _custom_dict = custom_metrics(harn, output, label)
                 isect = set(_custom_dict).intersection(set(metrics_dict))
                 if isect:
                     raise Exception('Conflicting metric hooks: {}'.format(isect))

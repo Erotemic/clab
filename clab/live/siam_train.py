@@ -767,7 +767,7 @@ def siam_vsone_train():
         batch_size=batch_size,
         train_dpath=train_dpath, dry=dry,
     )
-    harn.add_metric_hook(custom_metrics)
+    harn.add_batch_metric_hook(custom_metrics)
     harn.run()
 
 

@@ -127,8 +127,9 @@ class YoloVOCDataset(voc.VOCDataset):
 
         # squish the bounding box and image into a standard size
         w, h = inp_size
-        sx = float(w) / image.shape[1]
-        sy = float(h) / image.shape[0]
+        im_shape = image.shape[0:2]
+        sx = float(w) / im_shape[1]
+        sy = float(h) / im_shape[0]
         boxes[:, 0::2] *= sx
         boxes[:, 1::2] *= sy
         interpolation = cv2.INTER_AREA if (sx + sy) <= 2 else cv2.INTER_CUBIC
@@ -149,11 +150,13 @@ class YoloVOCDataset(voc.VOCDataset):
                               for bb in bbs.bounding_boxes])
             boxes = yolo_utils.clip_boxes(boxes, hwc255.shape[0:2])
 
-        # TODO: augmentation
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
         gt_classes = torch.LongTensor(gt_classes)
         boxes = torch.LongTensor(boxes.astype(np.int32))
-        label = (boxes, gt_classes,)
+
+        # Return index information in the label as well
+        label = (boxes, gt_classes, torch.LongTensor(im_shape),
+                                    torch.LongTensor([index]))
         return chw01, label
 
     @ub.memoize_method
@@ -254,14 +257,14 @@ class cfg(object):
     devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
 
 
-def setup_harness():
+def setup_harness(workers=None):
     """
     CommandLine:
         python ~/code/clab/examples/yolo_voc.py setup_harness
         python ~/code/clab/examples/yolo_voc.py setup_harness --profile
 
     Example:
-        >>> harn = setup_harness()
+        >>> harn = setup_harness(workers=0)
         >>> harn.initialize()
         >>> harn.dry = True
         >>> harn.run()
@@ -277,7 +280,7 @@ def setup_harness():
     loaders = make_loaders(datasets,
                            train_batch_size=cfg.train_batch_size,
                            vali_batch_size=cfg.vali_batch_size,
-                           workers=cfg.workers)
+                           workers=workers if workers is not None else cfg.workers)
 
     """
     Reference:
@@ -343,11 +346,16 @@ def setup_harness():
             >>> import sys
             >>> sys.path.append('/home/joncrall/code/clab/examples')
             >>> from yolo_voc import *
-            >>> harn = setup_harness()
+            >>> harn = setup_harness(workers=0)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'train')
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
+
+            >>> loader = harn.loaders['train']
+            >>> weights_fpath = darknet.demo_weights()
+            >>> state_dict = torch.load(weights_fpath)['model_state_dict']
+            >>> harn.model.module.load_state_dict(state_dict)
         """
         outputs = harn.model(*inputs)
 
@@ -357,35 +365,68 @@ def setup_harness():
         # assert np.sqrt(outputs[1].shape[1]) == inp_size[0] / 32
 
         bbox_pred, iou_pred, prob_pred = outputs
-        gt_boxes, gt_classes = labels
+        gt_boxes, gt_classes, orig_size, indices = labels
         dontcare = np.array([[]] * len(gt_boxes))
 
         loss = harn.criterion(*outputs, *labels, dontcare=dontcare,
                               inp_size=inp_size)
         return outputs, loss
 
-    @harn.add_metric_hook
-    def custom_metrics(harn, outputs, labels):
-        # label = labels[0]
-        # output = outputs[0]
+    accumulated = []
 
-        # y_pred = output.data.max(dim=1)[1].cpu().numpy()
-        # y_true = label.data.cpu().numpy()
+    @harn.add_iter_callback
+    def on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss):
+        # Accumulate relevant outputs to measure
+        if tag == 'train':
+            return
 
-        # TODO: measure actual test criterion
+        gt_boxes, gt_classes, orig_size, indices = labels
+        bbox_pred, iou_pred, prob_pred = outputs
+        im_sizes = orig_size
+        inp_size = inputs[0].shape[-2:]
+        conf_thresh = 0.24
+        nms_thresh = 0.5
 
-        # bbox_pred, iou_pred, prob_pred = outputs
+        postoutT = []
+        for i in range(loader.batch_sampler.batch_size):
+            sl_ = slice(i, i + 1)
+            # ugly hack to call preexisting code
+            sz_ = im_sizes[sl_]
+            out_ = (bbox_pred[sl_], iou_pred[sl_], prob_pred[sl_])
+            pout_ = harn.model.module.postprocess(out_, inp_size, sz_,
+                                                  conf_thresh, nms_thresh)
+            postoutT.append(pout_)
 
-        metrics_dict = ub.odict()
-        metrics_dict['L_bbox'] = float(
-            harn.criterion.bbox_loss.data.cpu().numpy())
-        metrics_dict['L_iou'] = float(
-            harn.criterion.iou_loss.data.cpu().numpy())
-        metrics_dict['L_cls'] = float(
-            harn.criterion.cls_loss.data.cpu().numpy())
-        # metrics_dict['global_acc'] = global_acc
-        # metrics_dict['class_acc'] = class_accuracy
-        return metrics_dict
+        postout = list(zip(*postoutT))
+        accumulated.append((postout, labels))
+
+    @harn.add_epoch_callback
+    def on_epoch(harn, tag, loader):
+        # Measure accumulated outputs
+        pred_boxes = [[[] for _ in range(10000)] for _ in range(20)]
+        true_boxes = [[[] for _ in range(10000)] for _ in range(20)]
+        for postout, labels in accumulated:
+            bbox_abs, scores, cls_inds = postout
+            gt_boxes, gt_inds, orig_sz, img_inds = labels
+            for i in range(labels):
+                gx = img_inds[i]
+                true_cxs = gt_inds[i]
+                true_boxes = gt_boxes[i]
+                pred_cxs = cls_inds[i]
+
+                for cx, box in zip(pred_cxs, bbox_abs):
+                    pred_boxes[cx]
+
+                for cx, box in zip(true_cxs, true_boxes):
+                    gt_boxes[cx].append(box.data.cpu().numpy())
+
+                gt_boxes[i]
+                pass
+
+
+        # reset accumulated
+        accumulated.clear()
+
     return harn
 
 

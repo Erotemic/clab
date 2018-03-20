@@ -553,7 +553,7 @@ def task_fit(taskname):
         train_dpath=train_dpath, dry=dry,
         batch_size=batch_size,
     )
-    harn.add_metric_hook(custom_metrics)
+    harn.add_batch_metric_hook(custom_metrics)
 
     # HACK
     # im = datasets['train'][0][0]
