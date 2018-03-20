@@ -60,6 +60,15 @@ class YoloVOCDataset(voc.VOCDataset):
         self.augmenter = None
 
         if split == 'train':
+
+            # From YOLO-V1 paper:
+            #     For data augmentation we introduce random scaling and
+            #     translations of up to 20% of the original image size. We
+            #     also randomly adjust the exposure and saturation of the image
+            #     by up to a factor of 1.5 in the HSV color space.
+
+            # Not sure if this changed in V2 yet.
+
             augmentors = [
                 iaa.Fliplr(p=.5),
                 iaa.Flipud(p=.5),
@@ -233,9 +242,8 @@ class cfg(object):
     # }
     lr_step_points = {
         # warmup learning rate
-        0: 0.0001,
-        1: 0.0005,
-        2: 0.001,
+        0:  0.0001,
+        10: 0.0010,
         # cooldown learning rate
         30: 0.0005,
         60: 0.0001,

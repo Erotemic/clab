@@ -1,3 +1,14 @@
+"""
+References:
+    https://pjreddie.com/media/files/papers/yolo.pdf
+    https://pjreddie.com/media/files/papers/YOLO9000.pdf
+
+    https://github.com/ruiminshen/yolo2-pytorch/blob/master/model/yolo2.py
+    https://github.com/starsmall-xiaoqq/yolo2keras/blob/master/backend.py
+
+    https://github.com/pjreddie/darknet/blob/master/cfg/yolo-voc.2.0.cfg
+    https://www.slideshare.net/JinwonLee9/pr12-yolo9000  # See Slide 16-18
+"""
 import torch
 import numpy as np
 import torch.nn as nn
@@ -159,11 +170,11 @@ class DarknetLoss(TrackCudaLoss):
     def _build_target(criterion, bbox_pred_np, gt_boxes, gt_classes, dontcare,
                       iou_pred_np, inp_size, num_classes, anchors):
         """
-        :param bbox_pred: shape: (bsize, h x w, num_anchors, 4) :
+        :param bbox_pred: shape: (B, h x w, num_anchors, 4) :
                           (sig(tx), sig(ty), exp(tw), exp(th))
         """
 
-        bsize = bbox_pred_np.shape[0]
+        B = bbox_pred_np.shape[0]
         losskw = dict(object_scale=criterion.object_scale,
                       noobject_scale=criterion.noobject_scale,
                       class_scale=criterion.class_scale,
@@ -175,7 +186,7 @@ class DarknetLoss(TrackCudaLoss):
 
         args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
                  iou_pred_np[b])
-                for b in range(bsize))
+                for b in range(B))
         args = list(args)
 
         if criterion.pool:
@@ -273,10 +284,9 @@ def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
     gt_boxes_resize = np.copy(gt_boxes_b)
     gt_boxes_resize[:, 0::2] *= (out_size[0] / float(inp_size[0]))
     gt_boxes_resize[:, 1::2] *= (out_size[1] / float(inp_size[1]))
-    anchor_ious = anchor_intersections(
-        anchors,
-        np.ascontiguousarray(gt_boxes_resize, dtype=np.float)
-    )
+    gt_boxes_resize = np.ascontiguousarray(gt_boxes_resize, dtype=np.float)
+
+    anchor_ious = anchor_intersections(anchors, gt_boxes_resize)
     anchor_inds = np.argmax(anchor_ious, axis=0)
 
     ious_reshaped = np.reshape(ious, [hw, num_anchors, len(cell_inds)])
@@ -319,24 +329,91 @@ class Darknet19(nn.Module):
         super(Darknet19, self).__init__()
 
         if anchors is None:
+            # https://github.com/pjreddie/darknet/blob/master/cfg/yolo-voc.2.0.cfg#L228
             anchors = np.array([(1.08, 1.19), (3.42, 4.41), (6.63, 11.38),
                                 (9.42, 5.11), (16.62, 10.52)], dtype=np.float)
 
-        net_cfgs = [
-            # conv1s
-            [(32, 3)],
-            ['M', (64, 3)],
-            ['M', (128, 3), (64, 1), (128, 3)],
-            ['M', (256, 3), (128, 1), (256, 3)],
-            ['M', (512, 3), (256, 1), (512, 3), (256, 1), (512, 3)],
-            # conv2
-            ['M', (1024, 3), (512, 1), (1024, 3), (512, 1), (1024, 3)],
-            # ------------
-            # conv3
-            [(1024, 3), (1024, 3)],
-            # conv4
-            [(1024, 3)]
-        ]
+        self.anchors = anchors
+        self.num_classes = num_classes
+        self.num_anchors = len(self.anchors)
+
+        # net_cfgs = [
+        #     # conv1s
+        #     [(32, 3)],
+        #     ['M', (64, 3)],
+        #     ['M', (128, 3), (64, 1), (128, 3)],
+        #     ['M', (256, 3), (128, 1), (256, 3)],
+        #     ['M', (512, 3), (256, 1), (512, 3), (256, 1), (512, 3)],
+        #     # conv2
+        #     ['M', (1024, 3), (512, 1), (1024, 3), (512, 1), (1024, 3)],
+        #     # ------------
+        #     # conv3
+        #     [(1024, 3), (1024, 3)],
+        #     # conv4
+        #     [(1024, 3)]
+        # ]
+        # # darknet
+        # self.conv1s, c1 = _make_layers(3, net_cfgs[0:5])
+        # self.conv2, c2 = _make_layers(c1, net_cfgs[5])
+        # # ---
+        # self.conv3, c3 = _make_layers(c2, net_cfgs[6])
+
+        # See Slide 16
+        # https://www.slideshare.net/JinwonLee9/pr12-yolo9000
+
+        """
+        Reduced form of original yolo-voc.2.0.cfg
+
+            # NOTE: conv1s
+            [convolutional] filters=32 size=3
+
+            [maxpool] size=2 stride=2
+            [convolutional] filters=64 size=3
+
+            [maxpool] size=2 stride=2
+            [convolutional] filters=128 size=3
+            [convolutional] filters=64 size=1
+            [convolutional] filters=128 size=3
+
+            [maxpool] size=2 stride=2
+            [convolutional] filters=256 size=3
+            [convolutional] filters=128 size=1
+            [convolutional] filters=256 size=3
+
+            [maxpool] size=2 stride=2
+            [convolutional] filters=512 size=3
+            [convolutional] filters=256 size=1
+            [convolutional] filters=512 size=3
+            [convolutional] filters=256 size=1
+            [convolutional] filters=512 size=3   # -9 [route1] refers here
+
+            # NOTE: conv2
+            [maxpool] size=2 stride=2            # -8
+            [convolutional] filters=1024 size=3  # -7
+            [convolutional] filters=512 size=1   # -6
+            [convolutional] filters=1024 size=3  # -5
+            [convolutional] filters=512 size=1   # -4
+            [convolutional] filters=1024 size=3  # -3
+
+            #######
+
+            # NOTE: conv3
+            [convolutional] size=3 filters=1024  # -2
+            [convolutional] size=3 filters=1024  # -1 / -3 [route2] refers here
+
+            # NOTE: reorg (connects to output of conv1s)
+            [route] layers=-9  # -2  # [route1]
+            [reorg] stride=2   # -1
+
+            # NOTE: skip connections (concat layer)
+            [route] layers=-1,-3     # [route2]
+
+            # NOTE: conv4
+            [convolutional] size=3 filters=1024
+
+            # NOTE: conv5
+            [convolutional] size=1 filters=125 activation=linear
+        """
 
         def _make_layers(in_channels, net_cfg):
             layers = []
@@ -354,60 +431,66 @@ class Darknet19(nn.Module):
                         layers.append(Conv2d_Norm_Noli(in_channels,
                                                        out_channels, ksize,
                                                        same_padding=True))
-                        # layers.append(Conv2d_Noli(in_channels, out_channels,
-                        #     ksize, same_padding=True))
                         in_channels = out_channels
-
             return nn.Sequential(*layers), in_channels
 
         # darknet
-        self.conv1s, c1 = _make_layers(3, net_cfgs[0:5])
-        self.conv2, c2 = _make_layers(c1, net_cfgs[5])
+        self.conv1s, c1 = _make_layers(3, [
+            [(32, 3)],
+            ['M', (64, 3)],
+            ['M', (128, 3), (64, 1), (128, 3)],
+            ['M', (256, 3), (128, 1), (256, 3)],
+            ['M', (512, 3), (256, 1), (512, 3), (256, 1), (512, 3)],
+        ])
+        self.conv2, c2 = _make_layers(c1, [
+            'M', (1024, 3), (512, 1), (1024, 3), (512, 1), (1024, 3)])
         # ---
-        self.conv3, c3 = _make_layers(c2, net_cfgs[6])
+        self.conv3, c3 = _make_layers(c2, [(1024, 3), (1024, 3)])
 
-        stride = 2
-        # stride*stride times the channels of conv1s
         self.reorg = ReorgLayer(stride=2)
-        # cat [conv1s, conv3]
-        self.conv4, c4 = _make_layers(
-            (c1 * (stride * stride) + c3), net_cfgs[7])
+        reorg_n_feat_out = self.reorg.out_channels
 
-        self.anchors = anchors
-        self.num_classes = num_classes
-        self.num_anchors = len(self.anchors)
+        # cat [conv1s, conv3]
+        self.conv4, c4 = _make_layers((reorg_n_feat_out + c3), [(1024, 3)])
 
         # linear
         out_channels = self.num_anchors * (self.num_classes + 5)
         self.conv5 = Conv2d_Noli(c4, out_channels, 1, 1, relu=False)
-        self.global_average_pool = nn.AvgPool2d((1, 1))
 
     def forward(self, im_data):
+        # Let B = batch_size
+        # Let A = num_anchors
+        # Let C = num_classes
         conv1s = self.conv1s(im_data)
         conv2 = self.conv2(conv1s)
         conv3 = self.conv3(conv2)
+
+        # Reorganize conv1s to facilitate a skip connection
         conv1s_reorg = self.reorg(conv1s)
-        cat_1_3 = torch.cat([conv1s_reorg, conv3], 1)
-        conv4 = self.conv4(cat_1_3)
-        conv5 = self.conv5(conv4)   # batch_size, out_channels, h, w
-        gapooled = self.global_average_pool(conv5)
+        cat_1_3 = torch.cat([conv1s_reorg, conv3], 1)  # [B,        3072, H, W]
+
+        # Final 3x3 followed by a 1x1 convolution to obtain raw output
+        conv4 = self.conv4(cat_1_3)                    # [B,        1024, H, W]
+        conv5 = self.conv5(conv4)                      # [B, (C * A + 5), H, W]
+        final = conv5
 
         # for detection
-        # bsize, c, h, w -> bsize, h, w, c ->
-        #                   bsize, h x w, num_anchors, 5+num_classes
-        bsize, _, h, w = gapooled.size()
-        # assert bsize == 1, 'detection only support one image per batch'
-        gapooled_reshaped = gapooled.permute(0, 2, 3, 1).contiguous().view(
-            bsize, -1, self.num_anchors, self.num_classes + 5)
+        # (B, C, H, W) -> (B, H, W, C) -> (B, H * W, A, 5 + C)
+        B, _, h, w = final.size()
+        final_reshaped = final.permute(0, 2, 3, 1).contiguous().view(
+            B, -1, self.num_anchors, self.num_classes + 5)
 
+        # Construct relative offsets for every anchor box
         # tx, ty, tw, th, to -> sig(tx), sig(ty), exp(tw), exp(th), sig(to)
-        xy_pred = F.sigmoid(gapooled_reshaped[:, :, :, 0:2])
-        wh_pred = torch.exp(gapooled_reshaped[:, :, :, 2:4])
-        bbox_pred = torch.cat([xy_pred, wh_pred], 3)
-        iou_pred = F.sigmoid(gapooled_reshaped[:, :, :, 4:5])
+        xy_pred    = F.sigmoid(final_reshaped[:, :, :, 0:2])
+        wh_pred    = torch.exp(final_reshaped[:, :, :, 2:4])
+        bbox_pred  = torch.cat([xy_pred, wh_pred], 3)
 
-        score_pred = gapooled_reshaped[:, :, :, 5:].contiguous()
+        # Predict IOU
+        iou_pred   = F.sigmoid(final_reshaped[:, :, :, 4:5])
+
         # TODO: do we do heirarchy stuff here?
+        score_pred = final_reshaped[:, :, :, 5:].contiguous()
         score_energy = score_pred.view(-1, score_pred.size()[-1])
         prob_pred = F.softmax(score_energy, dim=1).view_as(score_pred)
 
@@ -415,18 +498,18 @@ class Darknet19(nn.Module):
         output = (bbox_pred, iou_pred, prob_pred)
         return output
 
-    def postprocess(self, output, inp_size, im_shapes, conf_thresh=0.001,
+    def postprocess(self, output, inp_size, im_shapes, conf_thresh=0.24,
                     nms_thresh=0.5):
         """
         Postprocess the raw network output into usable bounding boxes
 
         Args:
-            bbox_pred: (bsize, HxW, num_anchors, 4)
+            bbox_pred: (B, HxW, A, 4)
                         ndarray of float (sig(tx), sig(ty), exp(tw), exp(th))
 
-            iou_pred:  (bsize, HxW, num_anchors, 1)
+            iou_pred:  (B, HxW, A, 1)
 
-            prob_pred: (bsize, HxW, num_anchors, num_classes)
+            prob_pred: (B, HxW, A, C)
 
             inp_size (tuple): size of input to network
 
@@ -438,9 +521,24 @@ class Darknet19(nn.Module):
             nms_thresh (float): nonmax supression iou threshold
 
         Notes:
+            Let B = batch_size
+            Let A = num_anchors
+            Let C = num_classes
+            Let (H, W) = shape of the output grid
+
             Original params for nms_thresh (iou_thresh) and conf_thresh
             (thresh) are here:
                 https://github.com/pjreddie/darknet/blob/master/examples/yolo.c#L213
+
+            On parameter settings:
+                Remove the bounding boxes which have no object. Remove the
+                bounding boxes that predict a confidence score less than a
+                threshold of 0.24
+
+                https://towardsdatascience.com/training-object-detection-yolov2-from-scratch-using-cyclic-learning-rates-b3364f7e4755
+
+            Network Visualization:
+                http://ethereon.github.io/netscope/#/gist/d08a41711e48cf111e330827b1279c31
 
         CommandLine:
             python -m clab.models.yolo2.darknet Darknet19.postprocess
@@ -454,7 +552,7 @@ class Darknet19(nn.Module):
             >>> im_data, rgb255 = demo_image(inp_size)
             >>> output = self(im_data)
             >>> # Define remaining params
-            >>> conf_thresh = 0.01
+            >>> conf_thresh = 0.24
             >>> nms_thresh = 0.5
             >>> im_shapes = [rgb255.shape[0:2]]
             >>> postout = self.postprocess(output, inp_size, im_shapes, conf_thresh, nms_thresh)
