@@ -268,9 +268,9 @@ def setup_harness():
     """
     cfg.pretrained_fpath = grab_darknet19_initial_weights()
     datasets = {
-        # 'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
-        # 'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
-        'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
+        'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
+        'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
+        # 'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
         'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
     }
 
