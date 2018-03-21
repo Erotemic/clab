@@ -280,17 +280,70 @@ class EvaluateVOC(object):
     """
     Example:
         >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes()
-        >>> print(ub.repr2(all_true_boxes, nl=3, precision=2))
-        >>> print(ub.repr2(all_pred_boxes, nl=3, precision=2))
         >>> self = EvaluateVOC(all_true_boxes, all_pred_boxes)
     """
-
     def __init__(self, all_true_boxes, all_pred_boxes):
         self.all_true_boxes = all_true_boxes
         self.all_pred_boxes = all_pred_boxes
 
     @classmethod
-    def demodata_boxes(cls):
+    def perterb_boxes(cls, boxes, perterb_amount=.5, rng=None, cxs=None):
+        n = boxes.shape[0]
+        if boxes.shape[0] == 0:
+            boxes = np.array([[10, 10, 50, 50]])
+
+        # add twice as many boxes,
+        boxes = np.vstack([boxes, boxes])
+        n_extra = len(boxes) - n
+        # perterb the positions
+        xywh = np.hstack([boxes[:, 0:2], boxes[:, 2:4] - boxes[:, 0:2]])
+        scale = np.sqrt(xywh.max()) * perterb_amount
+        pred_xywh = xywh + rng.randn(*xywh.shape) * scale
+
+        # randomly keep some
+        keep1 = rng.rand(n) >= min(perterb_amount, .5)
+        keep2 = rng.rand(n_extra) < min(perterb_amount, .5)
+        keep = np.hstack([keep1, keep2])
+
+        if cxs is not None:
+            # randomly change class indexes
+            cxs2 = list(cxs) + list(rng.randint(0, max(cxs) + 1, n_extra))
+            cxs2 = np.array(cxs2)
+            change = rng.rand(n) < min(perterb_amount, 1.0)
+            cxs2[:n][change] = list(rng.randint(0, max(cxs) + 1, sum(change)))
+            cxs2 = cxs2[keep]
+
+
+        pred = pred_xywh[keep].astype(np.uint8)
+        pred_boxes = np.hstack([pred[:, 0:2], pred[:, 0:2] + pred[:, 2:4]])
+        # give dummy scores
+        pred_boxes = np.hstack([pred_boxes, rng.rand(len(pred_boxes), 1)])
+        if cxs is not None:
+            return pred_boxes, cxs2
+        else:
+            return pred_boxes
+
+    @classmethod
+    def random_boxes(cls, n=None, c=4, rng=0):
+        rng = np.random.RandomState(0)
+        if n is None:
+            n = rng.randint(0, 10)
+        xywh = (rng.rand(n, 4) * 100).astype(np.int)
+        tlbr = np.hstack([xywh[:, 0:2], xywh[:, 0:2] + xywh[:, 2:4]])
+        cxs = (rng.rand(n) * c).astype(np.int)
+        return tlbr, cxs
+
+    @classmethod
+    def demodata_boxes(cls, perterb_amount=.5, rng=0):
+        """
+        Example:
+            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes(100, 0)
+            >>> print(ub.repr2(all_true_boxes, nl=3, precision=2))
+            >>> print(ub.repr2(all_pred_boxes, nl=3, precision=2))
+            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes(0, 0)
+            >>> print(ub.repr2(all_true_boxes, nl=3, precision=2))
+            >>> print(ub.repr2(all_pred_boxes, nl=3, precision=2))
+        """
         all_true_boxes = [
             # class 1
             [
@@ -317,27 +370,14 @@ class EvaluateVOC(object):
                 all_true_boxes[cx][gx] = np.array(boxes)
 
         # setup perterbubed demo predicted boxes
-        rng = np.random.RandomState(0)
-
-        def make_dummy(boxes, rng):
-            if boxes.shape[0] == 0:
-                boxes = np.array([[10, 10, 50, 50]])
-            boxes = np.vstack([boxes, boxes])
-            xywh = np.hstack([boxes[:, 0:2], boxes[:, 2:4] - boxes[:, 0:2]])
-            scale = np.sqrt(xywh.max()) / 2
-            pred_xywh = xywh + rng.randn(*xywh.shape) * scale
-            keep = rng.rand(len(pred_xywh)) > 0.5
-            pred = pred_xywh[keep].astype(np.uint8)
-            pred_boxes = np.hstack([pred[:, 0:2], pred[:, 0:2] + pred[:, 2:4]])
-            # give dummy scores
-            pred_boxes = np.hstack([pred_boxes, rng.rand(len(pred_boxes), 1)])
-            return pred_boxes
+        rng = np.random.RandomState(rng)
 
         all_pred_boxes = []
         for cx, class_boxes in enumerate(all_true_boxes):
             all_pred_boxes.append([])
             for gx, boxes in enumerate(class_boxes):
-                pred_boxes = make_dummy(boxes, rng)
+                pred_boxes = EvaluateVOC.perterb_boxes(boxes, perterb_amount,
+                                                       rng)
                 all_pred_boxes[cx].append(pred_boxes)
 
         return all_true_boxes, all_pred_boxes
@@ -381,20 +421,26 @@ class EvaluateVOC(object):
     def compute(self, ovthresh=0.5):
         """
         Example:
-            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes()
+            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes(.5)
             >>> self = EvaluateVOC(all_true_boxes, all_pred_boxes)
             >>> ovthresh = 0.5
             >>> mean_ap = self.compute(ovthresh)
             >>> print('mean_ap = {:.2f}'.format(mean_ap))
-            mean_ap = 0.18
+            mean_ap = 0.36
+            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes(0)
+            >>> self = EvaluateVOC(all_true_boxes, all_pred_boxes)
+            >>> ovthresh = 0.5
+            >>> mean_ap = self.compute(ovthresh)
+            >>> print('mean_ap = {:.2f}'.format(mean_ap))
+            mean_ap = 1.00
         """
         num_classes = len(self.all_true_boxes)
-        ap_list = []
+        ap_list2 = []
         for cx in range(num_classes):
             rec, prec, ap = self.eval_class(cx, ovthresh)
-            ap_list.append(ap)
-        mean_ap = np.mean(ap_list)
-        return mean_ap
+            ap_list2.append(ap)
+        mean_ap2 = np.nanmean(ap_list2)
+        return mean_ap2, ap_list2
 
     def eval_class(self, cx, ovthresh=0.5):
         all_true_boxes = self.all_true_boxes
@@ -411,6 +457,7 @@ class EvaluateVOC(object):
             flat_pred_boxes.extend(pred_boxes)
             flat_pred_gxs.extend([gx] * len(pred_boxes))
         flat_pred_boxes = np.array(flat_pred_boxes)
+        npos = sum(map(len, batch_true_boxes))
         if len(flat_pred_boxes) > 0:
             flat_preds = pd.DataFrame({
                 'box': flat_pred_boxes[:, 0:4].tolist(),
@@ -444,51 +491,108 @@ class EvaluateVOC(object):
                     fp[sx] = 1
 
             # compute precision recall
-            npos = sum(map(len, batch_true_boxes))
             fp = np.cumsum(fp)
             tp = np.cumsum(tp)
-            rec = tp / float(npos)
+
+            if npos == 0:
+                rec = 1
+            else:
+                rec = tp / float(npos)
             # avoid divide by zero in case the first detection matches a difficult
             # ground truth
             prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
 
-            def voc_ap(rec, prec, use_07_metric=False):
-                """ ap = voc_ap(rec, prec, [use_07_metric])
-                Compute VOC AP given precision and recall.
-                If use_07_metric is true, uses the
-                VOC 07 11 point method (default:False).
-                """
-                if use_07_metric:
-                    # 11 point metric
-                    ap = 0.
-                    for t in np.arange(0., 1.1, 0.1):
-                        if np.sum(rec >= t) == 0:
-                            p = 0
-                        else:
-                            p = np.max(prec[rec >= t])
-                        ap = ap + p / 11.
-                else:
-                    # correct AP calculation
-                    # first append sentinel values at the end
-                    mrec = np.concatenate(([0.], rec, [1.]))
-                    mpre = np.concatenate(([0.], prec, [0.]))
-
-                    # compute the precision envelope
-                    for i in range(mpre.size - 1, 0, -1):
-                        mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-
-                    # to calculate area under PR curve, look for points
-                    # where X axis (recall) changes value
-                    i = np.where(mrec[1:] != mrec[:-1])[0]
-
-                    # and sum (\Delta recall) * prec
-                    ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-                return ap
-
-            ap = voc_ap(rec, prec, use_07_metric=True)
+            ap = EvaluateVOC.voc_ap(rec, prec, use_07_metric=True)
             return rec, prec, ap
         else:
-            return [], [], 0
+            if npos == 0:
+                return [], [], np.nan
+            else:
+                return [], [], 0.0
+
+    @classmethod
+    def voc_ap(cls, rec, prec, use_07_metric=False):
+        """ ap = voc_ap(rec, prec, [use_07_metric])
+        Compute VOC AP given precision and recall.
+        If use_07_metric is true, uses the
+        VOC 07 11 point method (default:False).
+        """
+        if use_07_metric:
+            # 11 point metric
+            ap = 0.
+            for t in np.arange(0., 1.1, 0.1):
+                if np.sum(rec >= t) == 0:
+                    p = 0
+                else:
+                    p = np.max(prec[rec >= t])
+                ap = ap + p / 11.
+        else:
+            # correct AP calculation
+            # first append sentinel values at the end
+            mrec = np.concatenate(([0.], rec, [1.]))
+            mpre = np.concatenate(([0.], prec, [0.]))
+
+            # compute the precision envelope
+            for i in range(mpre.size - 1, 0, -1):
+                mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+            # to calculate area under PR curve, look for points
+            # where X axis (recall) changes value
+            i = np.where(mrec[1:] != mrec[:-1])[0]
+
+            # and sum (\Delta recall) * prec
+            ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+        return ap
+
+    @classmethod
+    def sanity_check(EvaluateVOC):
+        """
+        EvaluateVOC.sanity_check()
+        """
+        import pandas as pd
+        n_images = 500
+        ovthresh = 0.5
+        num_classes = 5
+        for perterb_amount in [0, .00001, .0001, .0005, .001, .01, .1, .5]:
+            img_ys = []
+
+            all_true_boxes = [[] for cx in range(num_classes)]
+            all_pred_boxes = [[] for cx in range(num_classes)]
+
+            for index in range(n_images):
+                true_boxes, true_cxs = EvaluateVOC.random_boxes(c=num_classes)
+                pred_sboxes, pred_cxs = EvaluateVOC.perterb_boxes(
+                    true_boxes, perterb_amount=perterb_amount, rng=np.random,
+                    cxs=true_cxs)
+                pred_scores = pred_sboxes[:, 4]
+                pred_boxes = pred_sboxes[:, 0:4]
+                y = EvaluateVOC.image_confusions(true_boxes, true_cxs, pred_boxes,
+                                                 pred_scores, pred_cxs,
+                                                 ovthresh=ovthresh)
+                y['gx'] = index
+                img_ys.append(y)
+
+                # Build format2
+                for cx in range(num_classes):
+                    all_true_boxes[cx].append(true_boxes[true_cxs == cx])
+                    all_pred_boxes[cx].append(pred_sboxes[pred_cxs == cx])
+
+            import ubelt
+            for timer in ubelt.Timerit(10, bestof=3, label='one'):
+                with timer:
+                    y = pd.concat(img_ys)
+                    mean_ap1, ap_list1 = EvaluateVOC.compute_map(y, num_classes)
+
+            import ubelt
+            for timer in ubelt.Timerit(10, bestof=3, label='two'):
+                with timer:
+                    self = EvaluateVOC(all_true_boxes, all_pred_boxes)
+                    mean_ap2, ap_list2 = self.compute(ovthresh=ovthresh)
+            print('mean_ap1 = {!r}'.format(mean_ap1))
+            print('mean_ap2 = {!r}'.format(mean_ap2))
+            print('ap_list1 = {!r}'.format(ap_list1))
+            print('ap_list2 = {!r}'.format(ap_list2))
+            print('-------')
 
     @classmethod
     def image_confusions(EvaluateVOC, true_boxes, true_cxs, pred_boxes,
@@ -573,56 +677,38 @@ class EvaluateVOC(object):
     def compute_map(EvaluateVOC, y, num_classes):
         def group_metrics(group):
             if group is None:
-                return 0
+                return np.nan
             group = group.sort_values('score', ascending=False)
             npos = sum(group.true >= 0)
             dets = group[group.pred > -1]
+            if len(dets) == 0:
+                return 0.0
             tp = (dets.pred == dets.true).values.astype(np.uint8)
             fp = 1 - tp
             fp = np.cumsum(fp)
             tp = np.cumsum(tp)
 
             eps = np.finfo(np.float64).eps
-            rec = tp / npos
+            if npos == 0:
+                rec = 1
+            else:
+                rec = tp / npos
             prec = tp / np.maximum(tp + fp, eps)
 
-            # VOC 2007 11 point metric
-            if True:
-                ap = 0.
-                for t in np.arange(0., 1.1, 0.1):
-                    if np.sum(rec >= t) == 0:
-                        p = 0
-                    else:
-                        p = np.max(prec[rec >= t])
-                    ap = ap + p / 11.
-            else:
-                # correct AP calculation
-                # first append sentinel values at the end
-                mrec = np.concatenate(([0.], rec, [1.]))
-                mpre = np.concatenate(([0.], prec, [0.]))
-
-                # compute the precision envelope
-                for i in range(mpre.size - 1, 0, -1):
-                    mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-
-                # to calculate area under PR curve, look for points
-                # where X axis (recall) changes value
-                i = np.where(mrec[1:] != mrec[:-1])[0]
-
-                # and sum (\Delta recall) * prec
-                ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+            ap = EvaluateVOC.voc_ap(rec, prec, use_07_metric=True)
             return ap
 
         # because we use -1 to indicate a wrong prediction we can use max to
         # determine the class groupings.
         cx_to_group = dict(iter(y.groupby('cx')))
-        ap_list2 = []
+        ap_list1 = []
         for cx in range(num_classes):
+            # for cx, group in cx_to_group.items():
             group = cx_to_group.get(cx, None)
             ap = group_metrics(group)
-            ap_list2.append(ap)
-        mean_ap = np.mean(ap_list2)
-        return mean_ap
+            ap_list1.append(ap)
+        mean_ap1 = np.nanmean(ap_list1)
+        return mean_ap1, ap_list1
 
     # === Original Method 1
     # def on_epoch1(harn, tag, loader):
