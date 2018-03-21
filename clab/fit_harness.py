@@ -185,18 +185,17 @@ class FitHarness(object):
 
         use_file_logger = True
         if use_file_logger and harn.flog is None:
-            # setup a file logger
-            flog = logging.getLogger('fit_harn')
-            flog.propagate = False
-            # flog.handlers = []  # remove all other handlers
+            flog_fname = 'fitlog_{}.log'.format(ub.timestamp())
+            flog_fpath = join(harn.train_dpath, flog_fname)
+            flog = logging.getLogger(harn.__class__.__name__)
             formatter = logging.Formatter('%(asctime)s : %(message)s')
-            log_fpath = join(harn.train_dpath, 'fitlog_{}.log'.format(ub.timestamp()))
-            fileHandler = logging.FileHandler(log_fpath, mode='w')
-            fileHandler.setFormatter(formatter)
+            handler = logging.FileHandler(flog_fpath, mode='w')
+            handler.setFormatter(formatter)
+            flog.propagate = False
             flog.setLevel(logging.DEBUG)
-            flog.addHandler(fileHandler)
+            flog.addHandler(handler)
             harn.flog = flog
-            harn.debug('setup file logger (should not print to stdout)')
+            harn.debug('initialized file logger')
 
         if tensorboard_logger:
             train_base = os.path.dirname(harn.nice_dpath or harn.train_dpath)

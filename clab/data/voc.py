@@ -276,6 +276,221 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         return annots
 
 
+class EvaluateVOC(object):
+    """
+    Example:
+        >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes()
+        >>> print(ub.repr2(all_true_boxes, nl=3, precision=2))
+        >>> print(ub.repr2(all_pred_boxes, nl=3, precision=2))
+        >>> self = EvaluateVOC(all_true_boxes, all_pred_boxes)
+    """
+
+    def __init__(self, all_true_boxes, all_pred_boxes):
+        self.all_true_boxes = all_true_boxes
+        self.all_pred_boxes = all_pred_boxes
+
+    @classmethod
+    def demodata_boxes(cls):
+        all_true_boxes = [
+            # class 1
+            [
+                # image 1
+                [[100, 100, 200, 200]],
+                # image 2
+                np.empty((0, 4)),
+                # image 3
+                [[0, 10, 10, 20], [10, 10, 20, 20], [20, 10, 30, 20]],
+            ],
+            # class 2
+            [
+                # image 1
+                [[0, 0, 100, 100], [0, 0, 50, 50]],
+                # image 2
+                [[0, 0, 50, 50], [50, 50, 100, 100]],
+                # image 3
+                [[0, 0, 10, 10], [10, 0, 20, 10], [20, 0, 30, 10]],
+            ],
+        ]
+        # convert to numpy
+        for cx, class_boxes in enumerate(all_true_boxes):
+            for gx, boxes in enumerate(class_boxes):
+                all_true_boxes[cx][gx] = np.array(boxes)
+
+        # setup perterbubed demo predicted boxes
+        rng = np.random.RandomState(0)
+
+        def make_dummy(boxes, rng):
+            if boxes.shape[0] == 0:
+                boxes = np.array([[10, 10, 50, 50]])
+            boxes = np.vstack([boxes, boxes])
+            xywh = np.hstack([boxes[:, 0:2], boxes[:, 2:4] - boxes[:, 0:2]])
+            scale = np.sqrt(xywh.max()) / 2
+            pred_xywh = xywh + rng.randn(*xywh.shape) * scale
+            keep = rng.rand(len(pred_xywh)) > 0.5
+            pred = pred_xywh[keep].astype(np.uint8)
+            pred_boxes = np.hstack([pred[:, 0:2], pred[:, 0:2] + pred[:, 2:4]])
+            # give dummy scores
+            pred_boxes = np.hstack([pred_boxes, rng.rand(len(pred_boxes), 1)])
+            return pred_boxes
+
+        all_pred_boxes = []
+        for cx, class_boxes in enumerate(all_true_boxes):
+            all_pred_boxes.append([])
+            for gx, boxes in enumerate(class_boxes):
+                pred_boxes = make_dummy(boxes, rng)
+                all_pred_boxes[cx].append(pred_boxes)
+
+        return all_true_boxes, all_pred_boxes
+
+    @classmethod
+    def find_overlap(cls, true_boxes, pred_box):
+        """
+        Compute iou of `pred_box` with each `true_box in true_boxes`.
+        Return the index and score of the true box with maximum overlap.
+
+        Example:
+            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes()
+            >>> true_boxes = np.array([[ 0,  0, 10, 10],
+            >>>                        [10,  0, 20, 10],
+            >>>                        [20,  0, 30, 10]])
+            >>> pred_box = np.array([6, 2, 20, 10, .9])
+            >>> ovmax, ovidx = EvaluateVOC.find_overlap(true_boxes, pred_box)
+            >>> print('ovidx = {!r}'.format(ovidx))
+            ovidx = 1
+        """
+        bb = pred_box
+        # intersection
+        ixmin = np.maximum(true_boxes[:, 0], bb[0])
+        iymin = np.maximum(true_boxes[:, 1], bb[1])
+        ixmax = np.minimum(true_boxes[:, 2], bb[2])
+        iymax = np.minimum(true_boxes[:, 3], bb[3])
+        iw = np.maximum(ixmax - ixmin + 1., 0.)
+        ih = np.maximum(iymax - iymin + 1., 0.)
+        inters = iw * ih
+
+        # union
+        uni = ((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) +
+               (true_boxes[:, 2] - true_boxes[:, 0] + 1.) *
+               (true_boxes[:, 3] - true_boxes[:, 1] + 1.) - inters)
+
+        overlaps = inters / uni
+        ovidx = overlaps.argmax()
+        ovmax = overlaps[ovidx]
+        return ovmax, ovidx
+
+    def compute(self, ovthresh=0.5):
+        """
+        Example:
+            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes()
+            >>> self = EvaluateVOC(all_true_boxes, all_pred_boxes)
+            >>> ovthresh = 0.5
+            >>> mean_ap = self.compute(ovthresh)
+            >>> print('mean_ap = {:.2f}'.format(mean_ap))
+            mean_ap = 0.18
+        """
+        num_classes = len(self.all_true_boxes)
+        ap_list = []
+        for cx in range(num_classes):
+            rec, prec, ap = self.eval_class(cx, ovthresh)
+            ap_list.append(ap)
+        mean_ap = np.mean(ap_list)
+        return mean_ap
+
+    def eval_class(self, cx, ovthresh=0.5):
+        all_true_boxes = self.all_true_boxes
+        all_pred_boxes = self.all_pred_boxes
+
+        batch_true_boxes = all_true_boxes[cx]
+        batch_pred_boxes = all_pred_boxes[cx]
+
+        # Flatten the predicted boxes
+        import pandas as pd
+        flat_pred_boxes = []
+        flat_pred_gxs = []
+        for gx, pred_boxes in enumerate(batch_pred_boxes):
+            flat_pred_boxes.extend(pred_boxes)
+            flat_pred_gxs.extend([gx] * len(pred_boxes))
+        flat_pred_boxes = np.array(flat_pred_boxes)
+        if len(flat_pred_boxes) > 0:
+            flat_preds = pd.DataFrame({
+                'box': flat_pred_boxes[:, 0:4].tolist(),
+                'conf': flat_pred_boxes[:, 4],
+                'gx': flat_pred_gxs
+            })
+            flat_preds = flat_preds.sort_values('conf', ascending=False)
+
+            # Keep track of which true boxes have been assigned in this class /
+            # image pair.
+            assign = {}
+
+            # Greedy assignment for scoring
+            # Iterate through bounding boxes in order of descending confidence
+            nd = len(flat_preds)
+            tp = np.zeros(nd)
+            fp = np.zeros(nd)
+            for sx, (pred_id, pred) in enumerate(flat_preds.iterrows()):
+                gx, pred_box = pred[['gx', 'box']]
+                true_boxes = batch_true_boxes[gx]
+                ovmax = -np.inf
+                true_id = None
+                if len(true_boxes):
+                    ovmax, ovidx = self.find_overlap(true_boxes, pred_box)
+                    true_id = (gx, ovidx)
+
+                if ovmax > ovthresh and true_id not in assign:
+                    assign[true_id] = pred_id
+                    tp[sx] = 1
+                else:
+                    fp[sx] = 1
+
+            # compute precision recall
+            npos = sum(map(len, batch_true_boxes))
+            fp = np.cumsum(fp)
+            tp = np.cumsum(tp)
+            rec = tp / float(npos)
+            # avoid divide by zero in case the first detection matches a difficult
+            # ground truth
+            prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+
+            def voc_ap(rec, prec, use_07_metric=False):
+                """ ap = voc_ap(rec, prec, [use_07_metric])
+                Compute VOC AP given precision and recall.
+                If use_07_metric is true, uses the
+                VOC 07 11 point method (default:False).
+                """
+                if use_07_metric:
+                    # 11 point metric
+                    ap = 0.
+                    for t in np.arange(0., 1.1, 0.1):
+                        if np.sum(rec >= t) == 0:
+                            p = 0
+                        else:
+                            p = np.max(prec[rec >= t])
+                        ap = ap + p / 11.
+                else:
+                    # correct AP calculation
+                    # first append sentinel values at the end
+                    mrec = np.concatenate(([0.], rec, [1.]))
+                    mpre = np.concatenate(([0.], prec, [0.]))
+
+                    # compute the precision envelope
+                    for i in range(mpre.size - 1, 0, -1):
+                        mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+                    # to calculate area under PR curve, look for points
+                    # where X axis (recall) changes value
+                    i = np.where(mrec[1:] != mrec[:-1])[0]
+
+                    # and sum (\Delta recall) * prec
+                    ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+                return ap
+
+            ap = voc_ap(rec, prec, use_07_metric=True)
+            return rec, prec, ap
+        else:
+            return [], [], 0
+
+
 if __name__ == '__main__':
     r"""
     CommandLine:
