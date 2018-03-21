@@ -382,23 +382,15 @@ def setup_harness(workers=None):
         # if tag == 'train':
         #     return
         gt_boxes, gt_classes, orig_size, indices = labels
-        bbox_pred, iou_pred, prob_pred = outputs
+        # bbox_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
         inp_size = inputs[0].shape[-2:]
         conf_thresh = 0.24
         nms_thresh = 0.5
         ovthresh = 0.5
 
-        postoutT = []
-        for i in range(loader.batch_sampler.batch_size):
-            sl_ = slice(i, i + 1)
-            # ugly hack to call preexisting code
-            sz_ = im_sizes[sl_]
-            out_ = (bbox_pred[sl_], iou_pred[sl_], prob_pred[sl_])
-            pout_ = harn.model.module.postprocess(out_, inp_size, sz_,
-                                                  conf_thresh, nms_thresh)
-            postoutT.append(pout_)
-        postout = list(zip(*postoutT))
+        postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
+                                                conf_thresh, nms_thresh)
 
         # Compute: y_pred, y_true, and y_score for this batch
         y_pred_ = []

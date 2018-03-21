@@ -9,6 +9,7 @@ References:
     https://github.com/pjreddie/darknet/blob/master/cfg/yolo-voc.2.0.cfg
     https://www.slideshare.net/JinwonLee9/pr12-yolo9000  # See Slide 16-18
 """
+import ubelt as ub
 import torch
 import numpy as np
 import torch.nn as nn
@@ -484,7 +485,8 @@ class Darknet19(nn.Module):
         # tx, ty, tw, th, to -> sig(tx), sig(ty), exp(tw), exp(th), sig(to)
         xy_pred    = F.sigmoid(final_reshaped[:, :, :, 0:2])
         wh_pred    = torch.exp(final_reshaped[:, :, :, 2:4])
-        bbox_pred  = torch.cat([xy_pred, wh_pred], 3)
+        # Predict: Anchor Offsets (relative offsets to the anchors).
+        aoff_pred  = torch.cat([xy_pred, wh_pred], 3)
 
         # Predict IOU
         iou_pred   = F.sigmoid(final_reshaped[:, :, :, 4:5])
@@ -494,8 +496,7 @@ class Darknet19(nn.Module):
         score_energy = score_pred.view(-1, score_pred.size()[-1])
         prob_pred = F.softmax(score_energy, dim=1).view_as(score_pred)
 
-        # Note: bbox_pred are relative offsets to the anchors.
-        output = (bbox_pred, iou_pred, prob_pred)
+        output = (aoff_pred, iou_pred, prob_pred)
         return output
 
     def postprocess(self, output, inp_size, im_shapes, conf_thresh=0.24,
@@ -504,16 +505,19 @@ class Darknet19(nn.Module):
         Postprocess the raw network output into usable bounding boxes
 
         Args:
-            bbox_pred: (B, HxW, A, 4)
-                        ndarray of float (sig(tx), sig(ty), exp(tw), exp(th))
+            aoff_pred (ndarray): [B, HxW, A, 4]
+                anchor offsets in the format (sig(x), sig(y), exp(w), exp(h))
 
-            iou_pred:  (B, HxW, A, 1)
+            iou_pred (ndarray): [B, HxW, A, 1]
+                predicted iou (is this the objectness score?)
 
-            prob_pred: (B, HxW, A, C)
+            prob_pred (ndarray): [B, HxW, A, C]
+                predicted class probability
 
             inp_size (tuple): size of input to network
 
-            im_shapes (list): size of each in image in the batch before rescale
+            im_shapes (list): [B, 2]
+                size of each in image before rescale
 
             conf_thresh (float): threshold for filtering bboxes. Keep only the
                 detections above this confidence value.
@@ -550,24 +554,33 @@ class Darknet19(nn.Module):
             >>> state_dict = torch.load(demo_weights())['model_state_dict']
             >>> self.load_state_dict(state_dict)
             >>> im_data, rgb255 = demo_image(inp_size)
+            >>> im_data = torch.cat([im_data, im_data])  # make a batch size of 2
             >>> output = self(im_data)
             >>> # Define remaining params
-            >>> conf_thresh = 0.24
+            >>> im_shapes = [rgb255.shape[0:2]] * len(im_data)
+            >>> conf_thresh = 0.01
             >>> nms_thresh = 0.5
-            >>> im_shapes = [rgb255.shape[0:2]]
             >>> postout = self.postprocess(output, inp_size, im_shapes, conf_thresh, nms_thresh)
-            >>> bbox_abs, scores, cls_inds = postout
+            >>> out_boxes, out_scores, out_cxs = postout
             >>> # xdoc: +REQUIRES(--show)
             >>> from clab.util import mplutil
             >>> mplutil.qtensure()  # xdoc: +SKIP
+            >>> label_names = ('aeroplane', 'bicycle', 'bird', 'boat', 'bottle',
+            >>>  'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
+            >>>  'dog', 'horse', 'motorbike', 'person',
+            >>>  'pottedplant', 'sheep', 'sofa', 'train',
+            >>>  'tvmonitor')
+            >>> import pandas as pd
+            >>> cls_names = list(ub.take(label_names, out_cxs[0]))
+            >>> print(pd.DataFrame({'name': cls_names, 'score': out_scores[0]}))
             >>> mplutil.figure(fnum=1, doclf=True)
             >>> mplutil.imshow(rgb255, colorspace='rgb')
-            >>> mplutil.draw_boxes(bbox_abs)
+            >>> mplutil.draw_boxes(out_boxes[0])
         """
-        bbox_pred_, iou_pred_, prob_pred_ = output
-
-        assert bbox_pred_.shape[0] == 1, (
-            'postprocess only support one image per batch. got ={}'.format(bbox_pred_.shape))  # noqa
+        aoff_pred_, iou_pred_, prob_pred_ = output
+        aoff_pred = aoff_pred_.data.cpu().numpy()
+        iou_pred  = iou_pred_.data.cpu().numpy()
+        prob_pred = prob_pred_.data.cpu().numpy()
 
         # num_classes, num_anchors = cfg.num_classes, cfg.num_anchors
         num_classes = self.num_classes
@@ -575,67 +588,77 @@ class Darknet19(nn.Module):
         out_size = np.array(inp_size) // 32  # hacked
         W, H = out_size
 
-        bbox_pred = bbox_pred_.data.cpu().numpy()
-        iou_pred  = iou_pred_.data.cpu().numpy()
-        prob_pred = prob_pred_.data.cpu().numpy()
-        bbox_pred = np.ascontiguousarray(bbox_pred, dtype=np.float)
+        out_boxes = []
+        out_scores = []
+        out_cxs = []
 
-        # Convert anchored predictions to absolute bounding boxes
-        bbox_abs = yolo_utils.yolo_to_bbox(bbox_pred, anchors, H, W)
+        # For each image in the batch, postprocess the predicted boxes
+        for bx in range(aoff_pred.shape[0]):
+            aoffs = aoff_pred[bx]
+            ious  = iou_pred[bx]
+            probs = prob_pred[bx]
+            im_shape = im_shapes[bx]
 
-        # Scale the bounding boxes to the size of the original image.
-        # and convert to integer representation.
-        im_shape = im_shapes[0]
-        bbox_abs[..., 0::2] *= float(im_shape[1])
-        bbox_abs[..., 1::2] *= float(im_shape[0])
-        bbox_abs = bbox_abs.astype(np.int)
+            # Convert anchored predictions to absolute bounding boxes
+            aoffs = np.ascontiguousarray(aoffs, dtype=np.float)
+            boxes = yolo_utils.yolo_to_bbox(aoffs[None, :], anchors, H, W)[0]
+            # Scale the bounding boxes to the size of the original image.
+            # and convert to integer representation.
+            boxes[..., 0::2] *= float(im_shape[1])
+            boxes[..., 1::2] *= float(im_shape[0])
+            boxes = boxes.astype(np.int)
 
-        # converts (1, G, A, 4) to (G * A, 4), where G is the number of grid
-        # cells and A is the number of anchor boxes.
-        bbox_abs = np.reshape(bbox_abs, [-1, 4])
-        iou_pred = np.reshape(iou_pred, [-1])
-        prob_pred = np.reshape(prob_pred, [-1, num_classes])
+            # converts [1, W * H, A, 4] -> [W * H * A, 4]
+            boxes = np.reshape(boxes, [-1, 4])
+            ious = np.reshape(ious, [-1])
+            probs = np.reshape(probs, [-1, num_classes])
 
-        cls_inds = np.argmax(prob_pred, axis=1)
-        prob_pred = prob_pred[(np.arange(prob_pred.shape[0]), cls_inds)]
+            # Predict the class with maximum probability
+            cls_inds = np.argmax(probs, axis=1)
+            cls_probs = probs[(np.arange(probs.shape[0]), cls_inds)]
 
-        """
-        Reference: arXiv:1506.02640 [cs.CV] (Yolo 1):
-            Formally we define confidence as $Pr(Object) ∗ IOU^truth_pred$.
-            If no object exists in that cell, the confidence scores should be
-            zero. Otherwise we want the confidence score to equal the
-            intersection over union (IOU) between the predicted box and the
-            ground truth
-        """
-        scores = iou_pred * prob_pred
+            """
+            Reference: arXiv:1506.02640 [cs.CV] (Yolo 1):
+                Formally we define confidence as $Pr(Object) ∗ IOU^truth_pred$.
+                If no object exists in that cell, the confidence scores should
+                be zero. Otherwise we want the confidence score to equal the
+                intersection over union (IOU) between the predicted box and the
+                ground truth
+            """
+            # Compute the final probabilities for the predicted class
+            scores = ious * cls_probs
 
-        # filter boxes based on confidence threshold
-        keep = np.where(scores >= conf_thresh)
-        bbox_abs = bbox_abs[keep]
-        scores = scores[keep]
-        cls_inds = cls_inds[keep]
+            # filter boxes based on confidence threshold
+            keep_conf = np.where(scores >= conf_thresh)
+            boxes = boxes[keep_conf]
+            scores = scores[keep_conf]
+            cls_inds = cls_inds[keep_conf]
 
-        # nonmax supression (pre-class)
-        keep = np.zeros(len(bbox_abs), dtype=np.int)
-        for i in range(num_classes):
-            inds = np.where(cls_inds == i)[0]
-            if len(inds) == 0:
-                continue
-            c_bboxes = bbox_abs[inds]
-            c_scores = scores[inds]
-            c_keep = yolo_utils.nms_detections(c_bboxes, c_scores, nms_thresh)
-            keep[inds[c_keep]] = 1
+            # nonmax supression (per-class)
+            keep_flags = np.zeros(len(boxes), dtype=np.int)
+            cx_to_inds = ub.group_items(range(len(cls_inds)), cls_inds)
+            cx_to_inds = ub.map_vals(np.array, cx_to_inds)
+            for cx, inds in cx_to_inds.items():
+                # Do get predictions for each class
+                c_bboxes = boxes[inds]
+                c_scores = scores[inds]
+                c_keep = yolo_utils.nms_detections(c_bboxes, c_scores,
+                                                   nms_thresh)
+                keep_flags[inds[c_keep]] = 1
 
-        keep = np.where(keep > 0)
-        # keep = nms_detections(bbox_abs, scores, 0.3)
-        bbox_abs = bbox_abs[keep]
-        scores = scores[keep]
-        cls_inds = cls_inds[keep]
+            keep_nms = np.where(keep_flags > 0)
+            boxes = boxes[keep_nms]
+            scores = scores[keep_nms]
+            cls_inds = cls_inds[keep_nms]
 
-        # clip
-        bbox_abs = yolo_utils.clip_boxes(bbox_abs, im_shape)
+            # clip
+            boxes = yolo_utils.clip_boxes(boxes, im_shape)
 
-        postout = bbox_abs, scores, cls_inds
+            out_boxes.append(boxes)
+            out_scores.append(scores)
+            out_cxs.append(cls_inds)
+
+        postout = (out_boxes, out_scores, out_cxs)
         return postout
 
     def load_from_npz(self, fname, num_conv=None):
