@@ -391,6 +391,7 @@ def setup_harness(workers=None):
 
         postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
                                                 conf_thresh, nms_thresh)
+        # batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
 
         # Compute: y_pred, y_true, and y_score for this batch
         y_pred_ = []
