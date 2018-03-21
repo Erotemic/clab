@@ -381,7 +381,6 @@ def setup_harness(workers=None):
         # Accumulate relevant outputs to measure
         # if tag == 'train':
         #     return
-
         gt_boxes, gt_classes, orig_size, indices = labels
         bbox_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
@@ -482,6 +481,8 @@ def setup_harness(workers=None):
         y = pd.concat(harn.batch_confusions)
 
         def group_metrics(group):
+            if group is None:
+                return 0
             group = group.sort_values('score', ascending=False)
             npos = sum(group.true >= 0)
             dets = group[group.pred > -1]
@@ -527,91 +528,12 @@ def setup_harness(workers=None):
         ap_list2 = []
         for cx in range(len(loader.dataset.label_names)):
             group = cx_to_group.get(cx, None)
-            if group is not None:
-                ap = group_metrics(group)
-            else:
-                ap = 0
+            ap = group_metrics(group)
             ap_list2.append(ap)
         mean_ap = np.mean(ap_list2)
 
         harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
         harn.accumulated2.clear()
-
-        # === Original Method 1
-    def on_epoch1(harn, tag, loader):
-
-        # Measure accumulated outputs
-        num_images = len(loader.dataset)
-        num_classes = loader.dataset.num_classes
-        all_pred_boxes = [[[] for _ in range(num_images)]
-                          for _ in range(num_classes)]
-        all_true_boxes = [[[] for _ in range(num_images)]
-                          for _ in range(num_classes)]
-
-        # cx = 3
-        cx = 7
-        print(ub.repr2([(gx, b) for gx, b in enumerate(all_true_boxes[cx]) if len(b)], nl=1))
-        print(ub.repr2([(gx, b) for gx, b in enumerate(all_pred_boxes[cx]) if len(b)], nl=1))
-
-        # Iterate over output from each batch
-        for postout, labels in harn.accumulated:
-
-            # Iterate over each item in the batch
-            batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
-            batch_true_boxes, batch_true_cls_inds = labels[0:2]
-            batch_orig_sz, batch_img_inds = labels[2:4]
-
-            batch_size = len(labels[0])
-            for bx in range(batch_size):
-                gx = batch_img_inds[bx]
-
-                true_boxes = batch_true_boxes[bx].data.cpu().numpy()
-                true_cxs = batch_true_cls_inds[bx]
-
-                pred_boxes  = batch_pred_boxes[bx]
-                pred_scores = batch_pred_scores[bx]
-                pred_cxs    = batch_pred_cls_inds[bx]
-
-                for cx, boxes, score in zip(pred_cxs, pred_boxes, pred_scores):
-                    all_pred_boxes[cx][gx].append(np.hstack([boxes, score]))
-
-                for cx, boxes in zip(true_cxs, true_boxes):
-                    all_true_boxes[cx][gx].append(boxes)
-
-        all_boxes = all_true_boxes
-        for cx, class_boxes in enumerate(all_boxes):
-            for gx, boxes in enumerate(class_boxes):
-                all_boxes[cx][gx] = np.array(boxes)
-                if len(boxes):
-                    boxes = np.array(boxes)
-                else:
-                    boxes = np.empty((0, 4))
-                all_boxes[cx][gx] = boxes
-
-        all_boxes = all_pred_boxes
-        for cx, class_boxes in enumerate(all_boxes):
-            for gx, boxes in enumerate(class_boxes):
-                # Sort predictions by confidence
-                if len(boxes):
-                    boxes = np.array(boxes)
-                else:
-                    boxes = np.empty((0, 5))
-                all_boxes[cx][gx] = boxes
-
-        self = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
-        ovthresh = 0.5
-        mean_ap1 = self.compute(ovthresh)
-        print('mean_ap1 = {!r}'.format(mean_ap1))
-
-        num_classes = len(self.all_true_boxes)
-        ap_list1 = []
-        for cx in range(num_classes):
-            rec, prec, ap = self.eval_class(cx, ovthresh)
-            ap_list1.append(ap)
-        print('ap_list1 = {!r}'.format(ap_list1))
-
-        # reset accumulated for next epoch
-        harn.accumulated.clear()
 
     return harn
 
