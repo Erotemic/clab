@@ -491,12 +491,17 @@ class EvaluateVOC(object):
             return [], [], 0
 
     @classmethod
-    class image_confusions(cls, true_boxes, true_cxs, pred_boxes, pred_scores,
-                           pred_cxs):
+    def image_confusions(cls, true_boxes, true_cxs, pred_boxes, pred_scores,
+                         pred_cxs):
         """
         Given predictions and truth for an image return (y_pred, y_true,
         y_score), which is suitable for sklearn classification metrics
         """
+        y_pred_ = []
+        y_true_ = []
+        y_score_ = []
+        gxs_ = []
+        cxs_ = []
 
     # === Original Method 1
     # def on_epoch1(harn, tag, loader):
