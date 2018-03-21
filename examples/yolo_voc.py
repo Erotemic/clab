@@ -332,11 +332,11 @@ def setup_harness(workers=None):
 
     xpu = xpu_device.XPU.cast('auto')
     harn = fit_harness.FitHarness(
-        hyper=hyper, xpu=xpu, loaders=loaders, max_iter=100,
+        hyper=hyper, xpu=xpu, loaders=loaders, max_iter=160,
     )
     harn.monitor = monitor.Monitor(min_keys=['loss'],
                                    # max_keys=['global_acc', 'class_acc'],
-                                   patience=100)
+                                   patience=160)
 
     @harn.set_batch_runner
     def batch_runner(harn, inputs, labels):
