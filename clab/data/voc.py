@@ -491,17 +491,138 @@ class EvaluateVOC(object):
             return [], [], 0
 
     @classmethod
-    def image_confusions(cls, true_boxes, true_cxs, pred_boxes, pred_scores,
-                         pred_cxs):
+    def image_confusions(EvaluateVOC, true_boxes, true_cxs, pred_boxes,
+                         pred_scores, pred_cxs, ovthresh=0.5):
         """
         Given predictions and truth for an image return (y_pred, y_true,
         y_score), which is suitable for sklearn classification metrics
+
+        Returns:
+            pd.DataFrame: with relevant clf information
+
+        Example:
+            >>> true_boxes = np.array([[ 0,  0, 10, 10],
+            >>>                        [10,  0, 20, 10],
+            >>>                        [10,  0, 20, 10],
+            >>>                        [20,  0, 30, 10]])
+            >>> true_cxs = np.array([0, 0, 1, 1])
+            >>> pred_boxes = np.array([[6, 2, 20, 10],
+            >>>                        [3,  2, 9, 7],
+            >>>                        [20,  0, 30, 10]])
+            >>> pred_scores = np.array([.5, .5, .5])
+            >>> pred_cxs = np.array([0, 0, 1])
+            >>> y = EvaluateVOC.image_confusions(true_boxes, true_cxs,
+            >>>                                  pred_boxes, pred_scores,
+            >>>                                  pred_cxs)
         """
-        y_pred_ = []
-        y_true_ = []
-        y_score_ = []
-        gxs_ = []
-        cxs_ = []
+        import pandas as pd
+        y_pred = []
+        y_true = []
+        y_score = []
+        cxs = []
+
+        cx_to_boxes = ub.group_items(true_boxes, true_cxs)
+        cx_to_boxes = ub.map_vals(np.array, cx_to_boxes)
+        # Keep track which true boxes are unused / not assigned
+        cx_to_unused = {cx: [True] * len(boxes)
+                        for cx, boxes in cx_to_boxes.items()}
+
+        # sort predictions by score
+        sortx = pred_scores.argsort()[::-1]
+        pred_boxes  = pred_boxes.take(sortx, axis=0)
+        pred_cxs    = pred_cxs.take(sortx, axis=0)
+        pred_scores = pred_scores.take(sortx, axis=0)
+        for cx, box, score in zip(pred_cxs, pred_boxes, pred_scores):
+            cls_true_boxes = cx_to_boxes.get(cx, [])
+            ovmax = -np.inf
+            if len(cls_true_boxes):
+                unused = cx_to_unused[cx]
+                ovmax, ovidx = EvaluateVOC.find_overlap(cls_true_boxes, box)
+            if ovmax > ovthresh and unused[ovidx]:
+                # Mark this prediction as a true positive
+                y_pred.append(cx)
+                y_true.append(cx)
+                y_score.append(score)
+                cxs.append(cx)
+                unused[ovidx] = False
+            else:
+                # Mark this prediction as a false positive
+                y_pred.append(cx)
+                y_true.append(-1)  # use -1 as ignore class
+                y_score.append(score)
+                cxs.append(cx)
+
+        # Mark true boxes we failed to predict as false negatives
+        for cx, unused in cx_to_unused.items():
+            for _ in range(sum(unused)):
+                # Mark this prediction as a false positive
+                y_pred.append(-1)
+                y_true.append(cx)
+                y_score.append(0.0)
+                cxs.append(cx)
+
+        y = pd.DataFrame({
+            'pred': y_pred,
+            'true': y_true,
+            'score': y_score,
+            'cx': cxs,
+        })
+        return y
+
+    @classmethod
+    def compute_map(EvaluateVOC, y, num_classes):
+        def group_metrics(group):
+            if group is None:
+                return 0
+            group = group.sort_values('score', ascending=False)
+            npos = sum(group.true >= 0)
+            dets = group[group.pred > -1]
+            tp = (dets.pred == dets.true).values.astype(np.uint8)
+            fp = 1 - tp
+            fp = np.cumsum(fp)
+            tp = np.cumsum(tp)
+
+            eps = np.finfo(np.float64).eps
+            rec = tp / npos
+            prec = tp / np.maximum(tp + fp, eps)
+
+            # VOC 2007 11 point metric
+            if True:
+                ap = 0.
+                for t in np.arange(0., 1.1, 0.1):
+                    if np.sum(rec >= t) == 0:
+                        p = 0
+                    else:
+                        p = np.max(prec[rec >= t])
+                    ap = ap + p / 11.
+            else:
+                # correct AP calculation
+                # first append sentinel values at the end
+                mrec = np.concatenate(([0.], rec, [1.]))
+                mpre = np.concatenate(([0.], prec, [0.]))
+
+                # compute the precision envelope
+                for i in range(mpre.size - 1, 0, -1):
+                    mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+                # to calculate area under PR curve, look for points
+                # where X axis (recall) changes value
+                i = np.where(mrec[1:] != mrec[:-1])[0]
+
+                # and sum (\Delta recall) * prec
+                ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+            return ap
+
+        # because we use -1 to indicate a wrong prediction we can use max to
+        # determine the class groupings.
+        cx_to_group = dict(iter(y.groupby('cx')))
+        ap_list2 = []
+        for cx in range(num_classes):
+            group = cx_to_group.get(cx, None)
+            ap = group_metrics(group)
+            ap_list2.append(ap)
+        mean_ap = np.mean(ap_list2)
+        return mean_ap
 
     # === Original Method 1
     # def on_epoch1(harn, tag, loader):

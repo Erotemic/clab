@@ -394,16 +394,11 @@ def setup_harness(workers=None):
         # batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
 
         # Compute: y_pred, y_true, and y_score for this batch
-        y_pred_ = []
-        y_true_ = []
-        y_score_ = []
-        gxs_ = []
-        cxs_ = []
-
         batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
         batch_true_boxes, batch_true_cls_inds = labels[0:2]
         batch_orig_sz, batch_img_inds = labels[2:4]
 
+        y_batch = []
         for bx, index in enumerate(batch_img_inds.data.cpu().numpy().ravel()):
             pred_boxes  = batch_pred_boxes[bx]
             pred_scores = batch_pred_scores[bx]
@@ -413,118 +408,23 @@ def setup_harness(workers=None):
             true_boxes = batch_true_boxes[bx].data.cpu().numpy()
             true_cxs = batch_true_cls_inds[bx].data.cpu().numpy()
 
-            cx_to_boxes = ub.group_items(true_boxes, true_cxs)
-            cx_to_boxes = ub.map_vals(np.array, cx_to_boxes)
-            # Keep track which true boxes are unused / not assigned
-            cx_to_unused = {cx: [True] * len(boxes)
-                            for cx, boxes in cx_to_boxes.items()}
+            y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
+                                                 pred_boxes, pred_scores,
+                                                 pred_cxs, ovthresh=ovthresh)
+            y['gx'] = index
+            y_batch.append(y)
 
-            # sort predictions by score
-            sortx = pred_scores.argsort()[::-1]
-            pred_boxes  = pred_boxes.take(sortx, axis=0)
-            pred_cxs    = pred_cxs.take(sortx, axis=0)
-            pred_scores = pred_scores.take(sortx, axis=0)
-            for cx, box, score in zip(pred_cxs, pred_boxes, pred_scores):
-                cls_true_boxes = cx_to_boxes.get(cx, [])
-                ovmax = -np.inf
-                if len(cls_true_boxes):
-                    unused = cx_to_unused[cx]
-                    ovmax, ovidx = voc.EvaluateVOC.find_overlap(cls_true_boxes,
-                                                                box)
-                if ovmax > ovthresh and unused[ovidx]:
-                    # Mark this prediction as a true positive
-                    y_pred_.append(cx)
-                    y_true_.append(cx)
-                    y_score_.append(score)
-                    gxs_.append(index)
-                    cxs_.append(cx)
-                    unused[ovidx] = False
-                else:
-                    # Mark this prediction as a false positive
-                    y_pred_.append(cx)
-                    y_true_.append(-1)  # use -1 as ignore class
-                    y_score_.append(score)
-                    gxs_.append(index)
-                    cxs_.append(cx)
-
-            # Mark true boxes we failed to predict as false negatives
-            for cx, unused in cx_to_unused.items():
-                for _ in range(sum(unused)):
-                    # Mark this prediction as a false positive
-                    y_pred_.append(-1)
-                    y_true_.append(cx)
-                    y_score_.append(0.0)
-                    gxs_.append(index)
-                    cxs_.append(cx)
-
-        y_ = pd.DataFrame({
-            'pred': y_pred_,
-            'true': y_true_,
-            'score': y_score_,
-            'gx': gxs_,
-            'cx': cxs_,
-        })
+        harn.batch_confusions.extend(y_batch)
 
         # harn.accumulated2.append((y_pred_, y_true_, y_score_))
         # harn.accumulated.append((postout, labels))
-        harn.batch_confusions.append(y_)
 
     @harn.add_epoch_callback
     def on_epoch(harn, tag, loader):
-        # === New Method 2
         y = pd.concat(harn.batch_confusions)
+        num_classes = len(loader.dataset.label_names)
 
-        def group_metrics(group):
-            if group is None:
-                return 0
-            group = group.sort_values('score', ascending=False)
-            npos = sum(group.true >= 0)
-            dets = group[group.pred > -1]
-            tp = (dets.pred == dets.true).values.astype(np.uint8)
-            fp = 1 - tp
-            fp = np.cumsum(fp)
-            tp = np.cumsum(tp)
-
-            eps = np.finfo(np.float64).eps
-            rec = tp / npos
-            prec = tp / np.maximum(tp + fp, eps)
-
-            # VOC 2007 11 point metric
-            if True:
-                ap = 0.
-                for t in np.arange(0., 1.1, 0.1):
-                    if np.sum(rec >= t) == 0:
-                        p = 0
-                    else:
-                        p = np.max(prec[rec >= t])
-                    ap = ap + p / 11.
-            else:
-                # correct AP calculation
-                # first append sentinel values at the end
-                mrec = np.concatenate(([0.], rec, [1.]))
-                mpre = np.concatenate(([0.], prec, [0.]))
-
-                # compute the precision envelope
-                for i in range(mpre.size - 1, 0, -1):
-                    mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-
-                # to calculate area under PR curve, look for points
-                # where X axis (recall) changes value
-                i = np.where(mrec[1:] != mrec[:-1])[0]
-
-                # and sum (\Delta recall) * prec
-                ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-            return ap
-
-        # because we use -1 to indicate a wrong prediction we can use max to
-        # determine the class groupings.
-        cx_to_group = dict(iter(y.groupby('cx')))
-        ap_list2 = []
-        for cx in range(len(loader.dataset.label_names)):
-            group = cx_to_group.get(cx, None)
-            ap = group_metrics(group)
-            ap_list2.append(ap)
-        mean_ap = np.mean(ap_list2)
+        mean_ap = voc.EvaluateVOC.compute_map(y, num_classes)
 
         harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
         harn.batch_confusions.clear()
