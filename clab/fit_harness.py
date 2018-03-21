@@ -529,8 +529,8 @@ class FitHarness(object):
                     prog.set_postfix({'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
 
                 # Custom tensorboard output
-                for _hook in harn._tensorboard_hooks:
-                    _hook(harn, tag, inputs, outputs, labels, bx, loader)
+                # for _hook in harn._tensorboard_hooks:
+                #     _hook(harn, tag, inputs, outputs, labels, bx, loader)
 
                 # Call custom hooks on each iteration
                 for hook in harn._iter_callbacks:
