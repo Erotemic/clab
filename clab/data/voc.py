@@ -287,7 +287,8 @@ class EvaluateVOC(object):
         self.all_pred_boxes = all_pred_boxes
 
     @classmethod
-    def perterb_boxes(cls, boxes, perterb_amount=.5, rng=None, cxs=None):
+    def perterb_boxes(cls, boxes, perterb_amount=.5, rng=None, cxs=None,
+                      num_classes=None):
         n = boxes.shape[0]
         if boxes.shape[0] == 0:
             boxes = np.array([[10, 10, 50, 50]])
@@ -307,12 +308,11 @@ class EvaluateVOC(object):
 
         if cxs is not None:
             # randomly change class indexes
-            cxs2 = list(cxs) + list(rng.randint(0, max(cxs) + 1, n_extra))
+            cxs2 = list(cxs) + list(rng.randint(0, num_classes, n_extra))
             cxs2 = np.array(cxs2)
             change = rng.rand(n) < min(perterb_amount, 1.0)
-            cxs2[:n][change] = list(rng.randint(0, max(cxs) + 1, sum(change)))
+            cxs2[:n][change] = list(rng.randint(0, num_classes, sum(change)))
             cxs2 = cxs2[keep]
-
 
         pred = pred_xywh[keep].astype(np.uint8)
         pred_boxes = np.hstack([pred[:, 0:2], pred[:, 0:2] + pred[:, 2:4]])
@@ -324,8 +324,9 @@ class EvaluateVOC(object):
             return pred_boxes
 
     @classmethod
-    def random_boxes(cls, n=None, c=4, rng=0):
-        rng = np.random.RandomState(0)
+    def random_boxes(cls, n=None, c=4, rng=None):
+        if rng is None:
+            rng = np.random
         if n is None:
             n = rng.randint(0, 10)
         xywh = (rng.rand(n, 4) * 100).astype(np.int)
@@ -550,9 +551,10 @@ class EvaluateVOC(object):
         EvaluateVOC.sanity_check()
         """
         import pandas as pd
-        n_images = 500
+        n_images = 100
         ovthresh = 0.8
-        num_classes = 5
+        num_classes = 200
+        rng = np.random.RandomState(0)
         for perterb_amount in [0, .00001, .0001, .0005, .001, .01, .1, .5]:
             img_ys = []
 
@@ -560,10 +562,13 @@ class EvaluateVOC(object):
             all_pred_boxes = [[] for cx in range(num_classes)]
 
             for index in range(n_images):
-                true_boxes, true_cxs = EvaluateVOC.random_boxes(c=num_classes)
+                n = rng.randint(0, 50)
+                true_boxes, true_cxs = EvaluateVOC.random_boxes(n=n,
+                                                                c=num_classes,
+                                                                rng=rng)
                 pred_sboxes, pred_cxs = EvaluateVOC.perterb_boxes(
-                    true_boxes, perterb_amount=perterb_amount, rng=np.random,
-                    cxs=true_cxs)
+                    true_boxes, perterb_amount=perterb_amount,
+                    cxs=true_cxs, rng=rng, num_classes=num_classes)
                 pred_scores = pred_sboxes[:, 4]
                 pred_boxes = pred_sboxes[:, 0:4]
                 y = EvaluateVOC.image_confusions(true_boxes, true_cxs, pred_boxes,
@@ -584,8 +589,8 @@ class EvaluateVOC(object):
             mean_ap2, ap_list2 = self.compute(ovthresh=ovthresh)
             print('mean_ap1 = {!r}'.format(mean_ap1))
             print('mean_ap2 = {!r}'.format(mean_ap2))
-            print('ap_list1 = {!r}'.format(ap_list1))
-            print('ap_list2 = {!r}'.format(ap_list2))
+            # print('ap_list1 = {!r}'.format(ap_list1))
+            # print('ap_list2 = {!r}'.format(ap_list2))
             print('-------')
 
     @classmethod
