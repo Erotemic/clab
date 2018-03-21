@@ -289,6 +289,12 @@ def setup_harness(workers=None):
         https://github.com/pjreddie/darknet/blob/master/cfg/yolo-voc.2.0.cfg
     """
 
+    postproc_params = dict(
+        conf_thresh=0.001,
+        nms_thresh=0.5,
+        ovthresh=0.5,
+    )
+
     hyper = hyperparams.HyperParams(
 
         model=(darknet.Darknet19, {
@@ -321,9 +327,9 @@ def setup_harness(workers=None):
             step_points=cfg.lr_step_points
         )),
 
-        other={
+        other=ub.dict_union({
             'batch_size': loaders['train'].batch_sampler.batch_size,
-        },
+        }, postproc_params),
         centering=None,
 
         # centering=datasets['train'].centering,
@@ -386,9 +392,11 @@ def setup_harness(workers=None):
         im_sizes = orig_size
         inp_size = inputs[0].shape[-2:]
 
-        conf_thresh = 0.001
-        nms_thresh = 0.5
-        ovthresh = 0.5
+        conf_thresh = postproc_params['conf_thresh']
+        nms_thresh = postproc_params['nms_thresh']
+        ovthresh = postproc_params['ovthresh']
+
+        # TODO: filter beyond a maximum number of bounding boxes
 
         postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
                                                 conf_thresh, nms_thresh)
