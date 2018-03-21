@@ -424,7 +424,7 @@ def setup_harness(workers=None):
         y = pd.concat(harn.batch_confusions)
         num_classes = len(loader.dataset.label_names)
 
-        mean_ap = voc.EvaluateVOC.compute_map(y, num_classes)
+        mean_ap, ap_list = voc.EvaluateVOC.compute_map(y, num_classes)
 
         harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
         harn.batch_confusions.clear()

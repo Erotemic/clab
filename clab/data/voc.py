@@ -551,7 +551,7 @@ class EvaluateVOC(object):
         """
         import pandas as pd
         n_images = 500
-        ovthresh = 0.5
+        ovthresh = 0.8
         num_classes = 5
         for perterb_amount in [0, .00001, .0001, .0005, .001, .01, .1, .5]:
             img_ys = []
@@ -577,17 +577,11 @@ class EvaluateVOC(object):
                     all_true_boxes[cx].append(true_boxes[true_cxs == cx])
                     all_pred_boxes[cx].append(pred_sboxes[pred_cxs == cx])
 
-            import ubelt
-            for timer in ubelt.Timerit(10, bestof=3, label='one'):
-                with timer:
-                    y = pd.concat(img_ys)
-                    mean_ap1, ap_list1 = EvaluateVOC.compute_map(y, num_classes)
+            y = pd.concat(img_ys)
+            mean_ap1, ap_list1 = EvaluateVOC.compute_map(y, num_classes)
 
-            import ubelt
-            for timer in ubelt.Timerit(10, bestof=3, label='two'):
-                with timer:
-                    self = EvaluateVOC(all_true_boxes, all_pred_boxes)
-                    mean_ap2, ap_list2 = self.compute(ovthresh=ovthresh)
+            self = EvaluateVOC(all_true_boxes, all_pred_boxes)
+            mean_ap2, ap_list2 = self.compute(ovthresh=ovthresh)
             print('mean_ap1 = {!r}'.format(mean_ap1))
             print('mean_ap2 = {!r}'.format(mean_ap2))
             print('ap_list1 = {!r}'.format(ap_list1))
