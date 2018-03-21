@@ -411,6 +411,7 @@ def setup_harness(workers=None):
             # Group groundtruth boxes by class
             true_boxes = batch_true_boxes[bx].data.cpu().numpy()
             true_cxs = batch_true_cls_inds[bx].data.cpu().numpy()
+
             cx_to_boxes = ub.group_items(true_boxes, true_cxs)
             cx_to_boxes = ub.map_vals(np.array, cx_to_boxes)
             # Keep track which true boxes are unused / not assigned
@@ -525,7 +526,7 @@ def setup_harness(workers=None):
         mean_ap = np.mean(ap_list2)
 
         harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
-        harn.accumulated2.clear()
+        harn.batch_confusions.clear()
 
     return harn
 
