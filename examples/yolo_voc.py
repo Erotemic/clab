@@ -438,8 +438,10 @@ def setup_harness(workers=None):
         num_classes = len(loader.dataset.label_names)
 
         mean_ap, ap_list = voc.EvaluateVOC.compute_map(y, num_classes)
+        max_ap = np.nanmax(ap_list)
 
         harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
+        harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
         harn.batch_confusions.clear()
 
     return harn
