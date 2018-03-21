@@ -385,12 +385,17 @@ def setup_harness(workers=None):
         # bbox_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
         inp_size = inputs[0].shape[-2:]
-        conf_thresh = 0.24
+
+        conf_thresh = 0.001
         nms_thresh = 0.5
         ovthresh = 0.5
 
         postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
                                                 conf_thresh, nms_thresh)
+
+        # TODO: DUMP DETECTIONS FOR EACH IMAGE INTO A FILE THEN RUN THE SCORING
+        # SCRIPT INDEPENDENTLY
+
         # batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
 
         # Compute: y_pred, y_true, and y_score for this batch
