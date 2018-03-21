@@ -635,7 +635,7 @@ class Darknet19(nn.Module):
             cls_inds = cls_inds[keep_conf]
 
             # nonmax supression (per-class)
-            keep_flags = np.zeros(len(boxes), dtype=np.int)
+            keep_flags = np.zeros(len(boxes), dtype=np.uint8)
             cx_to_inds = ub.group_items(range(len(cls_inds)), cls_inds)
             cx_to_inds = ub.map_vals(np.array, cx_to_inds)
             for cx, inds in cx_to_inds.items():

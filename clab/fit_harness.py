@@ -546,7 +546,7 @@ class FitHarness(object):
 
         # call hooks after every epoch
         for hook in harn._epoch_callbacks:
-            hook(harn, loader, tag)
+            hook(harn, tag, loader)
 
         return epoch_metrics
 
