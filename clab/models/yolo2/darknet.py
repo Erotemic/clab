@@ -567,7 +567,7 @@ class Darknet19(nn.Module):
         bbox_pred_, iou_pred_, prob_pred_ = output
 
         assert bbox_pred_.shape[0] == 1, (
-            'postprocess only support one image per batch')  # noqa
+            'postprocess only support one image per batch. got ={}'.format(bbox_pred_.shape))  # noqa
 
         # num_classes, num_anchors = cfg.num_classes, cfg.num_anchors
         num_classes = self.num_classes
