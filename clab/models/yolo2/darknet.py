@@ -260,9 +260,9 @@ class DarknetLoss(BaseLossWithCudaState):
         aoff_pred_np = aoff_pred.data.cpu().numpy()
         iou_pred_np = iou_pred.data.cpu().numpy()
 
-        gt_boxes_np = [item.numpy() for item in gt_boxes]
-        gt_classes_np = [item.numpy() for item in gt_classes]
-        gt_weights_np = [item.numpy() for item in gt_weights]
+        gt_boxes_np = [item.data.cpu().numpy() for item in gt_boxes]
+        gt_classes_np = [item.data.cpu().numpy() for item in gt_classes]
+        gt_weights_np = [item.data.cpu().numpy() for item in gt_weights]
 
         args = zip(aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
                    gt_weights_np)

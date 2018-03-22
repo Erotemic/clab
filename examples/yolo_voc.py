@@ -500,9 +500,8 @@ def test():
     model.module.load_state_dict(state_dict)
 
     num_images = len(dset)
-
-    gx = 212
-    cx = 0
+    # gx = 212
+    # cx = 0
 
     cacher = ub.Cacher('all_boxes', cfgstr='v1', enabled=False)
     data = cacher.tryload()
@@ -580,7 +579,7 @@ def test():
 
 def train():
     """
-    python ~/code/clab/examples/yolo_voc.py train
+    python ~/code/clab/examples/yolo_voc.py train --nice=baseline
     """
     harn = setup_harness()
     harn.setup_dpath(ub.ensuredir(cfg.workdir))
