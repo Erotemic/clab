@@ -453,7 +453,7 @@ def setup_harness(workers=None):
             orig_shape = batch_orig_sz[bx]
             sf = np.array(orig_shape) / np.array(inp_size)
             if len(true_boxes_):
-                true_boxes = np.hstack([true_boxes_, true_weights[None, :]])
+                true_boxes = np.hstack([true_boxes_, true_weights.ravel()[None, :]])
                 true_boxes[:, 0:4:2] *= sf[1]
                 true_boxes[:, 1:4:2] *= sf[0]
 
