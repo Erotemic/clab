@@ -452,9 +452,10 @@ def setup_harness(workers=None):
             # NOTE; Unnormalize the true bboxes back to orig coords
             orig_shape = batch_orig_sz[bx]
             sf = np.array(orig_shape) / np.array(inp_size)
-            true_boxes = np.hstack([true_boxes_, true_weights[None, :]])
-            true_boxes[:, 0:4:2] *= sf[1]
-            true_boxes[:, 1:4:2] *= sf[0]
+            if len(true_boxes_):
+                true_boxes = np.hstack([true_boxes_, true_weights[None, :]])
+                true_boxes[:, 0:4:2] *= sf[1]
+                true_boxes[:, 1:4:2] *= sf[0]
 
             y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
                                                  pred_boxes, pred_scores,

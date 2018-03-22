@@ -305,9 +305,9 @@ def _built_target_item(data, inp_size, num_classes, anchors, object_scale=5.0,
         >>> aoff_pred_np = np.random.randn(H * W, A, 4)
         >>> iou_pred_np = np.random.rand(H * W, A, 1)
         >>> anchors = np.abs(np.random.randn(A, 2))
-        >>> gt_boxes_np = [item.numpy() for item in gt_boxes][0]
-        >>> gt_classes_np = [item.numpy() for item in gt_classes][0]
-        >>> gt_weights_np = [item.numpy() for item in gt_weights][0]
+        >>> gt_boxes_np = [item.cpu().numpy() for item in gt_boxes][0]
+        >>> gt_classes_np = [item.cpu().numpy() for item in gt_classes][0]
+        >>> gt_weights_np = [item.cpu().numpy() for item in gt_weights][0]
         >>> data = (aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
         >>>         gt_weights)
         >>> object_scale = 5.0
