@@ -473,8 +473,13 @@ def setup_harness(workers=None):
 
 
 def test():
+    """
+    import sys
+    sys.path.append('/home/joncrall/code/clab/examples')
+    from yolo_voc import *
+    """
     dset = YoloVOCDataset(cfg.devkit_dpath, split='test')
-    loader = dset.make_loader(batch_size=2, num_workers=0)
+    loader = dset.make_loader(batch_size=4, num_workers=0)
 
     xpu = xpu_device.XPU.cast('gpu')
     model = darknet.Darknet19(**{
