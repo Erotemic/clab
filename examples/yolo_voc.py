@@ -389,8 +389,6 @@ def setup_harness(workers=None):
             >>> batch = harn._demo_batch(0, 'train')
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
-
-            >>> loader = harn.loaders['train']
             >>> weights_fpath = darknet.demo_weights()
             >>> state_dict = torch.load(weights_fpath)['model_state_dict']
             >>> harn.model.module.load_state_dict(state_dict)
@@ -415,6 +413,26 @@ def setup_harness(workers=None):
 
     @harn.add_iter_callback
     def on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss):
+        """
+        Custom hook to run on each batch (used to compute mAP on the fly)
+
+        Example:
+            >>> import sys
+            >>> sys.path.append('/home/joncrall/code/clab/examples')
+            >>> from yolo_voc import *
+            >>> harn = setup_harness(workers=0)
+            >>> harn.initialize()
+            >>> batch = harn._demo_batch(0, 'train')
+            >>> inputs, labels = batch
+            >>> criterion = harn.criterion
+            >>> loader = harn.loaders['train']
+            >>> weights_fpath = darknet.demo_weights()
+            >>> state_dict = torch.load(weights_fpath)['model_state_dict']
+            >>> harn.model.module.load_state_dict(state_dict)
+            >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
+            >>> tag = 'train'
+            >>> on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss)
+        """
         # Accumulate relevant outputs to measure
         # if tag == 'train':
         #     return
@@ -454,7 +472,7 @@ def setup_harness(workers=None):
             orig_shape = batch_orig_sz[bx]
             sf = np.array(orig_shape) / np.array(inp_size)
             if len(true_boxes_):
-                true_boxes = np.hstack([true_boxes_, true_weights.ravel()[None, :]])
+                true_boxes = np.hstack([true_boxes_, true_weights[:, None]])
                 true_boxes[:, 0:4:2] *= sf[1]
                 true_boxes[:, 1:4:2] *= sf[0]
 
