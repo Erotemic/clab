@@ -195,7 +195,6 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             inp_size = self.base_size
         hwc, boxes, gt_classes = self._load_item(index, inp_size)
 
-        # TODO: augmentation
         chw = torch.FloatTensor(hwc.transpose(2, 0, 1))
         gt_classes = torch.LongTensor(gt_classes)
         boxes = torch.LongTensor(boxes.astype(np.int32))

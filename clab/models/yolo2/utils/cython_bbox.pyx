@@ -18,7 +18,7 @@ cdef extern from "math.h":
 
 
 def bbox_overlaps(np.ndarray[DTYPE_t, ndim=2] boxes,
-        np.ndarray[DTYPE_t, ndim=2] query_boxes):
+                  np.ndarray[DTYPE_t, ndim=2] query_boxes):
     return bbox_overlaps_c(boxes, query_boxes)
 
 cdef np.ndarray[DTYPE_t, ndim=2] bbox_overlaps_c(

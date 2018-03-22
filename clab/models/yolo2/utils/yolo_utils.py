@@ -1,35 +1,189 @@
 import cv2
 import numpy as np
+import itertools as it
 from .im_transform import imcv2_affine_trans, imcv2_recolor
 # from box import BoundBox, box_iou, prob_compare
 from .nms_wrapper import nms
 from .cython_yolo import yolo_to_bbox
+from .cython_bbox import bbox_ious, anchor_intersections  # NOQA
 
 
-def yolo_to_bbox_py(bbox_pred, anchors, H, W):
+def anchor_intersections_py(anchors, query_boxes):
+    """
+    For each query box compute the intersection ratio covered by anchors
+    This assumes query boxes are normalized and centerated at the anchors.
+
+    Args:
+        anchors: (A, 2) aspect ratios of anchor boxes
+        query_boxes: (K, 4) normalized query boxes centered at anchor posisions
+
+    Returns:
+        overlaps: (A, K) ndarray of intersec between boxes and query_boxes
+
+    Example:
+        >>> query_boxes = random_boxes(10, scale=1).numpy().astype(np.float)
+        >>> anchors = np.abs(np.random.randn(A, 2)).astype(np.float)
+        >>> intersec1 = anchor_intersections_py(anchors, query_boxes)
+        >>> intersec2 = anchor_intersections(anchors, query_boxes)
+        >>> assert np.all(intersec1 == intersec2)
+    """
+    N = anchors.shape[0]
+    K = query_boxes.shape[0]
+    intersec = np.zeros((N, K), dtype=np.float)
+    for n in range(N):
+        anchor_area = anchors[n, 0] * anchors[n, 1]
+        for k in range(K):
+            boxw = (query_boxes[k, 2] - query_boxes[k, 0] + 1)
+            boxh = (query_boxes[k, 3] - query_boxes[k, 1] + 1)
+            iw = min(anchors[n, 0], boxw)
+            ih = min(anchors[n, 1], boxh)
+            inter_area = iw * ih
+            denom = (anchor_area + boxw * boxh - inter_area)
+            intersec[n, k] = inter_area / denom
+    return intersec
+
+
+def bbox_ious_py(boxes, query_boxes):
+    """
+    For each query box compute the IOU covered by boxes
+
+    Args:
+        boxes: (N, 4) ndarray of float
+        query_boxes: (K, 4) ndarray of float
+
+    Returns:
+        overlaps: (N, K) ndarray of intersec between boxes and query_boxes
+
+    Example:
+        >>> query_boxes = random_boxes(10, scale=10).numpy().astype(np.float) / 10
+        >>> boxes = random_boxes(10, scale=10).numpy().astype(np.float) / 10
+        >>> overlaps1 = bbox_ious_py(boxes, query_boxes)
+        >>> overlaps2 = bbox_ious(boxes, query_boxes)
+        >>> assert np.all(overlaps1 == overlaps2)
+    """
+    N = boxes.shape[0]
+    K = query_boxes.shape[0]
+    intersec = np.zeros((N, K), dtype=np.float)
+    for k in range(K):
+        qbox_area = (
+            (query_boxes[k, 2] - query_boxes[k, 0] + 1) *
+            (query_boxes[k, 3] - query_boxes[k, 1] + 1)
+        )
+        for n in range(N):
+            iw = (
+                min(boxes[n, 2], query_boxes[k, 2]) -
+                max(boxes[n, 0], query_boxes[k, 0]) + 1
+            )
+            if iw > 0:
+                ih = (
+                    min(boxes[n, 3], query_boxes[k, 3]) -
+                    max(boxes[n, 1], query_boxes[k, 1]) + 1
+                )
+                if ih > 0:
+                    box_area = (
+                        (boxes[n, 2] - boxes[n, 0] + 1) *
+                        (boxes[n, 3] - boxes[n, 1] + 1)
+                    )
+                    inter_area = iw * ih
+                    denom = (qbox_area + box_area - inter_area)
+                    intersec[n, k] = inter_area / denom
+    return intersec
+
+
+def random_boxes(num, scale=100):
+    import torch
+    if num:
+        xywh = (torch.rand(num, 4) * scale).long()
+        xy = xywh[..., 0:2]
+        wh = xywh[..., 2:4]
+        tlbr = torch.cat([xy, xy + wh], dim=-1)
+        return tlbr
+    else:
+        return torch.LongTensor()
+
+
+def bbox_overlaps_py(boxes, query_boxes):
+    """
+    Args:
+        boxes: (N, 4) ndarray of float
+        query_boxes: (K, 4) ndarray of float
+
+    Returns:
+        overlaps: (N, K) ndarray of overlap between boxes and query_boxes
+    """
+    N = boxes.shape[0]
+    K = query_boxes.shape[0]
+    overlaps = np.zeros((N, K), dtype=np.float)
+    for k in range(K):
+        box_area = (
+            (query_boxes[k, 2] - query_boxes[k, 0] + 1) *
+            (query_boxes[k, 3] - query_boxes[k, 1] + 1)
+        )
+        for n in range(N):
+            iw = (
+                min(boxes[n, 2], query_boxes[k, 2]) -
+                max(boxes[n, 0], query_boxes[k, 0]) + 1
+            )
+            if iw > 0:
+                ih = (
+                    min(boxes[n, 3], query_boxes[k, 3]) -
+                    max(boxes[n, 1], query_boxes[k, 1]) + 1
+                )
+                if ih > 0:
+                    ua = float(
+                        (boxes[n, 2] - boxes[n, 0] + 1) *
+                        (boxes[n, 3] - boxes[n, 1] + 1) +
+                        box_area - iw * ih
+                    )
+                    overlaps[n, k] = iw * ih / ua
+    return overlaps
+
+
+def yolo_to_bbox_py(aoff_pred, anchors, H, W):
     """
     Transform anchored predictions and predicted relative offsets into absolute
     bounding boxes. A cython version is available.
+
+    Args:
+        aoff_pred : [B, W * H, A, 4] predicted anchor offsets
+        anchors : [A, 2] anchor box aspect ratios
+
+    Returns:
+        bbox_out : [B, W * H, A, 4] absolute bounding boxes independent of
+            anchors, but scaled in the range 0 to 1.
+
+    Example:
+        >>> B, W, H, A = 1, 3, 3, 5
+        >>> aoff_pred = np.random.randn(B, W * H, A, 4)
+        >>> anchors = np.abs(np.random.randn(A, 2))
+        >>> bbox_out1 = yolo_to_bbox_py(aoff_pred, anchors, H, W)
+        >>> bbox_out2 = yolo_to_bbox(aoff_pred, anchors, H, W)
+        >>> assert np.all(bbox_out1 == bbox_out2)
+
+    Timeit:
+       >>> %timeit yolo_to_bbox_py(aoff_pred, anchors, H, W)
+       136 µs ± 2.17 µs per loop
+       >>> %timeit yolo_to_bbox(aoff_pred, anchors, H, W)
+       42.9 µs ± 1.43 µs per loop
     """
     H = int(H)
     W = int(W)
-    bsize = bbox_pred.shape[0]
+    bsize = aoff_pred.shape[0]
     num_anchors = anchors.shape[0]
     bbox_out = np.zeros((bsize, H * W, num_anchors, 4), dtype=np.float)
     for b in range(bsize):
-        for row in range(H):
-            for col in range(W):
-                ind = row * W + col
-                for a in range(num_anchors):
-                    cx = (bbox_pred[b, ind, a, 0] + col) / W
-                    cy = (bbox_pred[b, ind, a, 1] + row) / H
-                    bw = bbox_pred[b, ind, a, 2] * anchors[a][0] / W * 0.5
-                    bh = bbox_pred[b, ind, a, 3] * anchors[a][1] / H * 0.5
+        for row, col in it.product(range(H), range(W)):
+            ind = row * W + col
+            for a in range(num_anchors):
+                cx = (aoff_pred[b, ind, a, 0] + col) / W
+                cy = (aoff_pred[b, ind, a, 1] + row) / H
+                bw = aoff_pred[b, ind, a, 2] * anchors[a][0] / W * 0.5
+                bh = aoff_pred[b, ind, a, 3] * anchors[a][1] / H * 0.5
 
-                    bbox_out[b, ind, a, 0] = cx - bw
-                    bbox_out[b, ind, a, 1] = cy - bh
-                    bbox_out[b, ind, a, 2] = cx + bw
-                    bbox_out[b, ind, a, 3] = cy + bh
+                bbox_out[b, ind, a, 0] = cx - bw
+                bbox_out[b, ind, a, 1] = cy - bh
+                bbox_out[b, ind, a, 2] = cx + bw
+                bbox_out[b, ind, a, 3] = cy + bh
     return bbox_out
 
 

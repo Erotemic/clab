@@ -16,7 +16,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .layers.reorg.reorg_layer import ReorgLayer
-from .utils.cython_bbox import bbox_ious, anchor_intersections
 from .utils import yolo_utils
 from functools import partial
 from multiprocessing import Pool
@@ -64,24 +63,24 @@ def np_to_variable(x, is_cuda=True, dtype=torch.FloatTensor):
     return v
 
 
-class TrackCudaLoss(torch.nn.modules.loss._Loss):
+class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
     """
     Keep track of if the module is in cpu or gpu mode
     """
     def __init__(self):
-        super(TrackCudaLoss, self).__init__()
+        super(BaseLossWithCudaState, self).__init__()
         self._iscuda = False
         self._device_num = None
 
     def cuda(self, device_num=None, **kwargs):
         self._iscuda = True
         self._device_num = device_num
-        return super(TrackCudaLoss, self).cuda(device_num, **kwargs)
+        return super(BaseLossWithCudaState, self).cuda(device_num, **kwargs)
 
     def cpu(self):
         self._iscuda = False
         self._device_num = None
-        return super(TrackCudaLoss, self).cpu()
+        return super(BaseLossWithCudaState, self).cpu()
 
     @property
     def is_cuda(self):
@@ -91,20 +90,21 @@ class TrackCudaLoss(torch.nn.modules.loss._Loss):
         return self._device_num
 
 
-class DarknetLoss(TrackCudaLoss):
+class DarknetLoss(BaseLossWithCudaState):
     """
     Example:
         >>> from clab.models.yolo2.darknet import *
         >>> model = Darknet19(num_classes=20)
         >>> criterion = DarknetLoss(model.anchors)
-        >>> im_data = torch.randn(1, 3, 100, 100)
-        >>> output = model(im_data)
-        >>> bbox_pred, iou_pred, prob_pred = output
-        >>> gt_boxes = np.array([[[0, 0, 10, 10]]])
-        >>> gt_classes = np.array([[1]])
-        >>> dontcare = np.array([[]])
+        >>> B = 1
         >>> inp_size = (100, 100)
-        >>> loss = criterion(bbox_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
+        >>> im_data = torch.randn(B, 3, *inp_size)
+        >>> output = model(im_data)
+        >>> aoff_pred, iou_pred, prob_pred = output
+        >>> rng = np.random.RandomState(0)
+        >>> gt_classes = [yolo_utils.random_boxes(rng.randint(0, 4)) for _ in range(B)]
+        >>> dontcare = [np.array([]) for _ in range(B)]
+        >>> loss = criterion(aoff_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
     """
     def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
                  class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
@@ -129,14 +129,14 @@ class DarknetLoss(TrackCudaLoss):
         criterion.anchors = np.ascontiguousarray(anchors, dtype=np.float)
         criterion.mse = nn.MSELoss(size_average=False)
 
-    def forward(criterion, bbox_pred, iou_pred, prob_pred, gt_boxes=None,
+    def forward(criterion, aoff_pred, iou_pred, prob_pred, gt_boxes=None,
                 gt_classes=None, dontcare=None, inp_size=None):
-        bbox_pred_np = bbox_pred.data.cpu().numpy()
+        aoff_pred_np = aoff_pred.data.cpu().numpy()
         iou_pred_np = iou_pred.data.cpu().numpy()
 
         num_classes = prob_pred.shape[-1]
 
-        _tup = criterion._build_target(bbox_pred_np, gt_boxes, gt_classes,
+        _tup = criterion._build_target(aoff_pred_np, gt_boxes, gt_classes,
                                        dontcare, iou_pred_np, inp_size,
                                        num_classes, criterion.anchors)
         _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
@@ -156,7 +156,7 @@ class DarknetLoss(TrackCudaLoss):
         # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
         box_mask = box_mask.expand_as(_boxes)
 
-        criterion.bbox_loss = criterion.mse(bbox_pred * box_mask,
+        criterion.bbox_loss = criterion.mse(aoff_pred * box_mask,
                                             _boxes * box_mask) / num_boxes
         criterion.iou_loss = criterion.mse(iou_pred * iou_mask,
                                            _ious * iou_mask) / num_boxes
@@ -168,14 +168,29 @@ class DarknetLoss(TrackCudaLoss):
         total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
         return total_loss
 
-    def _build_target(criterion, bbox_pred_np, gt_boxes, gt_classes, dontcare,
+    def _build_target(criterion, aoff_pred_np, gt_boxes, gt_classes, dontcare,
                       iou_pred_np, inp_size, num_classes, anchors):
         """
-        :param bbox_pred: shape: (B, h x w, num_anchors, 4) :
-                          (sig(tx), sig(ty), exp(tw), exp(th))
-        """
+        Determine which ground truths to compare against which predictions?
 
-        B = bbox_pred_np.shape[0]
+        Args:
+            aoff_pred_np: [B, H x W, A, 4]:
+                (sig(tx), sig(ty), exp(tw), exp(th))
+
+        Example:
+            >>> from clab.models.yolo2.darknet import *
+            >>> model = Darknet19(num_classes=20)
+            >>> criterion = DarknetLoss(model.anchors)
+            >>> B = 4
+            >>> inp_size = (100, 100)
+            >>> im_data = torch.randn(B, 3, *inp_size)
+            >>> output = model(im_data)
+            >>> aoff_pred, iou_pred, prob_pred = output
+            >>> gt_boxes = np.array([[[0, 0, 10, 10]]])
+            >>> gt_classes = (torch.rand(B, 1) * 20).long()
+            >>> dontcare = np.array([[]])
+            >>> loss = criterion(aoff_pred, iou_pred, prob_pred, gt_boxes, gt_classes, dontcare, inp_size)
+        """
         losskw = dict(object_scale=criterion.object_scale,
                       noobject_scale=criterion.noobject_scale,
                       class_scale=criterion.class_scale,
@@ -185,9 +200,7 @@ class DarknetLoss(TrackCudaLoss):
         func = partial(_process_batch, inp_size=inp_size,
                        num_classes=num_classes, anchors=anchors, **losskw)
 
-        args = ((bbox_pred_np[b], gt_boxes[b], gt_classes[b], dontcare[b],
-                 iou_pred_np[b])
-                for b in range(B))
+        args = zip(aoff_pred_np, iou_pred_np, gt_boxes, gt_classes, dontcare)
         args = list(args)
 
         if criterion.pool:
@@ -205,30 +218,47 @@ class DarknetLoss(TrackCudaLoss):
         return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
 
-def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
-                   noobject_scale=1.0, class_scale=1.0, coord_scale=1.0,
+def _process_batch(data, inp_size, num_classes, anchors,
+                   object_scale=5.0,
+                   noobject_scale=1.0,
+                   class_scale=1.0,
+                   coord_scale=1.0,
                    iou_thresh=0.5):
     """
+    Assign predicted boxes to groundtruth boxes and compute their IOU for the
+    loss calculation.
+
     Example:
-        >>> bbox_pred_np = np.random.randn(9, 5, 4)
-        >>> gt_boxes = np.random.randn(1, 4)
-        >>> gt_classes = (np.random.randn(1,) * 20).astype(np.int)
-        >>> dontcares = np.empty((0,))
-        >>> iou_pred_np = np.random.randn(9, 5, 1)
-        >>> data = (bbox_pred_np, gt_boxes, gt_classes, dontcares, iou_pred_np)
+        >>> ntrue = 3  # number of gt boxes in one image
+        >>> A, H, W = 5, 3, 3
         >>> inp_size = (96, 96)
         >>> num_classes = 20
-        >>> anchors = np.random.randn(5, 2)
-        >>> _process_batch(data, inp_size, num_classes, anchors)
+        >>> gt_boxes = yolo_utils.random_boxes(ntrue).numpy()
+        >>> gt_classes = (np.random.rand(ntrue,) * 20).astype(np.int)
+        >>> weights = np.ones(ntrue)
+        >>> aoff_pred_np = np.random.randn(H * W, A, 4)
+        >>> iou_pred_np = np.random.rand(H * W, A, 1)
+        >>> anchors = np.abs(np.random.randn(A, 2))
+        >>> data = (aoff_pred_np, iou_pred_np, gt_boxes, gt_classes, weights)
+        >>> object_scale = 5.0
+        >>> noobject_scale = 1.0
+        >>> class_scale = 1.0
+        >>> coord_scale = 1.0
+        >>> iou_thresh = 0.5
+        >>> _tup = _process_batch(data, inp_size, num_classes, anchors)
+        >>> _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
     """
-    bbox_pred_np, gt_boxes, gt_classes, dontcares, iou_pred_np = data
+    # TODO: change dontcare to sample weights?
+    aoff_pred_np, iou_pred_np, gt_boxes, gt_classes, weights = data
 
     out_size = [s // 32 for s in inp_size]
     W, H = out_size
 
     # net output
-    hw, num_anchors, _ = bbox_pred_np.shape
+    hw, num_anchors, _ = aoff_pred_np.shape
 
+    # PREALLOCATE OUTPUT
+    # -----------------
     # gt
     _classes = np.zeros([hw, num_anchors, num_classes], dtype=np.float)
     _class_mask = np.zeros([hw, num_anchors, 1], dtype=np.float)
@@ -241,37 +271,42 @@ def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
     _boxes[:, :, 2:4] = 1.0
     _box_mask = np.zeros([hw, num_anchors, 1], dtype=np.float) + 0.01
 
-    # scale pred_bbox
+    # APPLY OFFSETS TO EACH ANCHOR BOX
+    # --------------------------------
+    # get prediected boxes centered at each grid cell.
     anchors = np.ascontiguousarray(anchors, dtype=np.float)
-    bbox_pred_np_ = np.expand_dims(bbox_pred_np, 0)
-    bbox_pred = np.ascontiguousarray(bbox_pred_np_, dtype=np.float)
+    aoff_pred_np_ = np.expand_dims(aoff_pred_np, 0)
+    aoff_pred_np_ = np.ascontiguousarray(aoff_pred_np_, dtype=np.float)
+    bbox_abs_pred = yolo_utils.yolo_to_bbox(aoff_pred_np_, anchors, H, W)
+    # bbox_abs_pred = [hw, num_anchors, [x1, y1, x2, y2]]   range: 0 ~ 1
+    bbox_abs_pred = bbox_abs_pred[0]
+    bbox_abs_pred[:, :, 0::2] *= float(inp_size[0])  # rescale x
+    bbox_abs_pred[:, :, 1::2] *= float(inp_size[1])  # rescale y
 
-    bbox_np = yolo_utils.yolo_to_bbox(bbox_pred, anchors, H, W)
-    # bbox_np = (hw, num_anchors, (x1, y1, x2, y2))   range: 0 ~ 1
-    bbox_np = bbox_np[0]
-    bbox_np[:, :, 0::2] *= float(inp_size[0])  # rescale x
-    bbox_np[:, :, 1::2] *= float(inp_size[1])  # rescale y
-
-    # gt_boxes_b = np.asarray(gt_boxes[b], dtype=np.float)
-    gt_boxes_b = np.asarray(gt_boxes, dtype=np.float)
-
+    # FIND IOU BETWEEN ALL PAIRS OF (PRED x TRUE) BOXES
+    # -------------------------------------------------
     # for each cell, compare predicted_bbox and gt_bbox
-    bbox_np_b = np.reshape(bbox_np, [-1, 4])
-    ious = bbox_ious(
-        np.ascontiguousarray(bbox_np_b, dtype=np.float),
+    gt_boxes_b = np.asarray(gt_boxes, dtype=np.float)
+    pred_boxes_b = np.reshape(bbox_abs_pred, [-1, 4])
+    ious = yolo_utils.bbox_ious(
+        np.ascontiguousarray(pred_boxes_b, dtype=np.float),
         np.ascontiguousarray(gt_boxes_b, dtype=np.float)
     )
+    # determine which iou is best
     best_ious = np.max(ious, axis=1).reshape(_iou_mask.shape)
     iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
     _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
 
-    # locate the cell of each gt_boxe
+    # ASSIGN EACH TRUE BOX TO A GRID CELL
+    # -----------------------------------
+    # locate the cell of each gt_box
+    # determine which cell each ground truth box belongs to
     cell_w = float(inp_size[0]) / W
     cell_h = float(inp_size[1]) / H
     cx = (gt_boxes_b[:, 0] + gt_boxes_b[:, 2]) * 0.5 / cell_w
     cy = (gt_boxes_b[:, 1] + gt_boxes_b[:, 3]) * 0.5 / cell_h
-    cell_inds = np.floor(cy) * W + np.floor(cx)
-    cell_inds = cell_inds.astype(np.int)
+    gt_cell_inds = np.floor(cy) * W + np.floor(cx)
+    gt_cell_inds = gt_cell_inds.astype(np.int)
 
     target_boxes = np.empty(gt_boxes_b.shape, dtype=np.float)
     target_boxes[:, 0] = cx - np.floor(cx)  # cx
@@ -281,20 +316,22 @@ def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
     target_boxes[:, 3] = ((gt_boxes_b[:, 3] - gt_boxes_b[:, 1]) /
                           inp_size[1] * out_size[1])  # th
 
+    # ASSIGN EACH TRUE BOX TO AN ANCHOR
+    # -----------------------------------
     # for each gt boxes, match the best anchor
     gt_boxes_resize = np.copy(gt_boxes_b)
     gt_boxes_resize[:, 0::2] *= (out_size[0] / float(inp_size[0]))
     gt_boxes_resize[:, 1::2] *= (out_size[1] / float(inp_size[1]))
     gt_boxes_resize = np.ascontiguousarray(gt_boxes_resize, dtype=np.float)
 
-    anchor_ious = anchor_intersections(anchors, gt_boxes_resize)
+    anchor_ious = yolo_utils.anchor_intersections(anchors, gt_boxes_resize)
     anchor_inds = np.argmax(anchor_ious, axis=0)
 
-    ious_reshaped = np.reshape(ious, [hw, num_anchors, len(cell_inds)])
-    for i, cell_ind in enumerate(cell_inds):
+    ious_reshaped = np.reshape(ious, [hw, num_anchors, len(gt_cell_inds)])
+    for i, cell_ind in enumerate(gt_cell_inds):
         if cell_ind >= hw or cell_ind < 0:
-            print('cell inds size {}'.format(len(cell_inds)))
-            print('cell over {} hw {}'.format(cell_ind, hw))
+            # print('cell inds size {}'.format(len(gt_cell_inds)))
+            # print('cell over {} hw {}'.format(cell_ind, hw))
             continue
         a = anchor_inds[i]
 
@@ -313,7 +350,6 @@ def _process_batch(data, inp_size, num_classes, anchors, object_scale=5.0,
 
     # _boxes[:, :, 2:4] = np.maximum(_boxes[:, :, 2:4], 0.001)
     # _boxes[:, :, 2:4] = np.log(_boxes[:, :, 2:4])
-
     return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
 
@@ -338,32 +374,8 @@ class Darknet19(nn.Module):
         self.num_classes = num_classes
         self.num_anchors = len(self.anchors)
 
-        # net_cfgs = [
-        #     # conv1s
-        #     [(32, 3)],
-        #     ['M', (64, 3)],
-        #     ['M', (128, 3), (64, 1), (128, 3)],
-        #     ['M', (256, 3), (128, 1), (256, 3)],
-        #     ['M', (512, 3), (256, 1), (512, 3), (256, 1), (512, 3)],
-        #     # conv2
-        #     ['M', (1024, 3), (512, 1), (1024, 3), (512, 1), (1024, 3)],
-        #     # ------------
-        #     # conv3
-        #     [(1024, 3), (1024, 3)],
-        #     # conv4
-        #     [(1024, 3)]
-        # ]
-        # # darknet
-        # self.conv1s, c1 = _make_layers(3, net_cfgs[0:5])
-        # self.conv2, c2 = _make_layers(c1, net_cfgs[5])
-        # # ---
-        # self.conv3, c3 = _make_layers(c2, net_cfgs[6])
-
-        # See Slide 16
-        # https://www.slideshare.net/JinwonLee9/pr12-yolo9000
-
         """
-        Reduced form of original yolo-voc.2.0.cfg
+        Reduced form of original yolo-voc.2.0.cfg:
 
             # NOTE: conv1s
             [convolutional] filters=32 size=3
@@ -473,26 +485,25 @@ class Darknet19(nn.Module):
         # Final 3x3 followed by a 1x1 convolution to obtain raw output
         conv4 = self.conv4(cat_1_3)                    # [B,        1024, H, W]
         conv5 = self.conv5(conv4)                      # [B, (C * A + 5), H, W]
-        final = conv5
 
         # for detection
         # (B, C, H, W) -> (B, H, W, C) -> (B, H * W, A, 5 + C)
-        B, _, h, w = final.size()
-        final_reshaped = final.permute(0, 2, 3, 1).contiguous().view(
+        B, _, h, w = conv5.size()
+        final = conv5.permute(0, 2, 3, 1).contiguous().view(
             B, -1, self.num_anchors, self.num_classes + 5)
 
         # Construct relative offsets for every anchor box
         # tx, ty, tw, th, to -> sig(tx), sig(ty), exp(tw), exp(th), sig(to)
-        xy_pred    = F.sigmoid(final_reshaped[:, :, :, 0:2])
-        wh_pred    = torch.exp(final_reshaped[:, :, :, 2:4])
+        xy_offset_pred = F.sigmoid(final[:, :, :, 0:2])
+        wh_offset_pred = torch.exp(final[:, :, :, 2:4])
         # Predict: Anchor Offsets (relative offsets to the anchors).
-        aoff_pred  = torch.cat([xy_pred, wh_pred], 3)
+        aoff_pred = torch.cat([xy_offset_pred, wh_offset_pred], 3)
 
         # Predict IOU
-        iou_pred   = F.sigmoid(final_reshaped[:, :, :, 4:5])
+        iou_pred   = F.sigmoid(final[:, :, :, 4:5])
 
         # TODO: do we do heirarchy stuff here?
-        score_pred = final_reshaped[:, :, :, 5:].contiguous()
+        score_pred = final[:, :, :, 5:].contiguous()
         score_energy = score_pred.view(-1, score_pred.size()[-1])
         prob_pred = F.softmax(score_energy, dim=1).view_as(score_pred)
 

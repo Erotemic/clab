@@ -103,13 +103,13 @@ class YoloVOCDataset(voc.VOCDataset):
             >>> chw01, label = self[1]
             >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
             >>> print(hwc01.shape)
-            >>> boxes, class_idxs = label
+            >>> boxes, class_idxs = label[0:2]
             >>> # xdoc: +REQUIRES(--show)
             >>> from clab.util import mplutil
             >>> mplutil.figure(doclf=True, fnum=1)
             >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> mplutil.imshow(hwc01, colorspace='rgb')
-            >>> mplutil.draw_boxes(boxes.numpy(), box_format='tlbr')
+            >>> mplutil.draw_boxes(boxes.numpy(), box_format='xywh')
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -123,7 +123,8 @@ class YoloVOCDataset(voc.VOCDataset):
         image = self._load_image(index)
         annot = self._load_annotation(index)
 
-        boxes = annot['boxes'].astype(np.float32)
+        # VOC loads annotations in tlbr, but yolo expects xywh
+        tlbr = annot['boxes'].astype(np.float32)
         gt_classes = annot['gt_classes']
 
         # squish the bounding box and image into a standard size
@@ -131,8 +132,8 @@ class YoloVOCDataset(voc.VOCDataset):
         im_shape = image.shape[0:2]
         sx = float(w) / im_shape[1]
         sy = float(h) / im_shape[0]
-        boxes[:, 0::2] *= sx
-        boxes[:, 1::2] *= sy
+        tlbr[:, 0::2] *= sx
+        tlbr[:, 1::2] *= sy
         interpolation = cv2.INTER_AREA if (sx + sy) <= 2 else cv2.INTER_CUBIC
         hwc255 = cv2.resize(image, (w, h), interpolation=interpolation)
 
@@ -144,16 +145,20 @@ class YoloVOCDataset(voc.VOCDataset):
 
             bbs = ia.BoundingBoxesOnImage(
                 [ia.BoundingBox(x1, y1, x2, y2)
-                 for x1, y1, x2, y2 in boxes], shape=hwc255.shape)
+                 for x1, y1, x2, y2 in tlbr], shape=hwc255.shape)
             bbs = seq_det.augment_bounding_boxes([bbs])[0]
 
-            boxes = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
+            tlbr = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
                               for bb in bbs.bounding_boxes])
-            boxes = yolo_utils.clip_boxes(boxes, hwc255.shape[0:2])
+            tlbr = yolo_utils.clip_boxes(tlbr, hwc255.shape[0:2])
+
+        # VOC loads annotations in tlbr, but yolo expects xywh
+        xywh = np.hstack([tlbr[:, 0:2], tlbr[:, 2:4] - tlbr[:, 0:2]])
 
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
         gt_classes = torch.LongTensor(gt_classes)
-        boxes = torch.LongTensor(boxes.astype(np.int32))
+
+        boxes = torch.LongTensor(xywh.astype(np.int32))
 
         # Return index information in the label as well
         label = (boxes, gt_classes, torch.LongTensor(im_shape),
