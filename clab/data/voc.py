@@ -295,7 +295,7 @@ class EvaluateVOC(object):
                       num_classes=None):
         n = boxes.shape[0]
         if boxes.shape[0] == 0:
-            boxes = np.array([[10, 10, 50, 50]])
+            boxes = np.array([[10, 10, 50, 50, 1]])
 
         # add twice as many boxes,
         boxes = np.vstack([boxes, boxes])
@@ -394,7 +394,6 @@ class EvaluateVOC(object):
         Return the index and score of the true box with maximum overlap.
 
         Example:
-            >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes()
             >>> true_boxes = np.array([[ 0,  0, 10, 10, 1],
             >>>                        [10,  0, 20, 10, 1],
             >>>                        [20,  0, 30, 10, 1]])
@@ -403,26 +402,30 @@ class EvaluateVOC(object):
             >>> print('ovidx = {!r}'.format(ovidx))
             ovidx = 1
         """
-        # from clab.models.yolo2.utils import yolo_utils
-        # overlaps = yolo_utils.bbox_ious(
-        #     true_boxes[:, 0:4].astype(np.float),
-        #     pred_box[None, :][:, 0:4].astype(np.float)).ravel()
-        bb = pred_box
-        # intersection
-        ixmin = np.maximum(true_boxes[:, 0], bb[0])
-        iymin = np.maximum(true_boxes[:, 1], bb[1])
-        ixmax = np.minimum(true_boxes[:, 2], bb[2])
-        iymax = np.minimum(true_boxes[:, 3], bb[3])
-        iw = np.maximum(ixmax - ixmin + 1., 0.)
-        ih = np.maximum(iymax - iymin + 1., 0.)
-        inters = iw * ih
+        if True:
+            from clab.models.yolo2.utils import yolo_utils
+            true_boxes = np.array(true_boxes)
+            pred_box = np.array(pred_box)
+            overlaps = yolo_utils.bbox_ious(
+                true_boxes[:, 0:4].astype(np.float),
+                pred_box[None, :][:, 0:4].astype(np.float)).ravel()
+        else:
+            bb = pred_box
+            # intersection
+            ixmin = np.maximum(true_boxes[:, 0], bb[0])
+            iymin = np.maximum(true_boxes[:, 1], bb[1])
+            ixmax = np.minimum(true_boxes[:, 2], bb[2])
+            iymax = np.minimum(true_boxes[:, 3], bb[3])
+            iw = np.maximum(ixmax - ixmin + 1., 0.)
+            ih = np.maximum(iymax - iymin + 1., 0.)
+            inters = iw * ih
 
-        # union
-        uni = ((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) +
-               (true_boxes[:, 2] - true_boxes[:, 0] + 1.) *
-               (true_boxes[:, 3] - true_boxes[:, 1] + 1.) - inters)
+            # union
+            uni = ((bb[2] - bb[0] + 1.) * (bb[3] - bb[1] + 1.) +
+                   (true_boxes[:, 2] - true_boxes[:, 0] + 1.) *
+                   (true_boxes[:, 3] - true_boxes[:, 1] + 1.) - inters)
 
-        overlaps = inters / uni
+            overlaps = inters / uni
         ovidx = overlaps.argmax()
         ovmax = overlaps[ovidx]
         return ovmax, ovidx
@@ -433,13 +436,13 @@ class EvaluateVOC(object):
             >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes(.5)
             >>> self = EvaluateVOC(all_true_boxes, all_pred_boxes)
             >>> ovthresh = 0.5
-            >>> mean_ap = self.compute(ovthresh)
+            >>> mean_ap = self.compute(ovthresh)[0]
             >>> print('mean_ap = {:.2f}'.format(mean_ap))
             mean_ap = 0.36
             >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes(0)
             >>> self = EvaluateVOC(all_true_boxes, all_pred_boxes)
             >>> ovthresh = 0.5
-            >>> mean_ap = self.compute(ovthresh)
+            >>> mean_ap = self.compute(ovthresh)[0]
             >>> print('mean_ap = {:.2f}'.format(mean_ap))
             mean_ap = 1.00
         """
@@ -467,8 +470,11 @@ class EvaluateVOC(object):
             flat_pred_gxs.extend([gx] * len(pred_boxes))
         flat_pred_boxes = np.array(flat_pred_boxes)
 
-        npos = sum([b.T[4].sum() for b in cls_true_boxes if len(b)])
+        npos = sum([(b.T[4] > 0).sum() for b in cls_true_boxes if len(b)])
         # npos = sum(map(len, cls_true_boxes))
+
+        if npos == 0:
+            return [], [], np.nan
 
         if len(flat_pred_boxes) > 0:
             flat_preds = pd.DataFrame({
@@ -491,14 +497,11 @@ class EvaluateVOC(object):
             for sx, (pred_id, pred) in enumerate(flat_preds.iterrows()):
                 gx, pred_box = pred[['gx', 'box']]
                 true_boxes = cls_true_boxes[gx]
-                true_weights = true_boxes.T[4]
-
-                if False:
-                    dset._load_annotation(gx)
 
                 ovmax = -np.inf
                 true_id = None
                 if len(true_boxes):
+                    true_weights = true_boxes.T[4]
                     ovmax, ovidx = self.find_overlap(true_boxes, pred_box)
                     true_id = (gx, ovidx)
 
@@ -508,11 +511,6 @@ class EvaluateVOC(object):
                         tp[sx] = 1
                 else:
                     fp[sx] = 1
-
-            fp1 = fp
-            tp1 = tp
-            print('fp1 = {!r}'.format(fp1))
-            print('tp1 = {!r}'.format(tp1))
 
             # compute precision recall
             fp = np.cumsum(fp)
@@ -571,7 +569,9 @@ class EvaluateVOC(object):
     @classmethod
     def sanity_check(EvaluateVOC):
         """
-        EvaluateVOC.sanity_check()
+        Example:
+            >>> from clab.data.voc import *
+            >>> EvaluateVOC.sanity_check()
         """
         import pandas as pd
         n_images = 100
@@ -589,14 +589,19 @@ class EvaluateVOC(object):
                 true_boxes, true_cxs = EvaluateVOC.random_boxes(n=n,
                                                                 c=num_classes,
                                                                 rng=rng)
+                if len(true_boxes):
+                    # flip every other box to have weight 0
+                    true_boxes = np.hstack([true_boxes, np.ones((len(true_boxes), 1))])
+                    true_boxes[::2, 4] = 0
+
                 pred_sboxes, pred_cxs = EvaluateVOC.perterb_boxes(
                     true_boxes, perterb_amount=perterb_amount,
                     cxs=true_cxs, rng=rng, num_classes=num_classes)
                 pred_scores = pred_sboxes[:, 4]
                 pred_boxes = pred_sboxes[:, 0:4]
-                y = EvaluateVOC.image_confusions(true_boxes, true_cxs, pred_boxes,
-                                                 pred_scores, pred_cxs,
-                                                 ovthresh=ovthresh)
+                y = EvaluateVOC.image_confusions(true_boxes, true_cxs,
+                                                 pred_boxes, pred_scores,
+                                                 pred_cxs, ovthresh=ovthresh)
                 y['gx'] = index
                 img_ys.append(y)
 
@@ -612,6 +617,7 @@ class EvaluateVOC(object):
             mean_ap2, ap_list2 = self.compute(ovthresh=ovthresh)
             print('mean_ap1 = {!r}'.format(mean_ap1))
             print('mean_ap2 = {!r}'.format(mean_ap2))
+            assert mean_ap2 == mean_ap1
             # print('ap_list1 = {!r}'.format(ap_list1))
             # print('ap_list2 = {!r}'.format(ap_list2))
             print('-------')
@@ -627,10 +633,10 @@ class EvaluateVOC(object):
             pd.DataFrame: with relevant clf information
 
         Example:
-            >>> true_boxes = np.array([[ 0,  0, 10, 10],
-            >>>                        [10,  0, 20, 10],
-            >>>                        [10,  0, 20, 10],
-            >>>                        [20,  0, 30, 10]])
+            >>> true_boxes = np.array([[ 0,  0, 10, 10, 1],
+            >>>                        [10,  0, 20, 10, 0],
+            >>>                        [10,  0, 20, 10, 1],
+            >>>                        [20,  0, 30, 10, 1]])
             >>> true_cxs = np.array([0, 0, 1, 1])
             >>> pred_boxes = np.array([[6, 2, 20, 10],
             >>>                        [3,  2, 9, 7],
@@ -687,13 +693,15 @@ class EvaluateVOC(object):
         for cx, unused in cx_to_unused.items():
             cls_true_boxes = cx_to_boxes.get(cx, [])
             for ovidx, flag in enumerate(unused):
-                if flag and cls_true_boxes.T[4][ovidx] > 0:
+                if flag:
                     # it has a nonzero weight
-                    # Mark this prediction as a false positive if
-                    y_pred.append(-1)
-                    y_true.append(cx)
-                    y_score.append(0.0)
-                    cxs.append(cx)
+                    weight = cls_true_boxes.T[4][ovidx]
+                    if  weight > 0:
+                        # Mark this prediction as a false negative
+                        y_pred.append(-1)
+                        y_true.append(cx)
+                        y_score.append(0.0)
+                        cxs.append(cx)
 
         y = pd.DataFrame({
             'pred': y_pred,
@@ -711,7 +719,11 @@ class EvaluateVOC(object):
             group = group.sort_values('score', ascending=False)
             npos = sum(group.true >= 0)
             dets = group[group.pred > -1]
+            if npos == 0:
+                return np.nan
             if len(dets) == 0:
+                if npos == 0:
+                    return np.nan
                 return 0.0
             tp = (dets.pred == dets.true).values.astype(np.uint8)
             fp = 1 - tp
@@ -820,7 +832,7 @@ class EvaluateVOC(object):
 if __name__ == '__main__':
     r"""
     CommandLine:
-        python -m clab.data.voc
+        python -m clab.data.voc all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

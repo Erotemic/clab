@@ -486,7 +486,7 @@ def test():
     from yolo_voc import *
     """
     dset = YoloVOCDataset(cfg.devkit_dpath, split='test')
-    loader = dset.make_loader(batch_size=6, num_workers=0)
+    loader = dset.make_loader(batch_size=8, num_workers=4)
 
     xpu = xpu_device.XPU.cast('gpu')
     model = darknet.Darknet19(**{
@@ -504,7 +504,7 @@ def test():
     gx = 212
     cx = 0
 
-    cacher = ub.Cacher('all_boxes', cfgstr='', enabled=False)
+    cacher = ub.Cacher('all_boxes', cfgstr='v1', enabled=False)
     data = cacher.tryload()
     if data is None:
         all_pred_boxes = [
@@ -518,18 +518,6 @@ def test():
             for _ in range(dset.num_classes)]
 
         for batch in ub.ProgIter(loader, freq=1, adjust=False):
-
-            # if False:
-            #     im, label = dset[gx]
-            #     inp_size = im.shape[-2:]
-            #     box, cxs, orig_shape, _gx, _weight = label
-            #     sf = np.array(orig_shape) / np.array(inp_size)
-            #     box2 = box.data.numpy().copy().astype(np.float32)
-            #     box2[0:4:2] *= sf[1]
-            #     box2[1:4:2] *= sf[0]
-            #     print('box2 = {!r}'.format(box2))
-            #     dset._load_annotation(gx)
-
             im_data, labels = batch
             im_data = xpu.move(im_data)
             outputs = model(im_data)
@@ -567,7 +555,7 @@ def test():
     all_true_boxes, all_pred_boxes = data
 
     # Test our scoring implementation
-    self = voceval = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
+    voceval = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
     mean_ap, ap_list = voceval.compute()
     print('mean_ap = {!r}'.format(mean_ap))
 
@@ -588,37 +576,6 @@ def test():
                           '/home/joncrall/data/VOC/VOCdevkit2007/', verbose=3)
         imdb = pascal_voc.VOCDataset('voc_2007_test', os.path.dirname(link), 1, None)
         imdb.evaluate_detections(all_pred_boxes, output_dir)
-
-    if False:
-        imdb._write_voc_results_file(all_pred_boxes)
-
-        annopath = os.path.join(imdb._devkit_path, 'VOC' + imdb._year,
-            'Annotations', '{:s}.xml')
-        imagesetfile = os.path.join(imdb._devkit_path, 'VOC' + imdb._year,
-            'ImageSets', 'Main', imdb._image_set + '.txt')
-        cachedir = os.path.join(imdb._devkit_path, 'annotations_cache')
-        aps = []
-        # The PASCAL VOC metric changed in 2010
-        use_07_metric = True if int(imdb._year) < 2010 else False
-        print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
-        if output_dir is not None and not os.path.isdir(output_dir):
-            os.mkdir(output_dir)
-        cx = i = 0
-        classname = cls = 'aeroplane'
-        # for i, cls in enumerate(imdb._classes):
-        #     if cls == '__background__':
-        #         continue
-        filename = imdb._get_voc_results_file_template().format(cls)
-        detpath = filename
-        rec, prec, ap = voc_eval(
-            filename, annopath, imagesetfile, cls, cachedir, ovthresh=0.5,
-            use_07_metric=use_07_metric)
-        aps += [ap]
-        print(('AP for {} = {:.4f}'.format(cls, ap)))
-        if output_dir is not None:
-            with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
-                pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
-
 
 
 def train():
