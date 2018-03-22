@@ -8,6 +8,7 @@ class MultiScaleBatchSampler(torch_sampler.BatchSampler):
     index. Requires that dataset has a `multi_scale_inp_size` attribute.
 
     Example:
+        >>> import torch.utils.data as torch_data
         >>> class DummyDatset(torch_data.Dataset):
         >>>     def __init__(self):
         >>>         super(DummyDatset, self).__init__()

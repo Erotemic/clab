@@ -24,7 +24,8 @@ def anchor_intersections(anchors, query_boxes):
         overlaps: (A, K) ndarray of intersec between boxes and query_boxes
 
     Example:
-        >>> query_boxes = random_boxes(10, 'tlbr', 1.0).numpy()
+        >>> A = 5
+        >>> query_boxes = random_boxes(10, 'tlbr', 1.0).numpy().astype(np.float)
         >>> anchors = np.abs(np.random.randn(A, 2)).astype(np.float)
         >>> intersec1 = anchor_intersections_py(anchors, query_boxes)
         >>> intersec2 = anchor_intersections(anchors, query_boxes)
@@ -62,8 +63,8 @@ def bbox_ious(boxes, query_boxes):
         overlaps: (N, K) ndarray of intersec between boxes and query_boxes
 
     Example:
-        >>> query_boxes = random_boxes(10, 'tlbr', 1.0).numpy()
-        >>> boxes = random_boxes(10, 'tlbr', 1.0).numpy()
+        >>> query_boxes = random_boxes(10, 'tlbr', 1.0).numpy().astype(np.float)
+        >>> boxes = random_boxes(10, 'tlbr', 1.0).numpy().astype(np.float)
         >>> overlaps1 = bbox_ious_py(boxes, query_boxes)
         >>> overlaps2 = bbox_ious(boxes, query_boxes)
         >>> assert np.all(overlaps1 == overlaps2)
