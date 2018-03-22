@@ -504,7 +504,7 @@ def test():
     gx = 212
     cx = 0
 
-    cacher = ub.Cacher('all_boxes', cfgstr='')
+    cacher = ub.Cacher('all_boxes', cfgstr='', enabled=False)
     data = cacher.tryload()
     if data is None:
         all_pred_boxes = [
