@@ -90,11 +90,15 @@ class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
         return self._device_num
 
 
-def demo_batch(batch_size=1, inp_size=(100, 100), n_classes=20, rng=None):
+def demo_batch(batch_size=1, inp_size=(100, 100), n_classes=20, rng=None,
+               n=None):
     rng = np.random
     # number of groundtruth boxes per image in the batch
-    ntrues = [rng.randint(0, 10) for _ in range(batch_size)]
-    scale = min(inp_size) // 2
+    if n is None:
+        ntrues = [rng.randint(0, 10) for _ in range(batch_size)]
+    else:
+        ntrues = [n for _ in range(batch_size)]
+    scale = min(inp_size) / 2.0
     gt_boxes = [yolo_utils.random_boxes(n, 'xywh', scale=scale)
                 for n in ntrues]
     gt_classes = [rng.randint(0, n_classes, n) for n in ntrues]
@@ -270,6 +274,7 @@ class DarknetLoss(BaseLossWithCudaState):
         args = zip(aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
                    gt_weights_np)
         args = list(args)
+        # data = args[0]
 
         if criterion.pool:
             targets = criterion.pool.map(func, args)
@@ -319,6 +324,24 @@ def _built_target_item(data, inp_size, num_classes, anchors, object_scale=5.0,
         >>> iou_thresh = 0.5
         >>> _tup = _built_target_item(data, inp_size, num_classes, anchors)
         >>> _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
+
+    Example:
+        >>> from clab.models.yolo2.darknet import *
+        >>> A, H, W = 5, 3, 3
+        >>> inp_size = (96, 96)
+        >>> num_classes = 20
+        >>> inputs, labels = demo_batch(1, inp_size, n=0)
+        >>> gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
+        >>> aoff_pred_np = np.random.randn(H * W, A, 4)
+        >>> iou_pred_np = np.random.rand(H * W, A, 1)
+        >>> anchors = np.abs(np.random.randn(A, 2))
+        >>> gt_boxes_np = [item.cpu().numpy() for item in gt_boxes][0]
+        >>> gt_classes_np = [item.cpu().numpy() for item in gt_classes][0]
+        >>> gt_weights_np = [item.cpu().numpy() for item in gt_weights][0]
+        >>> data = (aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
+        >>>         gt_weights)
+        >>> _tup = _built_target_item(data, inp_size, num_classes, anchors)
+        >>> _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
     """
     # TODO: incorporate sample gt_weights (generalizes dontcare)
     aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np, gt_weights_np = data
@@ -358,16 +381,17 @@ def _built_target_item(data, inp_size, num_classes, anchors, object_scale=5.0,
     # FIND IOU BETWEEN ALL PAIRS OF (PRED x TRUE) BOXES
     # -------------------------------------------------
     # for each cell, compare predicted_bbox and gt_bbox
-    gt_boxes_b = np.asarray(gt_boxes_np, dtype=np.float)
-    pred_boxes_b = np.reshape(bbox_abs_pred, [-1, 4])
+    gt_boxes_b = np.asarray(gt_boxes_np, dtype=np.float).reshape([-1, 4])
+    pred_boxes_b = bbox_abs_pred.reshape([-1, 4])
     ious = yolo_utils.bbox_ious(
         np.ascontiguousarray(pred_boxes_b, dtype=np.float),
         np.ascontiguousarray(gt_boxes_b, dtype=np.float)
     )
     # determine which iou is best
-    best_ious = np.max(ious, axis=1).reshape(_iou_mask.shape)
-    iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
-    _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
+    if ious.size > 0:
+        best_ious = np.max(ious, axis=1).reshape(_iou_mask.shape)
+        iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
+        _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
 
     # ASSIGN EACH TRUE BOX TO A GRID CELL
     # -----------------------------------
@@ -432,9 +456,15 @@ class Darknet19(nn.Module):
     Example:
         >>> from clab.models.yolo2.darknet import *
         >>> self = Darknet19(num_classes=20)
-        >>> im_data = torch.randn(1, 3, 219, 219)
+        >>> im_data = torch.randn(1, 3, 224, 224)
         >>> output = self(im_data)
-        >>> bbox_pred, iou_pred, prob_pred = output
+        >>> aoff_pred, iou_pred, prob_pred = output
+        >>> print('aoff_pred.shape = {!r}'.format(tuple(aoff_pred.shape)))
+        aoff_pred.shape = (1, 49, 5, 4)
+        >>> print('iou_pred.shape = {!r}'.format(tuple(iou_pred.shape)))
+        iou_pred.shape = (1, 49, 5, 1)
+        >>> print('prob_pred.shape = {!r}'.format(tuple(prob_pred.shape)))
+        prob_pred.shape = (1, 49, 5, 20)
     """
     def __init__(self, num_classes=None, anchors=None):
         super(Darknet19, self).__init__()
