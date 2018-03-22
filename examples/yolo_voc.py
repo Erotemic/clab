@@ -137,7 +137,7 @@ class YoloVOCDataset(voc.VOCDataset):
         gt_classes = annot['gt_classes']
 
         # Weight samples so we dont care about difficult cases
-        gt_weights = 1.0 - annot['ishards'].astype(np.float32)
+        gt_weights = 1.0 - annot['gt_ishard'].astype(np.float32)
 
         # squish the bounding box and image into a standard size
         w, h = inp_size
@@ -470,6 +470,59 @@ def setup_harness(workers=None):
         harn.batch_confusions.clear()
 
     return harn
+
+
+def test():
+    dset = YoloVOCDataset(cfg.devkit_dpath, split='test')
+    loader = dset.make_loader(batch_size=2, num_workers=0)
+
+    xpu = xpu_device.XPU.cast('gpu')
+    model = darknet.Darknet19(**{
+        'num_classes': dset.num_classes,
+        'anchors': dset.anchors
+    })
+    model = xpu.mount(model)
+
+    weights_fpath = darknet.demo_weights()
+    state_dict = torch.load(weights_fpath)['model_state_dict']
+    model.module.load_state_dict(state_dict)
+
+    num_images = len(dset)
+    all_boxes = [
+        [np.empty([0, 5], dtype=np.float32)
+         for _ in range(num_images)]
+        for _ in range(dset.num_classes)]
+
+    for batch in ub.ProgIter(loader, freq=1, adjust=False):
+        im_data, labels = batch
+        im_data = xpu.move(im_data)
+        outputs = model(im_data)
+
+        im_shapes, indices = labels[2:4]
+        inp_size = im_data.shape[-2:]
+        postout = model.module.postprocess(outputs, inp_size, im_shapes)
+
+        out_boxes, out_scores, out_cxs = postout
+
+        for gx, boxes, scores, cxs in zip(indices, out_boxes, out_scores, out_cxs):
+            cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
+            for cx, idxs in cx_to_idxs.items():
+                sbox = np.hstack([boxes[idxs], scores[idxs][:, None]])
+                all_boxes[cx][gx] = sbox
+
+    # HACK IN THE ORIGINAL SCORING CODE
+    import pickle
+    import os
+    output_dir = ub.ensuredir('test')
+    det_file = os.path.join(output_dir, 'detections.pkl')
+    with open(det_file, 'wb') as f:
+        pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+
+    print('Evaluating detections')
+    pascal_voc = ub.import_module_from_path(ub.truepath('~/code/yolo2-pytorch/datasets/pascal_voc.py'))
+    link = ub.symlink('/home/joncrall/data/VOC/VOCdevkit/', '/home/joncrall/data/VOC/VOCdevkit2007/', verbose=3)
+    imdb = pascal_voc.VOCDataset('voc_2007_test', os.path.dirname(link), 1, None)
+    imdb.evaluate_detections(all_boxes, output_dir)
 
 
 def train():
