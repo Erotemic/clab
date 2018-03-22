@@ -258,18 +258,19 @@ class cfg(object):
     train_batch_size = 16
 
     lr_step_points = {
+        0: 0.001,
         # warmup learning rate
-        0:  0.0001,
-        1:  0.0001,
-        2:  0.0002,
-        3:  0.0003,
-        4:  0.0004,
-        5:  0.0005,
-        6:  0.0006,
-        7:  0.0007,
-        8:  0.0008,
-        9:  0.0009,
-        10: 0.0010,
+        # 0:  0.0001,
+        # 1:  0.0001,
+        # 2:  0.0002,
+        # 3:  0.0003,
+        # 4:  0.0004,
+        # 5:  0.0005,
+        # 6:  0.0006,
+        # 7:  0.0007,
+        # 8:  0.0008,
+        # 9:  0.0009,
+        # 10: 0.0010,
         # cooldown learning rate
         30: 0.0005,
         60: 0.0001,
@@ -599,6 +600,7 @@ def test():
 
 def train():
     """
+    python ~/code/clab/examples/yolo_voc.py train --nice=baseline --workers=0
     python ~/code/clab/examples/yolo_voc.py train --nice=baseline
     """
 

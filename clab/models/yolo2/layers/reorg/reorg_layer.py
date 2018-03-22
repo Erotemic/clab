@@ -57,7 +57,7 @@ class ReorgLayerExt(torch.nn.Module):
     Restructure
 
     Example:
-        >>> x = torch.randn(5, 512, 12, 12)
+        >>> x = torch.randn(5, 512, 13, 13)
         >>> self = ReorgLayerExt(in_channels=512, stride=2)
         >>> out = self.forward(x)
         >>> print(tuple(out.shape))
@@ -83,14 +83,14 @@ class ReorgLayerPy(torch.nn.Module):
         https://github.com/ruiminshen/yolo2-pytorch/blob/master/model/yolo2.py
 
     Example:
-        >>> x = torch.randn(5, 512, 12, 12)
+        >>> x = torch.randn(5, 512, 13, 13)
         >>> alt = ReorgLayerPy(in_channels=512, stride=2)
         >>> out2 = alt.forward(x)
         >>> print(tuple(out.shape))
 
     Ignore:
         >>> C = 512
-        >>> x = torch.randn(5, C, 12, 12)
+        >>> x = torch.randn(5, C, 13, 13)
         >>> alt = ReorgLayerPy(in_channels=C, stride=2)
         >>> self = ReorgLayerExt(in_channels=C, stride=2)
         >>> out2 = alt.forward(x)

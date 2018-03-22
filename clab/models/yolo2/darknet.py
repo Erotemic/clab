@@ -159,6 +159,7 @@ class DarknetLoss(BaseLossWithCudaState):
         >>> from clab.models.yolo2.darknet import *
         >>> model = Darknet19(num_classes=20)
         >>> criterion = DarknetLoss(model.anchors)
+        >>> inp_size = (96, 96)
         >>> inputs, labels = demo_batch(1, inp_size)
         >>> output = model(*inputs)
         >>> aoff_pred, iou_pred, prob_pred = output
@@ -237,8 +238,10 @@ class DarknetLoss(BaseLossWithCudaState):
 
         Example:
             >>> from clab.models.yolo2.darknet import *
-            >>> model = Darknet19(num_classes=20)
+            >>> num_classes = 20
+            >>> model = Darknet19(num_classes=num_classes)
             >>> criterion = DarknetLoss(model.anchors)
+            >>> inp_size = (96, 96)
             >>> inputs, labels = demo_batch(10, inp_size)
             >>> output = model(*inputs)
             >>> aoff_pred, iou_pred, prob_pred = output
@@ -300,7 +303,6 @@ def _built_target_item(data, inp_size, num_classes, anchors, object_scale=5.0,
         >>> inp_size = (96, 96)
         >>> num_classes = 20
         >>> inputs, labels = demo_batch(1, inp_size)
-        >>> aoff_pred, iou_pred, prob_pred = output
         >>> gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
         >>> aoff_pred_np = np.random.randn(H * W, A, 4)
         >>> iou_pred_np = np.random.rand(H * W, A, 1)
@@ -430,7 +432,7 @@ class Darknet19(nn.Module):
     Example:
         >>> from clab.models.yolo2.darknet import *
         >>> self = Darknet19(num_classes=20)
-        >>> im_data = torch.randn(1, 3, 221, 221)
+        >>> im_data = torch.randn(1, 3, 219, 219)
         >>> output = self(im_data)
         >>> bbox_pred, iou_pred, prob_pred = output
     """
@@ -849,3 +851,12 @@ def demo_image(inp_size):
     rgb01 = cv2.resize(rgb255, inp_size).astype(np.float32) / 255
     im_data = torch.FloatTensor([rgb01.transpose(2, 0, 1)])
     return im_data, rgb255
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m clab.models.yolo2.darknet all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
