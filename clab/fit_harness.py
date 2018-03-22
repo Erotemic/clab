@@ -250,17 +250,24 @@ class FitHarness(object):
                 harn.log('Make scheduler')
                 harn.scheduler = harn.hyper.make_scheduler(harn.optimizer)
 
+            needs_init = True
             harn.log('There are {} existing snapshots'.format(len(prev_states)))
             if prev_states and not ub.argflag('--reset'):
                 harn.log('Loading previous states')
-                harn.load_snapshot(prev_states[-1])
-
+                # Ignore corrupted snapshots
+                for load_path in reversed(prev_states):
+                    try:
+                        harn.load_snapshot(load_path)
+                    except RuntimeError:
+                        harn.log('Failed to load {}. Skiping.'.format(load_path))
+                    else:
+                        needs_init = False
                 for i, group in enumerate(harn.optimizer.param_groups):
                     if 'initial_lr' not in group:
                         raise KeyError("param 'initial_lr' is not specified "
                                        "in param_groups[{}] when resuming an optimizer".format(i))
 
-            else:
+            if needs_init:
                 harn.log('Initializing new model')
                 if harn.initializer.__class__.__name__ == 'LSUV':
                     # harn.model = harn.xpu.mount(harn.model)
@@ -746,8 +753,8 @@ class FitHarness(object):
         """
         Sets the harness to its state just after an epoch finished
         """
-        snapshot = harn.xpu.load(load_path)
         harn.log('Loading previous state: {}'.format(load_path))
+        snapshot = harn.xpu.load(load_path)
         # the snapshot holds the previous epoch, so add one to move to current
         harn.epoch = snapshot['epoch'] + 1
         harn.model.load_state_dict(snapshot['model_state_dict'])

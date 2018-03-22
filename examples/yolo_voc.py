@@ -291,7 +291,8 @@ def setup_harness(workers=None):
 
     postproc_params = dict(
         conf_thresh=0.001,
-        nms_thresh=0.5,
+        # nms_thresh=0.5,
+        nms_thresh=0.6,
         ovthresh=0.5,
     )
 
