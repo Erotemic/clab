@@ -272,7 +272,7 @@ class cfg(object):
         # 9:  0.0009,
         # 10: 0.0010,
         # cooldown learning rate
-        30: 0.0005,
+        # 30: 0.0005,
         60: 0.0001,
         90: 0.00001,
     }
@@ -295,10 +295,10 @@ def setup_harness(workers=None):
     """
     cfg.pretrained_fpath = grab_darknet19_initial_weights()
     datasets = {
-        'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
-        'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
+        # 'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
+        # 'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
         'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
-        # 'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
+        'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
     }
 
     loaders = make_loaders(datasets,
