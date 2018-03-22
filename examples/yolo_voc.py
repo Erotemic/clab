@@ -369,6 +369,7 @@ def setup_harness(workers=None):
     harn = fit_harness.FitHarness(
         hyper=hyper, xpu=xpu, loaders=loaders, max_iter=160,
     )
+    harn.postproc_params = postproc_params
     harn.nice = ub.argval('--nice', default=None)
     harn.monitor = monitor.Monitor(min_keys=['loss'],
                                    # max_keys=['global_acc', 'class_acc'],
@@ -422,9 +423,9 @@ def setup_harness(workers=None):
         im_sizes = orig_size
         inp_size = inputs[0].shape[-2:]
 
-        conf_thresh = postproc_params['conf_thresh']
-        nms_thresh = postproc_params['nms_thresh']
-        ovthresh = postproc_params['ovthresh']
+        conf_thresh = harn.postproc_params['conf_thresh']
+        nms_thresh = harn.postproc_params['nms_thresh']
+        ovthresh = harn.postproc_params['ovthresh']
 
         postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
                                                 conf_thresh, nms_thresh)
