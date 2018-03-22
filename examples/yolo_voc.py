@@ -297,8 +297,8 @@ def setup_harness(workers=None):
     datasets = {
         'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
         'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
+        'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
         # 'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
-        # 'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
     }
 
     loaders = make_loaders(datasets,
