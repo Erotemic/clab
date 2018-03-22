@@ -262,6 +262,7 @@ class FitHarness(object):
                         harn.log('Failed to load {}. Skiping.'.format(load_path))
                     else:
                         needs_init = False
+                        break
                 for i, group in enumerate(harn.optimizer.param_groups):
                     if 'initial_lr' not in group:
                         raise KeyError("param 'initial_lr' is not specified "
