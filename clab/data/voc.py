@@ -61,6 +61,10 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         self.input_id = 'voc2007_' + self.split
 
     def _read_split_indices(self, split):
+        """
+        split = 'test'
+        self = VOCDataset('test')
+        """
         split_idxs = []
         split_dpath = join(self.data_dpath, 'ImageSets', 'Main')
         pattern = join(split_dpath, '*_' + split + '.txt')
@@ -197,7 +201,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
 
         chw = torch.FloatTensor(hwc.transpose(2, 0, 1))
         gt_classes = torch.LongTensor(gt_classes)
-        boxes = torch.LongTensor(boxes.astype(np.int32))
+        boxes = torch.FloatTensor(boxes)
         label = (boxes, gt_classes,)
         return chw, label
 
@@ -271,6 +275,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
                   'gt_ishard': ishards,
                   'gt_overlaps': overlaps,
                   'flipped': False,
+                  'fpath': fpath,
                   'seg_areas': seg_areas}
         return annots
 
@@ -348,20 +353,20 @@ class EvaluateVOC(object):
             # class 1
             [
                 # image 1
-                [[100, 100, 200, 200]],
+                [[100, 100, 200, 200, 1]],
                 # image 2
-                np.empty((0, 4)),
+                np.empty((0, 5)),
                 # image 3
-                [[0, 10, 10, 20], [10, 10, 20, 20], [20, 10, 30, 20]],
+                [[0, 10, 10, 20, 1], [10, 10, 20, 20, 1], [20, 10, 30, 20, 1]],
             ],
             # class 2
             [
                 # image 1
-                [[0, 0, 100, 100], [0, 0, 50, 50]],
+                [[0, 0, 100, 100, 1], [0, 0, 50, 50, 1]],
                 # image 2
-                [[0, 0, 50, 50], [50, 50, 100, 100]],
+                [[0, 0, 50, 50, 1], [50, 50, 100, 100, 1]],
                 # image 3
-                [[0, 0, 10, 10], [10, 0, 20, 10], [20, 0, 30, 10]],
+                [[0, 0, 10, 10, 1], [10, 0, 20, 10, 1], [20, 0, 30, 10, 1]],
             ],
         ]
         # convert to numpy
@@ -390,14 +395,18 @@ class EvaluateVOC(object):
 
         Example:
             >>> all_true_boxes, all_pred_boxes = EvaluateVOC.demodata_boxes()
-            >>> true_boxes = np.array([[ 0,  0, 10, 10],
-            >>>                        [10,  0, 20, 10],
-            >>>                        [20,  0, 30, 10]])
+            >>> true_boxes = np.array([[ 0,  0, 10, 10, 1],
+            >>>                        [10,  0, 20, 10, 1],
+            >>>                        [20,  0, 30, 10, 1]])
             >>> pred_box = np.array([6, 2, 20, 10, .9])
             >>> ovmax, ovidx = EvaluateVOC.find_overlap(true_boxes, pred_box)
             >>> print('ovidx = {!r}'.format(ovidx))
             ovidx = 1
         """
+        # from clab.models.yolo2.utils import yolo_utils
+        # overlaps = yolo_utils.bbox_ious(
+        #     true_boxes[:, 0:4].astype(np.float),
+        #     pred_box[None, :][:, 0:4].astype(np.float)).ravel()
         bb = pred_box
         # intersection
         ixmin = np.maximum(true_boxes[:, 0], bb[0])
@@ -446,18 +455,21 @@ class EvaluateVOC(object):
         all_true_boxes = self.all_true_boxes
         all_pred_boxes = self.all_pred_boxes
 
-        batch_true_boxes = all_true_boxes[cx]
-        batch_pred_boxes = all_pred_boxes[cx]
+        cls_true_boxes = all_true_boxes[cx]
+        cls_pred_boxes = all_pred_boxes[cx]
 
         # Flatten the predicted boxes
         import pandas as pd
         flat_pred_boxes = []
         flat_pred_gxs = []
-        for gx, pred_boxes in enumerate(batch_pred_boxes):
+        for gx, pred_boxes in enumerate(cls_pred_boxes):
             flat_pred_boxes.extend(pred_boxes)
             flat_pred_gxs.extend([gx] * len(pred_boxes))
         flat_pred_boxes = np.array(flat_pred_boxes)
-        npos = sum(map(len, batch_true_boxes))
+
+        npos = sum([b.T[4].sum() for b in cls_true_boxes if len(b)])
+        # npos = sum(map(len, cls_true_boxes))
+
         if len(flat_pred_boxes) > 0:
             flat_preds = pd.DataFrame({
                 'box': flat_pred_boxes[:, 0:4].tolist(),
@@ -471,13 +483,19 @@ class EvaluateVOC(object):
             assign = {}
 
             # Greedy assignment for scoring
-            # Iterate through bounding boxes in order of descending confidence
             nd = len(flat_preds)
             tp = np.zeros(nd)
             fp = np.zeros(nd)
+            # Iterate through predicted bounding boxes in order of descending
+            # confidence
             for sx, (pred_id, pred) in enumerate(flat_preds.iterrows()):
                 gx, pred_box = pred[['gx', 'box']]
-                true_boxes = batch_true_boxes[gx]
+                true_boxes = cls_true_boxes[gx]
+                true_weights = true_boxes.T[4]
+
+                if False:
+                    dset._load_annotation(gx)
+
                 ovmax = -np.inf
                 true_id = None
                 if len(true_boxes):
@@ -485,10 +503,16 @@ class EvaluateVOC(object):
                     true_id = (gx, ovidx)
 
                 if ovmax > ovthresh and true_id not in assign:
-                    assign[true_id] = pred_id
-                    tp[sx] = 1
+                    if true_weights[ovidx] > 0:
+                        assign[true_id] = pred_id
+                        tp[sx] = 1
                 else:
                     fp[sx] = 1
+
+            fp1 = fp
+            tp1 = tp
+            print('fp1 = {!r}'.format(fp1))
+            print('tp1 = {!r}'.format(tp1))
 
             # compute precision recall
             fp = np.cumsum(fp)
@@ -637,16 +661,21 @@ class EvaluateVOC(object):
         for cx, box, score in zip(pred_cxs, pred_boxes, pred_scores):
             cls_true_boxes = cx_to_boxes.get(cx, [])
             ovmax = -np.inf
+            ovidx = None
             if len(cls_true_boxes):
                 unused = cx_to_unused[cx]
                 ovmax, ovidx = EvaluateVOC.find_overlap(cls_true_boxes, box)
+                true_weights = cls_true_boxes.T[4]
+
             if ovmax > ovthresh and unused[ovidx]:
                 # Mark this prediction as a true positive
-                y_pred.append(cx)
-                y_true.append(cx)
-                y_score.append(score)
-                cxs.append(cx)
-                unused[ovidx] = False
+                if true_weights[ovidx] > 0:
+                    # Ignore matches to truth with weight 0
+                    y_pred.append(cx)
+                    y_true.append(cx)
+                    y_score.append(score)
+                    cxs.append(cx)
+                    unused[ovidx] = False
             else:
                 # Mark this prediction as a false positive
                 y_pred.append(cx)
@@ -656,12 +685,15 @@ class EvaluateVOC(object):
 
         # Mark true boxes we failed to predict as false negatives
         for cx, unused in cx_to_unused.items():
-            for _ in range(sum(unused)):
-                # Mark this prediction as a false positive
-                y_pred.append(-1)
-                y_true.append(cx)
-                y_score.append(0.0)
-                cxs.append(cx)
+            cls_true_boxes = cx_to_boxes.get(cx, [])
+            for ovidx, flag in enumerate(unused):
+                if flag and cls_true_boxes.T[4][ovidx] > 0:
+                    # it has a nonzero weight
+                    # Mark this prediction as a false positive if
+                    y_pred.append(-1)
+                    y_true.append(cx)
+                    y_score.append(0.0)
+                    cxs.append(cx)
 
         y = pd.DataFrame({
             'pred': y_pred,
@@ -728,18 +760,18 @@ class EvaluateVOC(object):
     #     for postout, labels in harn.accumulated:
 
     #         # Iterate over each item in the batch
-    #         batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
-    #         batch_true_boxes, batch_true_cls_inds = labels[0:2]
+    #         cls_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
+    #         cls_true_boxes, batch_true_cls_inds = labels[0:2]
     #         batch_orig_sz, batch_img_inds = labels[2:4]
 
     #         batch_size = len(labels[0])
     #         for bx in range(batch_size):
     #             gx = batch_img_inds[bx]
 
-    #             true_boxes = batch_true_boxes[bx].data.cpu().numpy()
+    #             true_boxes = cls_true_boxes[bx].data.cpu().numpy()
     #             true_cxs = batch_true_cls_inds[bx]
 
-    #             pred_boxes  = batch_pred_boxes[bx]
+    #             pred_boxes  = cls_pred_boxes[bx]
     #             pred_scores = batch_pred_scores[bx]
     #             pred_cxs    = batch_pred_cls_inds[bx]
 

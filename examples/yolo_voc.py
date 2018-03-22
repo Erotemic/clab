@@ -167,12 +167,11 @@ class YoloVOCDataset(voc.VOCDataset):
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
         gt_classes = torch.LongTensor(gt_classes)
 
-        # VOC loads annotations in tlbr, but yolo expects xywh?
+        # The original YOLO-v2 works in xywh, but this implementation seems to
+        # work in tlbr.
         # xywh = yolo_utils.to_xywh(tlbr)
-        # boxes = torch.LongTensor(xywh.astype(np.int32))
-
         # But does this implementation expect tlbr? I think it does.
-        boxes = torch.LongTensor(tlbr.astype(np.int32))
+        boxes = torch.FloatTensor(tlbr)
 
         # Return index information in the label as well
         orig_sz = torch.LongTensor(im_shape)
@@ -418,7 +417,7 @@ def setup_harness(workers=None):
         # Accumulate relevant outputs to measure
         # if tag == 'train':
         #     return
-        gt_boxes, gt_classes, orig_size, indices = labels
+        gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
         # bbox_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
         inp_size = inputs[0].shape[-2:]
@@ -446,8 +445,16 @@ def setup_harness(workers=None):
             pred_cxs    = batch_pred_cls_inds[bx]
 
             # Group groundtruth boxes by class
-            true_boxes = batch_true_boxes[bx].data.cpu().numpy()
+            true_boxes_ = batch_true_boxes[bx].data.cpu().numpy()
             true_cxs = batch_true_cls_inds[bx].data.cpu().numpy()
+            true_weights = gt_weights[bx].data.cpu().numpy()
+
+            # NOTE; Unnormalize the true bboxes back to orig coords
+            orig_shape = batch_orig_sz[bx]
+            sf = np.array(orig_shape) / np.array(inp_size)
+            true_boxes = np.hstack([true_boxes_, true_weights[None, :]])
+            true_boxes[:, 0:4:2] *= sf[1]
+            true_boxes[:, 1:4:2] *= sf[0]
 
             y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
                                                  pred_boxes, pred_scores,
@@ -479,7 +486,7 @@ def test():
     from yolo_voc import *
     """
     dset = YoloVOCDataset(cfg.devkit_dpath, split='test')
-    loader = dset.make_loader(batch_size=4, num_workers=0)
+    loader = dset.make_loader(batch_size=6, num_workers=0)
 
     xpu = xpu_device.XPU.cast('gpu')
     model = darknet.Darknet19(**{
@@ -493,41 +500,125 @@ def test():
     model.module.load_state_dict(state_dict)
 
     num_images = len(dset)
-    all_boxes = [
-        [np.empty([0, 5], dtype=np.float32)
-         for _ in range(num_images)]
-        for _ in range(dset.num_classes)]
 
-    for batch in ub.ProgIter(loader, freq=1, adjust=False):
-        im_data, labels = batch
-        im_data = xpu.move(im_data)
-        outputs = model(im_data)
+    gx = 212
+    cx = 0
 
-        im_shapes, indices = labels[2:4]
-        inp_size = im_data.shape[-2:]
-        postout = model.module.postprocess(outputs, inp_size, im_shapes)
+    cacher = ub.Cacher('all_boxes', cfgstr='')
+    data = cacher.tryload()
+    if data is None:
+        all_pred_boxes = [
+            [np.empty([0, 5], dtype=np.float32)
+             for _ in range(num_images)]
+            for _ in range(dset.num_classes)]
 
-        out_boxes, out_scores, out_cxs = postout
+        all_true_boxes = [
+            [np.empty([0, 5], dtype=np.float32)
+             for _ in range(num_images)]
+            for _ in range(dset.num_classes)]
 
-        for gx, boxes, scores, cxs in zip(indices, out_boxes, out_scores, out_cxs):
-            cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
-            for cx, idxs in cx_to_idxs.items():
-                sbox = np.hstack([boxes[idxs], scores[idxs][:, None]])
-                all_boxes[cx][gx] = sbox
+        for batch in ub.ProgIter(loader, freq=1, adjust=False):
 
-    # HACK IN THE ORIGINAL SCORING CODE
-    import pickle
-    import os
-    output_dir = ub.ensuredir('test')
-    det_file = os.path.join(output_dir, 'detections.pkl')
-    with open(det_file, 'wb') as f:
-        pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+            # if False:
+            #     im, label = dset[gx]
+            #     inp_size = im.shape[-2:]
+            #     box, cxs, orig_shape, _gx, _weight = label
+            #     sf = np.array(orig_shape) / np.array(inp_size)
+            #     box2 = box.data.numpy().copy().astype(np.float32)
+            #     box2[0:4:2] *= sf[1]
+            #     box2[1:4:2] *= sf[0]
+            #     print('box2 = {!r}'.format(box2))
+            #     dset._load_annotation(gx)
 
-    print('Evaluating detections')
-    pascal_voc = ub.import_module_from_path(ub.truepath('~/code/yolo2-pytorch/datasets/pascal_voc.py'))
-    link = ub.symlink('/home/joncrall/data/VOC/VOCdevkit/', '/home/joncrall/data/VOC/VOCdevkit2007/', verbose=3)
-    imdb = pascal_voc.VOCDataset('voc_2007_test', os.path.dirname(link), 1, None)
-    imdb.evaluate_detections(all_boxes, output_dir)
+            im_data, labels = batch
+            im_data = xpu.move(im_data)
+            outputs = model(im_data)
+
+            gt_boxes, gt_classes = labels[0:2]
+            gt_boxes = [b.numpy() for b in gt_boxes]
+            gt_classes = [c.numpy() for c in gt_classes]
+
+            gt_weights = labels[4]
+            im_shapes, indices = labels[2:4]
+            inp_size = im_data.shape[-2:]
+            postout = model.module.postprocess(outputs, inp_size, im_shapes)
+
+            out_boxes, out_scores, out_cxs = postout
+
+            for gx, boxes, cxs, weights, orig_shape in zip(indices, gt_boxes, gt_classes, gt_weights, im_shapes):
+                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
+                for cx, idxs in cx_to_idxs.items():
+                    # hack weights (ishard) into the dataset
+                    sbox = np.hstack([boxes[idxs], weights[idxs][:, None]])
+                    # NOTE; Unnormalize the true bboxes back to orig coords
+                    sf = np.array(orig_shape) / np.array(inp_size)
+                    sbox[:, 0:4:2] *= sf[1]
+                    sbox[:, 1:4:2] *= sf[0]
+                    all_true_boxes[cx][gx] = sbox
+
+            for gx, boxes, scores, cxs in zip(indices, out_boxes, out_scores, out_cxs):
+                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
+                for cx, idxs in cx_to_idxs.items():
+                    sbox = np.hstack([boxes[idxs], scores[idxs][:, None]])
+                    all_pred_boxes[cx][gx] = sbox
+
+        data = (all_true_boxes, all_pred_boxes)
+        cacher.save(data)
+    all_true_boxes, all_pred_boxes = data
+
+    # Test our scoring implementation
+    self = voceval = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
+    mean_ap, ap_list = voceval.compute()
+    print('mean_ap = {!r}'.format(mean_ap))
+
+    if False:
+        # HACK IN THE ORIGINAL SCORING CODE
+        import pickle
+        import os
+        output_dir = ub.ensuredir('test')
+        det_file = os.path.join(output_dir, 'detections.pkl')
+        with open(det_file, 'wb') as f:
+            pickle.dump(all_pred_boxes, f, pickle.HIGHEST_PROTOCOL)
+
+        print('Evaluating detections')
+        import sys
+        sys.path.append(ub.truepath('~/code/yolo2-pytorch'))
+        from datasets import pascal_voc
+        link = ub.symlink('/home/joncrall/data/VOC/VOCdevkit/',
+                          '/home/joncrall/data/VOC/VOCdevkit2007/', verbose=3)
+        imdb = pascal_voc.VOCDataset('voc_2007_test', os.path.dirname(link), 1, None)
+        imdb.evaluate_detections(all_pred_boxes, output_dir)
+
+    if False:
+        imdb._write_voc_results_file(all_pred_boxes)
+
+        annopath = os.path.join(imdb._devkit_path, 'VOC' + imdb._year,
+            'Annotations', '{:s}.xml')
+        imagesetfile = os.path.join(imdb._devkit_path, 'VOC' + imdb._year,
+            'ImageSets', 'Main', imdb._image_set + '.txt')
+        cachedir = os.path.join(imdb._devkit_path, 'annotations_cache')
+        aps = []
+        # The PASCAL VOC metric changed in 2010
+        use_07_metric = True if int(imdb._year) < 2010 else False
+        print('VOC07 metric? ' + ('Yes' if use_07_metric else 'No'))
+        if output_dir is not None and not os.path.isdir(output_dir):
+            os.mkdir(output_dir)
+        cx = i = 0
+        classname = cls = 'aeroplane'
+        # for i, cls in enumerate(imdb._classes):
+        #     if cls == '__background__':
+        #         continue
+        filename = imdb._get_voc_results_file_template().format(cls)
+        detpath = filename
+        rec, prec, ap = voc_eval(
+            filename, annopath, imagesetfile, cls, cachedir, ovthresh=0.5,
+            use_07_metric=use_07_metric)
+        aps += [ap]
+        print(('AP for {} = {:.4f}'.format(cls, ap)))
+        if output_dir is not None:
+            with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
+                pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
+
 
 
 def train():
