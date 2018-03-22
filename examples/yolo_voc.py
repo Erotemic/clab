@@ -246,7 +246,7 @@ def grab_darknet19_initial_weights():
 class cfg(object):
     n_cpus = psutil.cpu_count(logical=True)
 
-    workers = int(n_cpus / 2)
+    workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
 
     max_epoch = 160
 
@@ -601,6 +601,7 @@ def train():
     """
     python ~/code/clab/examples/yolo_voc.py train --nice=baseline
     """
+
     harn = setup_harness()
     harn.setup_dpath(ub.ensuredir(cfg.workdir))
     harn.run()
