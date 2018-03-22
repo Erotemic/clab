@@ -128,7 +128,7 @@ class FitHarness(object):
             'vali': 1,
             'test': 1,
 
-            'snapshot': 1,
+            'snapshot': 10,
         }
         harn.config = {
             'show_prog': True,
@@ -383,14 +383,17 @@ class FitHarness(object):
                     if harn.check_interval('test', harn.epoch):
                         harn.run_epoch(test_loader, tag='test', learn=False)
 
-                # if harn.check_interval('snapshot', harn.epoch):
-                save_path = harn.save_snapshot()
                 if improved:
+                    save_path = harn.save_snapshot()
                     if save_path:
                         harn.debug('New best_snapshot {}'.format(save_path))
                         # Copy the best snapshot the the main directory
-                        shutil.copy2(save_path, join(harn.train_dpath,
-                                     'best_snapshot.pt'))
+                        best_path = join(harn.train_dpath, 'best_snapshot.pt')
+                        shutil.copy2(save_path, best_path)
+                else:
+                    # TODO: allow monitor to clean up old snapshots
+                    if harn.check_interval('snapshot', harn.epoch):
+                        save_path = harn.save_snapshot()
 
                 harn.main_prog.update(1)
 

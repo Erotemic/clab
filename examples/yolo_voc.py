@@ -49,6 +49,16 @@ class YoloVOCDataset(voc.VOCDataset):
 
     def __init__(self, devkit_dpath=None, split='train'):
         super(YoloVOCDataset, self).__init__(devkit_dpath, split=split)
+
+        """
+        From YOLO9000.pdf:
+            With the addition of anchor boxes we changed the resolution to
+            416×416.
+
+            Since our model downsamples by a factor of 32, we pull from the
+            following multiples of 32: {320, 352, ..., 608}.
+        """
+
         base_wh = np.array([320, 320], dtype=np.int)
         self.multi_scale_inp_size = [base_wh + (32 * i) for i in range(8)]
         self.multi_scale_out_size = [s / 32 for s in self.multi_scale_inp_size]
@@ -118,14 +128,16 @@ class YoloVOCDataset(voc.VOCDataset):
         else:
             inp_size = self.base_size
 
-        # load the raw data
-        # hwc255, boxes, gt_classes = self._load_item(index, inp_size)
+        # load the raw data from VOC
         image = self._load_image(index)
         annot = self._load_annotation(index)
 
         # VOC loads annotations in tlbr, but yolo expects xywh
         tlbr = annot['boxes'].astype(np.float32)
         gt_classes = annot['gt_classes']
+
+        # Weight samples so we dont care about difficult cases
+        gt_weights = 1.0 - annot['ishards'].astype(np.float32)
 
         # squish the bounding box and image into a standard size
         w, h = inp_size
@@ -152,17 +164,21 @@ class YoloVOCDataset(voc.VOCDataset):
                               for bb in bbs.bounding_boxes])
             tlbr = yolo_utils.clip_boxes(tlbr, hwc255.shape[0:2])
 
-        # VOC loads annotations in tlbr, but yolo expects xywh
-        xywh = np.hstack([tlbr[:, 0:2], tlbr[:, 2:4] - tlbr[:, 0:2]])
-
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
         gt_classes = torch.LongTensor(gt_classes)
 
-        boxes = torch.LongTensor(xywh.astype(np.int32))
+        # VOC loads annotations in tlbr, but yolo expects xywh?
+        # xywh = yolo_utils.to_xywh(tlbr)
+        # boxes = torch.LongTensor(xywh.astype(np.int32))
+
+        # But does this implementation expect tlbr? I think it does.
+        boxes = torch.LongTensor(tlbr.astype(np.int32))
 
         # Return index information in the label as well
-        label = (boxes, gt_classes, torch.LongTensor(im_shape),
-                                    torch.LongTensor([index]))
+        orig_sz = torch.LongTensor(im_shape)
+        index = torch.LongTensor([index])
+        gt_weights = torch.FloatTensor(gt_weights)
+        label = (boxes, gt_classes, orig_sz, index, gt_weights)
         return chw01, label
 
     @ub.memoize_method
@@ -174,7 +190,7 @@ class YoloVOCDataset(voc.VOCDataset):
         return super(YoloVOCDataset, self)._load_annotation(index)
 
 
-def make_loaders(datasets, train_batch_size=16, vali_batch_size=1, workers=0):
+def make_loaders(datasets, train_batch_size=16, other_batch_size=1, workers=0):
     """
     Example:
         >>> datasets = {'train': YoloVOCDataset(split='train'),
@@ -201,7 +217,7 @@ def make_loaders(datasets, train_batch_size=16, vali_batch_size=1, workers=0):
     loaders = {}
     for key, dset in datasets.items():
         assert len(dset) > 0, 'must have some data'
-        batch_size = train_batch_size if key == 'train' else vali_batch_size
+        batch_size = train_batch_size if key == 'train' else other_batch_size
         # use custom sampler that does multiscale training
         batch_sampler = multiscale_batch_sampler.MultiScaleBatchSampler(
             dset, batch_size=batch_size, shuffle=(key == 'train')
@@ -237,21 +253,23 @@ class cfg(object):
 
     weight_decay = 0.0005
     momentum = 0.9
-    init_learning_rate = 1e-3
 
     # dataset
-    vali_batch_size = 4
+    other_batch_size = 4
     train_batch_size = 16
 
-    # lr_decay = 1. / 10
-    # lr_step_points = {
-    #     0: init_learning_rate * lr_decay ** 0,
-    #     60: init_learning_rate * lr_decay ** 1,
-    #     90: init_learning_rate * lr_decay ** 2,
-    # }
     lr_step_points = {
         # warmup learning rate
         0:  0.0001,
+        1:  0.0001,
+        2:  0.0002,
+        3:  0.0003,
+        4:  0.0004,
+        5:  0.0005,
+        6:  0.0006,
+        7:  0.0007,
+        8:  0.0008,
+        9:  0.0009,
         10: 0.0010,
         # cooldown learning rate
         30: 0.0005,
@@ -280,24 +298,31 @@ def setup_harness(workers=None):
         'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
         'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
         # 'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
-        'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
+        # 'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
     }
 
     loaders = make_loaders(datasets,
                            train_batch_size=cfg.train_batch_size,
-                           vali_batch_size=cfg.vali_batch_size,
+                           other_batch_size=cfg.other_batch_size,
                            workers=workers if workers is not None else cfg.workers)
 
     """
     Reference:
         Original YOLO9000 hyperparameters are defined here:
         https://github.com/pjreddie/darknet/blob/master/cfg/yolo-voc.2.0.cfg
+
+        https://github.com/longcw/yolo2-pytorch/issues/1#issuecomment-286410772
+
+        Notes:
+            jitter is a translation / crop parameter
+            https://groups.google.com/forum/#!topic/darknet/A-JJeXprvJU
+
+            thresh in 2.0.cfg is iou_thresh here
     """
 
     postproc_params = dict(
         conf_thresh=0.001,
-        # nms_thresh=0.5,
-        nms_thresh=0.6,
+        nms_thresh=0.45,
         ovthresh=0.5,
     )
 
@@ -308,18 +333,17 @@ def setup_harness(workers=None):
             'anchors': datasets['train'].anchors
         }),
 
-        # https://github.com/longcw/yolo2-pytorch/issues/1#issuecomment-286410772
         criterion=(darknet.DarknetLoss, {
             'anchors': datasets['train'].anchors,
             'object_scale': 5.0,
             'noobject_scale': 1.0,
             'class_scale': 1.0,
             'coord_scale': 1.0,
-            'iou_thresh': 0.5,
+            'iou_thresh': 0.6,
         }),
 
         optimizer=(torch.optim.SGD, dict(
-            lr=cfg.init_learning_rate,
+            lr=cfg.lr_step_points[0],
             momentum=cfg.momentum,
             weight_decay=cfg.weight_decay
         )),
@@ -346,6 +370,7 @@ def setup_harness(workers=None):
     harn = fit_harness.FitHarness(
         hyper=hyper, xpu=xpu, loaders=loaders, max_iter=160,
     )
+    harn.nice = ub.argval('--nice', default=None)
     harn.monitor = monitor.Monitor(min_keys=['loss'],
                                    # max_keys=['global_acc', 'class_acc'],
                                    patience=160)
@@ -378,11 +403,11 @@ def setup_harness(workers=None):
         # assert np.sqrt(outputs[1].shape[1]) == inp_size[0] / 32
 
         bbox_pred, iou_pred, prob_pred = outputs
-        gt_boxes, gt_classes, orig_size, indices = labels
-        dontcare = np.array([[]] * len(gt_boxes))
+        gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
 
         loss = harn.criterion(bbox_pred, iou_pred, prob_pred, gt_boxes,
-                              gt_classes, dontcare=dontcare, inp_size=inp_size)
+                              gt_classes, gt_weights=gt_weights,
+                              inp_size=inp_size)
         return outputs, loss
 
     # Set as a harness attribute instead of using a closure
@@ -402,14 +427,11 @@ def setup_harness(workers=None):
         nms_thresh = postproc_params['nms_thresh']
         ovthresh = postproc_params['ovthresh']
 
-        # TODO: filter beyond a maximum number of bounding boxes
-
         postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
                                                 conf_thresh, nms_thresh)
 
         # TODO: DUMP DETECTIONS FOR EACH IMAGE INTO A FILE THEN RUN THE SCORING
         # SCRIPT INDEPENDENTLY
-
         # batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
 
         # Compute: y_pred, y_true, and y_score for this batch
@@ -434,9 +456,6 @@ def setup_harness(workers=None):
             y_batch.append(y)
 
         harn.batch_confusions.extend(y_batch)
-
-        # harn.accumulated2.append((y_pred_, y_true_, y_score_))
-        # harn.accumulated.append((postout, labels))
 
     @harn.add_epoch_callback
     def on_epoch(harn, tag, loader):
