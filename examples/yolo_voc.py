@@ -39,7 +39,7 @@ class YoloVOCDataset(voc.VOCDataset):
         >>> assert len(YoloVOCDataset(split='val')) == 2510
 
     Example:
-        >>> self = YoloVOC()
+        >>> self = YoloVOCDataset()
         >>> for i in range(10):
         ...     a, bc = self[i]
         ...     #print(bc[0].shape)
@@ -59,9 +59,13 @@ class YoloVOCDataset(voc.VOCDataset):
             following multiples of 32: {320, 352, ..., 608}.
         """
 
-        base_wh = np.array([320, 320], dtype=np.int)
-        self.multi_scale_inp_size = [base_wh + (32 * i) for i in range(8)]
-        self.multi_scale_out_size = [s / 32 for s in self.multi_scale_inp_size]
+        self.factor = 32  # downsample factor of yolo grid
+        self.base_wh = np.array([416, 416], dtype=np.int)
+        assert np.all(self.base_wh % self.factor == 0)
+
+        self.multi_scale_inp_size = np.array([
+            self.base_wh + (self.factor * i) for i in range(-3, 7)])
+        self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
         self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
                                    (6.63, 11.38), (9.42, 5.11),
@@ -99,6 +103,46 @@ class YoloVOCDataset(voc.VOCDataset):
             ]
             self.augmenter = iaa.Sequential(augmentors)
 
+    def _find_anchors(self):
+        """
+
+        Example:
+            >>> self = YoloVOCDataset(split='trainval')
+            >>> anchors = self._find_anchors()
+            >>> print('anchors = {}'.format(ub.repr2(anchors, precision=2)))
+            >>> # xdoctest: +REQUIRES(--show)
+            >>> xy = -anchors / 2
+            >>> wh = anchors
+            >>> show_boxes = np.hstack([xy, wh])
+            >>> from clab.util import mplutil
+            >>> mplutil.figure(doclf=True, fnum=1)
+            >>> mplutil.qtensure()  # xdoc: +SKIP
+            >>> mplutil.draw_boxes(show_boxes, box_format='xywh')
+            >>> from matplotlib import pyplot as plt
+            >>> plt.gca().set_xlim(xy.min() - 1, wh.max() / 2 + 1)
+            >>> plt.gca().set_ylim(xy.min() - 1, wh.max() / 2 + 1)
+            >>> plt.gca().set_aspect('equal')
+        """
+        all_norm_wh = []
+        from PIL import Image
+        for i in ub.ProgIter(range(len(self))):
+            annots = self._load_annotation(i)
+            img_wh = np.array(Image.open(self.gpaths[i]).size)
+            boxes = np.array(annots['boxes'])
+            box_wh = boxes[:, 2:4] - boxes[:, 0:2]
+            # normalize to 0-1
+            norm_wh = box_wh / img_wh
+            all_norm_wh.extend(norm_wh.tolist())
+        # Re-normalize to the size of the grid
+        all_wh = np.array(all_norm_wh) * self.base_wh[0] / self.factor
+        from sklearn import cluster
+        algo = cluster.KMeans(
+            n_clusters=5, n_init=20, max_iter=10000, tol=1e-6,
+            algorithm='elkan', verbose=0)
+        algo.fit(all_wh)
+        anchors = algo.cluster_centers_
+        return anchors
+
     # def __len__(self):
     #     return 16
 
@@ -119,7 +163,7 @@ class YoloVOCDataset(voc.VOCDataset):
             >>> mplutil.figure(doclf=True, fnum=1)
             >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> mplutil.imshow(hwc01, colorspace='rgb')
-            >>> mplutil.draw_boxes(boxes.numpy(), box_format='xywh')
+            >>> mplutil.draw_boxes(boxes.numpy(), box_format='tlbr')
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -243,19 +287,31 @@ def grab_darknet19_initial_weights():
     return torch_fpath
 
 
-class cfg(object):
-    n_cpus = psutil.cpu_count(logical=True)
+def setup_harness(workers=None):
+    """
+    CommandLine:
+        python ~/code/clab/examples/yolo_voc.py setup_harness
+        python ~/code/clab/examples/yolo_voc.py setup_harness --profile
 
-    workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
+    Example:
+        >>> harn = setup_harness(workers=0)
+        >>> harn.initialize()
+        >>> harn.dry = True
+        >>> harn.run()
+    """
+    workdir = ub.truepath('~/work/VOC2007')
+    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
+    nice = ub.argval('--nice', default=None)
+
+    pretrained_fpath = grab_darknet19_initial_weights()
+
+    postproc_params = dict(
+        conf_thresh=0.001,
+        nms_thresh=0.45,
+        ovthresh=0.5,
+    )
 
     max_epoch = 160
-
-    weight_decay = 0.0005
-    momentum = 0.9
-
-    # dataset
-    other_batch_size = 4
-    train_batch_size = 16
 
     lr_step_points = {
         0: 0.001,
@@ -276,35 +332,22 @@ class cfg(object):
         60: 0.0001,
         90: 0.00001,
     }
+    batch_size = int(ub.argval('--batch_size', default=16))
+    n_cpus = psutil.cpu_count(logical=True)
+    workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
+    other_batch_size = batch_size // 4
 
-    workdir = ub.truepath('~/work/VOC2007')
-    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
-
-
-def setup_harness(workers=None):
-    """
-    CommandLine:
-        python ~/code/clab/examples/yolo_voc.py setup_harness
-        python ~/code/clab/examples/yolo_voc.py setup_harness --profile
-
-    Example:
-        >>> harn = setup_harness(workers=0)
-        >>> harn.initialize()
-        >>> harn.dry = True
-        >>> harn.run()
-    """
-    cfg.pretrained_fpath = grab_darknet19_initial_weights()
     datasets = {
-        # 'train': YoloVOCDataset(cfg.devkit_dpath, split='train'),
-        # 'vali': YoloVOCDataset(cfg.devkit_dpath, split='val'),
-        'test': YoloVOCDataset(cfg.devkit_dpath, split='test'),
-        'train': YoloVOCDataset(cfg.devkit_dpath, split='trainval'),
+        # 'train': YoloVOCDataset(devkit_dpath, split='train'),
+        # 'vali': YoloVOCDataset(devkit_dpath, split='val'),
+        'test': YoloVOCDataset(devkit_dpath, split='test'),
+        'train': YoloVOCDataset(devkit_dpath, split='trainval'),
     }
 
     loaders = make_loaders(datasets,
-                           train_batch_size=cfg.train_batch_size,
-                           other_batch_size=cfg.other_batch_size,
-                           workers=workers if workers is not None else cfg.workers)
+                           train_batch_size=batch_size,
+                           other_batch_size=other_batch_size,
+                           workers=workers if workers is not None else workers)
 
     """
     Reference:
@@ -319,12 +362,6 @@ def setup_harness(workers=None):
 
             thresh in 2.0.cfg is iou_thresh here
     """
-
-    postproc_params = dict(
-        conf_thresh=0.001,
-        nms_thresh=0.45,
-        ovthresh=0.5,
-    )
 
     hyper = hyperparams.HyperParams(
 
@@ -343,18 +380,18 @@ def setup_harness(workers=None):
         }),
 
         optimizer=(torch.optim.SGD, dict(
-            lr=cfg.lr_step_points[0],
-            momentum=cfg.momentum,
-            weight_decay=cfg.weight_decay
+            lr=lr_step_points[0],
+            momentum=0.9,
+            weight_decay=0.0005
         )),
 
         # initializer=(nninit.KaimingNormal, {}),
         initializer=(nninit.Pretrained, {
-            'fpath': cfg.pretrained_fpath,
+            'fpath': pretrained_fpath,
         }),
 
         scheduler=(ListedLR, dict(
-            step_points=cfg.lr_step_points
+            step_points=lr_step_points
         )),
 
         other=ub.dict_union({
@@ -366,15 +403,17 @@ def setup_harness(workers=None):
         augment=datasets['train'].augmenter,
     )
 
+    # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
     xpu = xpu_device.XPU.cast('auto')
     harn = fit_harness.FitHarness(
-        hyper=hyper, xpu=xpu, loaders=loaders, max_iter=160,
+        hyper=hyper, xpu=xpu, loaders=loaders, max_iter=max_epoch,
+        workdir=workdir,
     )
     harn.postproc_params = postproc_params
-    harn.nice = ub.argval('--nice', default=None)
+    harn.nice = nice
     harn.monitor = monitor.Monitor(min_keys=['loss'],
                                    # max_keys=['global_acc', 'class_acc'],
-                                   patience=160)
+                                   patience=max_epoch)
 
     @harn.set_batch_runner
     def batch_runner(harn, inputs, labels):
@@ -399,7 +438,6 @@ def setup_harness(workers=None):
 
         # darknet criterion needs to know the input image shape
         inp_size = tuple(inputs[0].shape[-2:])
-        # assert np.sqrt(outputs[1].shape[1]) == inp_size[0] / 32
 
         bbox_pred, iou_pred, prob_pred = outputs
         gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
@@ -418,9 +456,6 @@ def setup_harness(workers=None):
         Custom hook to run on each batch (used to compute mAP on the fly)
 
         Example:
-            >>> import sys
-            >>> sys.path.append('/home/joncrall/code/clab/examples')
-            >>> from yolo_voc import *
             >>> harn = setup_harness(workers=0)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'train')
@@ -435,8 +470,6 @@ def setup_harness(workers=None):
             >>> on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss)
         """
         # Accumulate relevant outputs to measure
-        # if tag == 'train':
-        #     return
         gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
         # bbox_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
@@ -448,11 +481,7 @@ def setup_harness(workers=None):
 
         postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
                                                 conf_thresh, nms_thresh)
-
-        # TODO: DUMP DETECTIONS FOR EACH IMAGE INTO A FILE THEN RUN THE SCORING
-        # SCRIPT INDEPENDENTLY
         # batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
-
         # Compute: y_pred, y_true, and y_score for this batch
         batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
         batch_true_boxes, batch_true_cls_inds = labels[0:2]
@@ -491,10 +520,10 @@ def setup_harness(workers=None):
         num_classes = len(loader.dataset.label_names)
 
         mean_ap, ap_list = voc.EvaluateVOC.compute_map(y, num_classes)
-        max_ap = np.nanmax(ap_list)
 
         harn.log_value(tag + ' epoch mAP', mean_ap, harn.epoch)
-        harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
+        # max_ap = np.nanmax(ap_list)
+        # harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
         harn.batch_confusions.clear()
 
     return harn
@@ -506,7 +535,8 @@ def test():
     sys.path.append('/home/joncrall/code/clab/examples')
     from yolo_voc import *
     """
-    dset = YoloVOCDataset(cfg.devkit_dpath, split='test')
+    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
+    dset = YoloVOCDataset(devkit_dpath, split='test')
     loader = dset.make_loader(batch_size=8, num_workers=4)
 
     xpu = xpu_device.XPU.cast('gpu')
@@ -601,11 +631,11 @@ def test():
 def train():
     """
     python ~/code/clab/examples/yolo_voc.py train --nice=baseline --workers=0
-    python ~/code/clab/examples/yolo_voc.py train --nice=baseline
-    """
+    python ~/code/clab/examples/yolo_voc.py train --nice=trainval2
 
+    python ~/code/clab/examples/yolo_voc.py train --nice=trainval3 --workers=8 --gpu=0,1,2,3 --batch_size=64
+    """
     harn = setup_harness()
-    harn.setup_dpath(ub.ensuredir(cfg.workdir))
     harn.run()
 
 
