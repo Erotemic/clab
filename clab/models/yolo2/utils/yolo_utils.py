@@ -274,8 +274,11 @@ def clip_boxes(boxes, im_shape):
 def nms_detections(pred_boxes, scores, nms_thresh):
     dets = np.hstack((pred_boxes,
                       scores[:, np.newaxis])).astype(np.float32)
-    from clab import xpu_device
-    device = xpu_device.XPU.default_gpu()
+    import torch
+    if torch.cuda.is_available:
+        device = torch.cuda.current_device()
+    else:
+        device = None
     keep = nms(dets, nms_thresh, device=device)
     return keep
 
