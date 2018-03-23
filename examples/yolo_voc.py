@@ -281,7 +281,7 @@ def test():
     dset = YoloVOCDataset(devkit_dpath, split='test')
     loader = dset.make_loader(batch_size=8, num_workers=4)
 
-    xpu = xpu_device.XPU.cast('auto')
+    xpu = xpu_device.XPU.cast('argv')
     model = darknet.Darknet19(**{
         'num_classes': dset.num_classes,
         'anchors': dset.anchors
@@ -492,7 +492,7 @@ def setup_harness(workers=None):
     )
 
     # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
-    xpu = xpu_device.XPU.cast('auto')
+    xpu = xpu_device.XPU.cast('argv')
     print('xpu = {!r}'.format(xpu))
     harn = fit_harness.FitHarness(
         hyper=hyper, xpu=xpu, loaders=loaders, max_iter=max_epoch,
