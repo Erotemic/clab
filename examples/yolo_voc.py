@@ -330,6 +330,7 @@ def setup_harness(workers=None):
 
     # Check that the dataset exists
     item = datasets['train'][0]
+    print('item = {!r}'.format(item))
 
     loaders = make_loaders(datasets,
                            train_batch_size=batch_size,
