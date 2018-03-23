@@ -356,14 +356,17 @@ def clean():
     def enqueue(d):
         if exists(d):
             toremove.append(d)
+
     enqueue(join(repodir, 'clab/models/yolo2/utils/cython_yolo.c') )
     enqueue(join(repodir, 'clab/models/yolo2/utils/cython_bbox.c') )
     enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.c') )
     enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.c') )
     enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.cpp') )
+    enqueue(join(repodir, 'clab/models/yolo2/layers/roi_pooling/_ext') )
+    enqueue(join(repodir, 'clab/models/yolo2/layers/reorg/_ext') )
 
     for dpath in toremove:
-        print('Removing dpath = {!r}'.format(dpath))
+        # print('Removing dpath = {!r}'.format(dpath))
         ub.delete(dpath, verbose=1)
 
 
