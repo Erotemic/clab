@@ -56,10 +56,10 @@ class Conv2d_Norm_Noli(nn.Module):
         return x
 
 
-def np_to_variable(x, is_cuda=True, dtype=torch.FloatTensor):
+def np_to_variable(x, device=None, dtype=torch.FloatTensor):
     v = torch.autograd.Variable(torch.from_numpy(x).type(dtype))
-    if is_cuda:
-        v = v.cuda()
+    if device is not None:
+        v = v.cuda(device)
     return v
 
 
@@ -204,14 +204,15 @@ class DarknetLoss(BaseLossWithCudaState):
                                        num_classes, criterion.anchors)
         _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
 
-        is_cuda = criterion.is_cuda
+        # is_cuda = criterion.is_cuda
+        device = criterion.get_device()
 
-        _boxes   = np_to_variable(_boxes, is_cuda)
-        _ious    = np_to_variable(_ious, is_cuda)
-        _classes = np_to_variable(_classes, is_cuda)
-        box_mask = np_to_variable(_box_mask, is_cuda, dtype=torch.FloatTensor)
-        iou_mask = np_to_variable(_iou_mask, is_cuda, dtype=torch.FloatTensor)
-        class_mask = np_to_variable(_class_mask, is_cuda,
+        _boxes   = np_to_variable(_boxes, device)
+        _ious    = np_to_variable(_ious, device)
+        _classes = np_to_variable(_classes, device)
+        box_mask = np_to_variable(_box_mask, device, dtype=torch.FloatTensor)
+        iou_mask = np_to_variable(_iou_mask, device, dtype=torch.FloatTensor)
+        class_mask = np_to_variable(_class_mask, device,
                                     dtype=torch.FloatTensor)
 
         num_boxes = sum(len(boxes) for boxes in gt_boxes)
