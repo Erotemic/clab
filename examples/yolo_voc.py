@@ -395,7 +395,7 @@ def setup_harness(workers=None):
         )),
 
         other=ub.dict_union({
-            'nice': ub.argval('--nice', default='none'),
+            'nice': str(nice),
             'batch_size': loaders['train'].batch_sampler.batch_size,
         }, postproc_params),
         centering=None,
