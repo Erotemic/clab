@@ -433,6 +433,11 @@ def setup_harness(workers=None):
     workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
     other_batch_size = batch_size // 4
 
+    import os
+
+    if not os.path.exists(devkit_dpath):
+        YoloVOCDataset.ensure_voc2007()
+
     if ub.argval('--data', 'normal') == 'combined':
         datasets = {
             'test': YoloVOCDataset(devkit_dpath, split='test'),
