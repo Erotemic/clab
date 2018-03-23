@@ -25,6 +25,7 @@ def nms(dets, thresh, device=None):
     Dispatch to either CPU or GPU NMS implementations.
 
     Example:
+        >>> import numpy as np
         >>> dets = np.array([
         >>>     [0, 0, 100, 100, .9],
         >>>     [100, 100, 10, 10, .1],
