@@ -87,7 +87,6 @@ class FitHarness(object):
 
         harn.dry = dry
         harn.xpu = xpu_device.XPU.cast(xpu)
-        print('harn.xpu = {!r}'.format(harn.xpu))
 
         harn.workdir = workdir
         harn.train_dpath = None
@@ -187,6 +186,7 @@ class FitHarness(object):
         # TODO: Initialize the classes and then have a different function move
         # everything to GPU
         harn.xpu.set_as_default()
+        harn.debug('harn.xpu = {!r}'.format(harn.xpu))
 
         if harn.train_dpath is None:
             harn.setup_dpath(harn.workdir)
