@@ -62,8 +62,10 @@ class YoloVOCDataset(voc.VOCDataset):
         self.base_wh = np.array([416, 416], dtype=np.int)
         assert np.all(self.base_wh % self.factor == 0)
 
+        # self.multi_scale_inp_size = np.array([
+        #     self.base_wh + (self.factor * i) for i in range(-3, 7)])
         self.multi_scale_inp_size = np.array([
-            self.base_wh + (self.factor * i) for i in range(-3, 7)])
+            self.base_wh + (self.factor * i) for i in range(-3, 6)])
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
         self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
@@ -388,6 +390,17 @@ def setup_harness(workers=None):
 
     pretrained_fpath = darknet.initial_weights()
 
+    # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
+    xpu = xpu_device.XPU.cast('argv')
+    print('xpu = {!r}'.format(xpu))
+
+    # NOTE: It is important to have a high enought ulimit for DataParallel
+    if True:
+        import resource
+        rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if rlimit[0] <= 8192:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (8192, rlimit[1]))
+
     postproc_params = dict(
         conf_thresh=0.001,
         nms_thresh=0.45,
@@ -491,9 +504,6 @@ def setup_harness(workers=None):
         augment=datasets['train'].augmenter,
     )
 
-    # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
-    xpu = xpu_device.XPU.cast('argv')
-    print('xpu = {!r}'.format(xpu))
     harn = fit_harness.FitHarness(
         hyper=hyper, xpu=xpu, loaders=loaders, max_iter=max_epoch,
         workdir=workdir,
@@ -634,6 +644,7 @@ def train():
 
     python ~/code/clab/examples/yolo_voc.py train --nice=med_batch --workers=6 --gpu=0,1 --batch_size=32
     python ~/code/clab/examples/yolo_voc.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64
+    python ~/code/clab/examples/yolo_voc.py train --nice=three_batch --workers=6 --gpu=1,2,3 --batch_size=48
 
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --batch_size=16
