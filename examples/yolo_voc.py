@@ -281,7 +281,7 @@ def test():
     dset = YoloVOCDataset(devkit_dpath, split='test')
     loader = dset.make_loader(batch_size=8, num_workers=4)
 
-    xpu = xpu_device.XPU.cast('gpu')
+    xpu = xpu_device.XPU.cast('auto')
     model = darknet.Darknet19(**{
         'num_classes': dset.num_classes,
         'anchors': dset.anchors
