@@ -174,7 +174,7 @@ class XPU(ub.NiceRepr):
                 if ',' in item:
                     item = list(map(int, ','.split(item)))
                 if item == '':
-                    item = 0
+                    item = XPU.default_gpu()
                 if item == 'none':
                     item = None
                 else:
@@ -202,7 +202,7 @@ class XPU(ub.NiceRepr):
         """
         anygpu = ub.argflag('--gpu')
         if anygpu:
-            gpu_num = '0'
+            gpu_num = XPU.default_gpu()
         else:
             gpu_num = ub.argval('--gpu', default=None)
         if ub.argflag('--cpu'):

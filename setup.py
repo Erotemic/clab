@@ -353,7 +353,17 @@ def clean():
                 if fname.split('.')[0] + '.pyx' in fnames:
                     toremove.append(join(root, fname))
 
+    def enqueue(d):
+        if exists(d):
+            toremove.append(d)
+    enqueue(join(repodir, 'clab/models/yolo2/utils/cython_yolo.c') )
+    enqueue(join(repodir, 'clab/models/yolo2/utils/cython_bbox.c') )
+    enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.c') )
+    enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.c') )
+    enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.cpp') )
+
     for dpath in toremove:
+        print('Removing dpath = {!r}'.format(dpath))
         ub.delete(dpath, verbose=1)
 
 
