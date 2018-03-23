@@ -27,9 +27,12 @@ import time
 logger = getLogger(__name__)
 print = util.protect_print(logger.info)
 
-Prog = tqdm.tqdm
-import functools
-Prog = functools.partial(ub.ProgIter, verbose=1)
+USE_TQDM = False
+if USE_TQDM:
+    Prog = tqdm.tqdm
+else:
+    import functools
+    Prog = functools.partial(ub.ProgIter, verbose=1)
 
 
 def number_of_parameters(model, trainable=True):
