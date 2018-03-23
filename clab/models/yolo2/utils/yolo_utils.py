@@ -258,6 +258,8 @@ def clip_boxes(boxes, im_shape):
     if boxes.shape[0] == 0:
         return boxes
 
+    assert isinstance(boxes, (np.ndarray, list)), 'got boxes={}'.format(boxes)
+
     # x1 >= 0
     boxes[:, 0::4] = np.maximum(np.minimum(boxes[:, 0::4], im_shape[1] - 1), 0)
     # y1 >= 0

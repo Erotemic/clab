@@ -723,6 +723,7 @@ class Darknet19(nn.Module):
         aoff_pred = aoff_pred_.data.cpu().numpy()
         iou_pred  = iou_pred_.data.cpu().numpy()
         prob_pred = prob_pred_.data.cpu().numpy()
+        im_shapes = im_shapes.data.cpu().numpy()
 
         # num_classes, num_anchors = cfg.num_classes, cfg.num_anchors
         num_classes = self.num_classes
