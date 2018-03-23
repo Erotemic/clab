@@ -433,12 +433,17 @@ def setup_harness(workers=None):
     workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
     other_batch_size = batch_size // 4
 
-    datasets = {
-        # 'train': YoloVOCDataset(devkit_dpath, split='train'),
-        # 'vali': YoloVOCDataset(devkit_dpath, split='val'),
-        'test': YoloVOCDataset(devkit_dpath, split='test'),
-        'train': YoloVOCDataset(devkit_dpath, split='trainval'),
-    }
+    if ub.argval('--data', 'normal') == 'combined':
+        datasets = {
+            'test': YoloVOCDataset(devkit_dpath, split='test'),
+            'train': YoloVOCDataset(devkit_dpath, split='trainval'),
+        }
+    else:
+        datasets = {
+            'train': YoloVOCDataset(devkit_dpath, split='train'),
+            'vali': YoloVOCDataset(devkit_dpath, split='val'),
+            'test': YoloVOCDataset(devkit_dpath, split='test'),
+        }
 
     # Check that the dataset exists
     # item = datasets['train'][0]
@@ -643,7 +648,8 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=trainval2
 
     python ~/code/clab/examples/yolo_voc.py train --nice=med_batch --workers=6 --gpu=0,1 --batch_size=32
-    python ~/code/clab/examples/yolo_voc.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64
+    python ~/code/clab/examples/yolo_voc.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
+    python ~/code/clab/examples/yolo_voc.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=normal
     python ~/code/clab/examples/yolo_voc.py train --nice=three_batch --workers=6 --gpu=1,2,3 --batch_size=48
 
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
