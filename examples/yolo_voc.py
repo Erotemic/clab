@@ -272,21 +272,6 @@ def make_loaders(datasets, train_batch_size=16, other_batch_size=1, workers=0):
     return loaders
 
 
-def grab_darknet19_initial_weights():
-    # TODO: setup a global url
-    import ubelt as ub
-    url = 'http://acidalia.kitware.com:8000/weights/darknet19.weights.npz'
-    npz_fpath = ub.grabdata(url, dpath=ub.ensure_app_cache_dir('clab'))
-    torch_fpath = ub.augpath(npz_fpath, ext='.pt')
-    if not exists(torch_fpath):
-        from clab.models.yolo2 import darknet
-        # hack to transform initial state
-        model = darknet.Darknet19(num_classes=20)
-        model.load_from_npz(npz_fpath, num_conv=18)
-        torch.save(model.state_dict(), torch_fpath)
-    return torch_fpath
-
-
 def setup_harness(workers=None):
     """
     CommandLine:
@@ -303,7 +288,7 @@ def setup_harness(workers=None):
     devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
     nice = ub.argval('--nice', default=None)
 
-    pretrained_fpath = grab_darknet19_initial_weights()
+    pretrained_fpath = darknet.initial_weights()
 
     postproc_params = dict(
         conf_thresh=0.001,

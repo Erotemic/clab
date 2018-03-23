@@ -862,6 +862,9 @@ class Darknet19(nn.Module):
 
 
 def demo_weights():
+    """
+    Weights trained on VOC by yolo9000-pytorch
+    """
     import ubelt as ub
     import os
     url = 'https://data.kitware.com/api/v1/item/5ab13b0e8d777f068578e251/download'
@@ -872,6 +875,35 @@ def demo_weights():
         command = 'curl -X GET {} > {}'.format(url, dest)
         ub.cmd(command, verbout=1, shell=True)
     return dest
+
+
+def initial_weights():
+    """
+    Weights pretrained trained ImageNet by yolo9000-pytorch
+    """
+    import ubelt as ub
+    import os
+    url = 'https://data.kitware.com/api/v1/file/5ab513438d777f068578f1d0/download'
+    dpath = ub.ensure_app_cache_dir('clab')
+    fname = 'darknet19.weights.npz'
+    dest = os.path.join(dpath, fname)
+    if not os.path.exists(dest):
+        command = 'curl -X GET {} > {}'.format(url, dest)
+        ub.cmd(command, verbout=1, shell=True)
+
+    # url = 'http://acidalia.kitware.com:8000/weights/darknet19.weights.npz'
+    # npz_fpath = ub.grabdata(url, dpath=ub.ensure_app_cache_dir('clab'))
+
+    # convert to torch weights
+    npz_fpath = dest
+    import os.path
+    torch_fpath = ub.augpath(npz_fpath, ext='.pt')
+    if not os.path.exists(torch_fpath):
+        # hack to transform initial state
+        model = Darknet19(num_classes=20)
+        model.load_from_npz(npz_fpath, num_conv=18)
+        torch.save(model.state_dict(), torch_fpath)
+    return npz_fpath
 
 
 def demo_image(inp_size):
