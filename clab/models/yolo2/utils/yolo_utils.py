@@ -274,7 +274,9 @@ def clip_boxes(boxes, im_shape):
 def nms_detections(pred_boxes, scores, nms_thresh):
     dets = np.hstack((pred_boxes,
                       scores[:, np.newaxis])).astype(np.float32)
-    keep = nms(dets, nms_thresh)
+    from clab import xpu_device
+    device = xpu_device.XPU.default_gpu()
+    keep = nms(dets, nms_thresh, device=device)
     return keep
 
 

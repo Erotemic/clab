@@ -333,6 +333,17 @@ class XPU(ub.NiceRepr):
         for item in args:
             yield xpu.variable(item, **kw)
 
+    @classmethod
+    def default_gpu(XPU):
+        """
+        Example:
+            >>> print(XPU.default_gpu())
+        """
+        if torch.cuda.is_available:
+            return torch.cuda.current_device()
+        else:
+            return None
+
     def set_as_default(xpu):
         """
         Sets this device as the default torch GPU
