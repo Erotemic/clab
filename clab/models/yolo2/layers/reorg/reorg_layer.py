@@ -163,3 +163,12 @@ class ReorgLayerPy(torch.nn.Module):
         return x
 
 ReorgLayer = ReorgLayerPy
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m xdoctest clab.models.yolo2.layers.reorg.reorg_layer all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)

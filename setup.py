@@ -354,7 +354,7 @@ def clean():
                     toremove.append(join(root, fname))
 
     def enqueue(d):
-        if exists(d):
+        if exists(d) and d not in toremove:
             toremove.append(d)
 
     enqueue(join(repodir, 'clab/models/yolo2/utils/cython_yolo.c') )
