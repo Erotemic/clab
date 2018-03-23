@@ -271,6 +271,105 @@ def make_loaders(datasets, train_batch_size=16, other_batch_size=1, workers=0):
     return loaders
 
 
+def test():
+    """
+    import sys
+    sys.path.append('/home/joncrall/code/clab/examples')
+    from yolo_voc import *
+    """
+    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
+    dset = YoloVOCDataset(devkit_dpath, split='test')
+    loader = dset.make_loader(batch_size=8, num_workers=4)
+
+    xpu = xpu_device.XPU.cast('gpu')
+    model = darknet.Darknet19(**{
+        'num_classes': dset.num_classes,
+        'anchors': dset.anchors
+    })
+    model = xpu.mount(model)
+
+    weights_fpath = darknet.demo_weights()
+    state_dict = torch.load(weights_fpath)['model_state_dict']
+    model.module.load_state_dict(state_dict)
+
+    num_images = len(dset)
+    # gx = 212
+    # cx = 0
+
+    cacher = ub.Cacher('all_boxes', cfgstr='v1', enabled=False)
+    data = cacher.tryload()
+    if data is None:
+        all_pred_boxes = [
+            [np.empty([0, 5], dtype=np.float32)
+             for _ in range(num_images)]
+            for _ in range(dset.num_classes)]
+
+        all_true_boxes = [
+            [np.empty([0, 5], dtype=np.float32)
+             for _ in range(num_images)]
+            for _ in range(dset.num_classes)]
+
+        for batch in ub.ProgIter(loader, freq=1, adjust=False):
+            im_data, labels = batch
+            im_data = xpu.move(im_data)
+            outputs = model(im_data)
+
+            gt_boxes, gt_classes = labels[0:2]
+            gt_boxes = [b.numpy() for b in gt_boxes]
+            gt_classes = [c.numpy() for c in gt_classes]
+
+            gt_weights = labels[4]
+            im_shapes, indices = labels[2:4]
+            inp_size = im_data.shape[-2:]
+            postout = model.module.postprocess(outputs, inp_size, im_shapes)
+
+            out_boxes, out_scores, out_cxs = postout
+
+            for gx, boxes, cxs, weights, orig_shape in zip(indices, gt_boxes, gt_classes, gt_weights, im_shapes):
+                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
+                for cx, idxs in cx_to_idxs.items():
+                    # hack weights (ishard) into the dataset
+                    sbox = np.hstack([boxes[idxs], weights[idxs][:, None]])
+                    # NOTE; Unnormalize the true bboxes back to orig coords
+                    sf = np.array(orig_shape) / np.array(inp_size)
+                    sbox[:, 0:4:2] *= sf[1]
+                    sbox[:, 1:4:2] *= sf[0]
+                    all_true_boxes[cx][gx] = sbox
+
+            for gx, boxes, scores, cxs in zip(indices, out_boxes, out_scores, out_cxs):
+                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
+                for cx, idxs in cx_to_idxs.items():
+                    sbox = np.hstack([boxes[idxs], scores[idxs][:, None]])
+                    all_pred_boxes[cx][gx] = sbox
+
+        data = (all_true_boxes, all_pred_boxes)
+        cacher.save(data)
+    all_true_boxes, all_pred_boxes = data
+
+    # Test our scoring implementation
+    voceval = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
+    mean_ap, ap_list = voceval.compute()
+    print('mean_ap = {!r}'.format(mean_ap))
+
+    if False:
+        # HACK IN THE ORIGINAL SCORING CODE
+        import pickle
+        import os
+        output_dir = ub.ensuredir('test')
+        det_file = os.path.join(output_dir, 'detections.pkl')
+        with open(det_file, 'wb') as f:
+            pickle.dump(all_pred_boxes, f, pickle.HIGHEST_PROTOCOL)
+
+        print('Evaluating detections')
+        import sys
+        sys.path.append(ub.truepath('~/code/yolo2-pytorch'))
+        from datasets import pascal_voc
+        link = ub.symlink('/home/joncrall/data/VOC/VOCdevkit/',
+                          '/home/joncrall/data/VOC/VOCdevkit2007/', verbose=3)
+        imdb = pascal_voc.VOCDataset('voc_2007_test', os.path.dirname(link), 1, None)
+        imdb.evaluate_detections(all_pred_boxes, output_dir)
+
+
 def setup_harness(workers=None):
     """
     CommandLine:
@@ -527,111 +626,13 @@ def setup_harness(workers=None):
     return harn
 
 
-def test():
-    """
-    import sys
-    sys.path.append('/home/joncrall/code/clab/examples')
-    from yolo_voc import *
-    """
-    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
-    dset = YoloVOCDataset(devkit_dpath, split='test')
-    loader = dset.make_loader(batch_size=8, num_workers=4)
-
-    xpu = xpu_device.XPU.cast('gpu')
-    model = darknet.Darknet19(**{
-        'num_classes': dset.num_classes,
-        'anchors': dset.anchors
-    })
-    model = xpu.mount(model)
-
-    weights_fpath = darknet.demo_weights()
-    state_dict = torch.load(weights_fpath)['model_state_dict']
-    model.module.load_state_dict(state_dict)
-
-    num_images = len(dset)
-    # gx = 212
-    # cx = 0
-
-    cacher = ub.Cacher('all_boxes', cfgstr='v1', enabled=False)
-    data = cacher.tryload()
-    if data is None:
-        all_pred_boxes = [
-            [np.empty([0, 5], dtype=np.float32)
-             for _ in range(num_images)]
-            for _ in range(dset.num_classes)]
-
-        all_true_boxes = [
-            [np.empty([0, 5], dtype=np.float32)
-             for _ in range(num_images)]
-            for _ in range(dset.num_classes)]
-
-        for batch in ub.ProgIter(loader, freq=1, adjust=False):
-            im_data, labels = batch
-            im_data = xpu.move(im_data)
-            outputs = model(im_data)
-
-            gt_boxes, gt_classes = labels[0:2]
-            gt_boxes = [b.numpy() for b in gt_boxes]
-            gt_classes = [c.numpy() for c in gt_classes]
-
-            gt_weights = labels[4]
-            im_shapes, indices = labels[2:4]
-            inp_size = im_data.shape[-2:]
-            postout = model.module.postprocess(outputs, inp_size, im_shapes)
-
-            out_boxes, out_scores, out_cxs = postout
-
-            for gx, boxes, cxs, weights, orig_shape in zip(indices, gt_boxes, gt_classes, gt_weights, im_shapes):
-                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
-                for cx, idxs in cx_to_idxs.items():
-                    # hack weights (ishard) into the dataset
-                    sbox = np.hstack([boxes[idxs], weights[idxs][:, None]])
-                    # NOTE; Unnormalize the true bboxes back to orig coords
-                    sf = np.array(orig_shape) / np.array(inp_size)
-                    sbox[:, 0:4:2] *= sf[1]
-                    sbox[:, 1:4:2] *= sf[0]
-                    all_true_boxes[cx][gx] = sbox
-
-            for gx, boxes, scores, cxs in zip(indices, out_boxes, out_scores, out_cxs):
-                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
-                for cx, idxs in cx_to_idxs.items():
-                    sbox = np.hstack([boxes[idxs], scores[idxs][:, None]])
-                    all_pred_boxes[cx][gx] = sbox
-
-        data = (all_true_boxes, all_pred_boxes)
-        cacher.save(data)
-    all_true_boxes, all_pred_boxes = data
-
-    # Test our scoring implementation
-    voceval = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
-    mean_ap, ap_list = voceval.compute()
-    print('mean_ap = {!r}'.format(mean_ap))
-
-    if False:
-        # HACK IN THE ORIGINAL SCORING CODE
-        import pickle
-        import os
-        output_dir = ub.ensuredir('test')
-        det_file = os.path.join(output_dir, 'detections.pkl')
-        with open(det_file, 'wb') as f:
-            pickle.dump(all_pred_boxes, f, pickle.HIGHEST_PROTOCOL)
-
-        print('Evaluating detections')
-        import sys
-        sys.path.append(ub.truepath('~/code/yolo2-pytorch'))
-        from datasets import pascal_voc
-        link = ub.symlink('/home/joncrall/data/VOC/VOCdevkit/',
-                          '/home/joncrall/data/VOC/VOCdevkit2007/', verbose=3)
-        imdb = pascal_voc.VOCDataset('voc_2007_test', os.path.dirname(link), 1, None)
-        imdb.evaluate_detections(all_pred_boxes, output_dir)
-
-
 def train():
     """
     python ~/code/clab/examples/yolo_voc.py train --nice=baseline --workers=0
     python ~/code/clab/examples/yolo_voc.py train --nice=trainval2
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=trainval3 --workers=8 --gpu=0,1,2,3 --batch_size=64
+    python ~/code/clab/examples/yolo_voc.py train --nice=med_batch --workers=6 --gpu=0,1 --batch_size=32
+    python ~/code/clab/examples/yolo_voc.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64
 
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --batch_size=16

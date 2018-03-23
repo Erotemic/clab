@@ -38,6 +38,9 @@ class XPU(ub.NiceRepr):
     TODO:
         distributed processing
 
+    CommandLine:
+        python -m clab.xpu_device XPU
+
     Example:
         >>> print(str(XPU(None)))
         CPU
@@ -199,6 +202,13 @@ class XPU(ub.NiceRepr):
     def from_argv(XPU, **kwargs):
         """
         Respect command line gpu and cpu argument
+
+        CommandLine:
+            python -m clab.xpu_device XPU.from_argv --gpu=0,1
+
+        Example:
+            >>> xpu = XPU.from_argv()
+            >>> print(xpu)
         """
         anygpu = ub.argflag('--gpu')
         if anygpu:
