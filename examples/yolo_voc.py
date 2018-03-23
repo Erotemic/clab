@@ -329,8 +329,8 @@ def setup_harness(workers=None):
     }
 
     # Check that the dataset exists
-    item = datasets['train'][0]
-    print('item = {!r}'.format(item))
+    # item = datasets['train'][0]
+    # print('item = {!r}'.format(item))
 
     loaders = make_loaders(datasets,
                            train_batch_size=batch_size,
@@ -435,6 +435,15 @@ def setup_harness(workers=None):
                               gt_classes, gt_weights=gt_weights,
                               inp_size=inp_size)
         return outputs, loss
+
+    @harn.add_batch_metric_hook
+    def custom_metrics(harn, output, labels):
+        metrics_dict = ub.odict()
+        criterion = harn.criterion
+        metrics_dict['L_bbox'] = float(criterion.bbox_loss.data.cpu().numpy())
+        metrics_dict['L_iou'] = float(criterion.iou_loss.data.cpu().numpy())
+        metrics_dict['L_cls'] = float(criterion.cls_loss.data.cpu().numpy())
+        return metrics_dict
 
     # Set as a harness attribute instead of using a closure
     harn.batch_confusions = []
