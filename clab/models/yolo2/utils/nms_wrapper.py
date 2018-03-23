@@ -32,9 +32,9 @@ def nms(dets, thresh, device=None):
         >>>     [10, 10, 100, 100, .5],
         >>>     [50, 50, 100, 100, 1.0],
         >>> ], dtype=np.float32)
-        >>> nms(dets, .5, device=None)
+        >>> print(nms(dets, .5, device=None))
         >>> from clab import xpu_device
-        >>> nms(dets, .5, device=xpu_device.XPU.default_gpu())
+        >>> print(nms(dets, .5, device=xpu_device.XPU.default_gpu()))
     """
 
     if dets.shape[0] == 0:
