@@ -328,6 +328,9 @@ def setup_harness(workers=None):
         'train': YoloVOCDataset(devkit_dpath, split='trainval'),
     }
 
+    # Check that the dataset exists
+    item = datasets['train'][0]
+
     loaders = make_loaders(datasets,
                            train_batch_size=batch_size,
                            other_batch_size=other_batch_size,
@@ -621,6 +624,7 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=trainval3 --workers=8 --gpu=0,1,2,3 --batch_size=64
 
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
+    python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --batch_size=16
     """
     harn = setup_harness()
     harn.run()

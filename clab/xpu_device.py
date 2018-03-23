@@ -501,35 +501,36 @@ def gpu_info():
     return gpus
 
 
-import pytest  # NOQA
+try:
+    import pytest  # NOQA
 
+    class XPUUnitTests(object):
+        @pytest.mark.skipif(torch.cuda.is_available())
+        def test_load():
+            fpath = 'foo.pt'
+            cpu = XPU(None)
+            gpu = XPU(0)
+            gpu_data = gpu.move(torch.FloatTensor([10]))
+            cpu_data = cpu.move(torch.FloatTensor([10]))
+            torch.save(gpu_data, ub.augpath(fpath, 'gpu'))
+            torch.save(cpu_data, ub.augpath(fpath, 'cpu'))
+            gpu_data2 = gpu.load(ub.augpath(fpath, 'cpu'))
+            cpu_data2 = cpu.load(ub.augpath(fpath, 'gpu'))
 
-class XPUUnitTests(object):
+            assert not gpu_data2.is_gpu()
+            assert cpu_data2.is_gpu()
 
-    @pytest.mark.skipif(torch.cuda.is_available())
-    def test_load():
-        fpath = 'foo.pt'
-        cpu = XPU(None)
-        gpu = XPU(0)
-        gpu_data = gpu.move(torch.FloatTensor([10]))
-        cpu_data = cpu.move(torch.FloatTensor([10]))
-        torch.save(gpu_data, ub.augpath(fpath, 'gpu'))
-        torch.save(cpu_data, ub.augpath(fpath, 'cpu'))
-        gpu_data2 = gpu.load(ub.augpath(fpath, 'cpu'))
-        cpu_data2 = cpu.load(ub.augpath(fpath, 'gpu'))
-
-        assert not gpu_data2.is_gpu()
-        assert cpu_data2.is_gpu()
-
-    @pytest.mark.parametrize([None, 0])
-    def test_variable(item):
-        if item is not None:
-            if torch.cuda.is_available:
-                pytest.skip()
-        xpu = XPU(item)
-        data = torch.FloatTensor([0])
-        data = xpu.variables(data)
-        assert isinstance(data, torch.autograd.Variable)
+        @pytest.mark.parametrize([None, 0])
+        def test_variable(item):
+            if item is not None:
+                if torch.cuda.is_available:
+                    pytest.skip()
+            xpu = XPU(item)
+            data = torch.FloatTensor([0])
+            data = xpu.variables(data)
+            assert isinstance(data, torch.autograd.Variable)
+except ImportError:
+    pass
 
 
 if __name__ == '__main__':

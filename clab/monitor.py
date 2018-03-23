@@ -166,7 +166,7 @@ class Monitor(object):
 
     def message(monitor):
         if not monitor.epochs:
-            return 'vloss is unevaluated'
+            return ub.color_text('vloss is unevaluated', 'blue')
         # if monitor.is_improved():
             # message = 'vloss: {:.4f} (new_best)'.format(monitor.best_loss)
 

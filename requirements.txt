@@ -1,3 +1,7 @@
+cffi
+imgaug
+psutil
+
 pygtrie
 numpy
 ubelt
