@@ -493,6 +493,7 @@ def setup_harness(workers=None):
 
     # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
     xpu = xpu_device.XPU.cast('auto')
+    print('xpu = {!r}'.format(xpu))
     harn = fit_harness.FitHarness(
         hyper=hyper, xpu=xpu, loaders=loaders, max_iter=max_epoch,
         workdir=workdir,

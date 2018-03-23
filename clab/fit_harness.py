@@ -87,6 +87,7 @@ class FitHarness(object):
 
         harn.dry = dry
         harn.xpu = xpu_device.XPU.cast(xpu)
+        print('harn.xpu = {!r}'.format(harn.xpu))
 
         harn.workdir = workdir
         harn.train_dpath = None
