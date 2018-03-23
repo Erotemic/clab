@@ -362,8 +362,13 @@ def clean():
     enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.c') )
     enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.c') )
     enqueue(join(repodir, 'clab/models/yolo2/utils/nms/cpu_nms.cpp') )
+
     enqueue(join(repodir, 'clab/models/yolo2/layers/roi_pooling/_ext') )
     enqueue(join(repodir, 'clab/models/yolo2/layers/reorg/_ext') )
+    import glob
+
+    for d in glob.glob(join(repodir, 'clab/models/yolo2/utils/nms/*_nms.*so')):
+        enqueue(d)
 
     for dpath in toremove:
         # print('Removing dpath = {!r}'.format(dpath))

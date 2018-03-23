@@ -41,3 +41,12 @@ def nms(dets, thresh, device=None):
     if device is None:
         return cpu_nms(dets, thresh)
     return gpu_nms(dets, thresh)
+
+
+if __name__ == '__main__':
+    r"""
+    CommandLine:
+        python -m xdoctest clab.models.yolo2.utils.nms_wrapper all
+    """
+    import xdoctest
+    xdoctest.doctest_module(__file__)
