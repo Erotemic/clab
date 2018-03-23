@@ -6,7 +6,6 @@ Currently setup is a bit hacked.
 pip install cffi
 python setup.py build_ext --inplace
 """
-from os.path import exists
 from clab.util import profiler  # NOQA
 import psutil
 import torch
@@ -620,6 +619,9 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=trainval2
 
     python ~/code/clab/examples/yolo_voc.py train --nice=trainval3 --workers=8 --gpu=0,1,2,3 --batch_size=64
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
+    python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --cpu --batch_size=16
     """
     harn = setup_harness()
     harn.run()

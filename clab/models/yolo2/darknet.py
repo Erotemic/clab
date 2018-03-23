@@ -868,7 +868,7 @@ def demo_weights():
     import ubelt as ub
     import os
     url = 'https://data.kitware.com/api/v1/item/5ab13b0e8d777f068578e251/download'
-    dpath = ub.ensure_app_cache_dir('clab')
+    dpath = ub.ensure_app_cache_dir('clab/yolo_v2')
     fname = 'yolo-voc.weights.pt'
     dest = os.path.join(dpath, fname)
     if not os.path.exists(dest):
@@ -884,7 +884,7 @@ def initial_weights():
     import ubelt as ub
     import os
     url = 'https://data.kitware.com/api/v1/file/5ab513438d777f068578f1d0/download'
-    dpath = ub.ensure_app_cache_dir('clab')
+    dpath = ub.ensure_app_cache_dir('clab/yolo_v2')
     fname = 'darknet19.weights.npz'
     dest = os.path.join(dpath, fname)
     if not os.path.exists(dest):
@@ -896,14 +896,18 @@ def initial_weights():
 
     # convert to torch weights
     npz_fpath = dest
-    import os.path
     torch_fpath = ub.augpath(npz_fpath, ext='.pt')
     if not os.path.exists(torch_fpath):
         # hack to transform initial state
         model = Darknet19(num_classes=20)
         model.load_from_npz(npz_fpath, num_conv=18)
         torch.save(model.state_dict(), torch_fpath)
-    return npz_fpath
+
+    # from clab import xpu_device
+    # xpu = xpu_device.XPU('gpu')
+    # xpu.load(torch_fpath)
+    # torch.load(torch_fpath)
+    return torch_fpath
 
 
 def demo_image(inp_size):
