@@ -74,7 +74,7 @@ class grad_context(object):
 
 
 class FitHarness(object):
-    def __init__(harn, hyper=None, xpu=None, loaders=None, workdir=None,
+    def __init__(harn, hyper=None, xpu='cpu', loaders=None, workdir=None,
                  nice=None, dry=False, max_keys=[], min_keys=['loss'],
                  max_iter=1000):
 
@@ -96,7 +96,9 @@ class FitHarness(object):
             assert ValueError('must sepcify loaders')
         else:
             harn.loaders = loaders
-        harn.datasets = {key: val.dataset for key, val in harn.loaders.items()}
+        if harn.loaders:
+            harn.datasets = {
+                key: val.dataset for key, val in harn.loaders.items()}
 
         harn.hyper = hyper
 
@@ -412,7 +414,6 @@ class FitHarness(object):
 
                 if harn.check_interval('cleanup', harn.epoch):
                     harn.cleanup_snapshots()
-                    pass
 
                 harn.main_prog.update(1)
 
@@ -445,14 +446,37 @@ class FitHarness(object):
         snapshots = harn.prev_snapshots()
         epochs = [parse.parse('{}_epoch_{num:d}.pt', path).named['num']
                   for path in snapshots]
-        num_keep_recent = 10
-        num_keep_best = 10
 
-        if harn.monitor:
-            best_epochs = harn.monitor.best_epochs()
-            ub.oset().intersection(epochs)
+        def _epochs_to_remove(epochs):
+            """
+            Doctest:
+                >>> harn = FitHarness()
+                >>> rng = np.random.RandomState(0)
+                >>> for epoch in range(200):
+                >>>     harn.monitor.update(epoch, {'loss': rng.rand(),
+                >>>                                 'miou': rng.rand()})
+                >>> epochs = list(range(0, 200, 4))
+            """
+            num_keep_recent = 10
+            num_keep_best = 10
 
-        recent = epochs[:-num_keep_recent]
+            keep = set()
+
+            recent = epochs[-num_keep_recent:]
+            keep.update(recent)
+
+            if harn.monitor:
+                best_epochs = harn.monitor.best_epochs()
+                best = ub.oset(best_epochs).intersection(epochs)
+                keep.update(best[-num_keep_best:])
+
+            to_remove = set(epochs) - keep
+            return to_remove
+
+        epoch_to_fpath = dict(zip(epochs, snapshots))
+        to_remove = _epochs_to_remove(epochs)
+        for fpath in ub.take(epoch_to_fpath, to_remove):
+            ub.delete(fpath)
 
     def _step_scheduler(harn, improved):
         """
