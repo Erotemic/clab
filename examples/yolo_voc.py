@@ -621,7 +621,6 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=trainval3 --workers=8 --gpu=0,1,2,3 --batch_size=64
 
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
-    python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --cpu --batch_size=16
     """
     harn = setup_harness()
     harn.run()

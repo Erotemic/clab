@@ -36,8 +36,8 @@ class Monitor(object):
         # Keep track of which metrics we want to maximize / minimize
         monitor.min_keys = min_keys
         monitor.max_keys = max_keys
-        print('monitor.min_keys = {!r}'.format(monitor.min_keys))
-        print('monitor.max_keys = {!r}'.format(monitor.max_keys))
+        # print('monitor.min_keys = {!r}'.format(monitor.min_keys))
+        # print('monitor.max_keys = {!r}'.format(monitor.max_keys))
 
         monitor.best_raw_metrics = None
         monitor.best_smooth_metrics = None
@@ -183,3 +183,44 @@ class Monitor(object):
         else:
             message = ub.color_text(message, 'yellow')
         return message
+
+    def best_epochs(monitor):
+        rankings = {}
+
+        def _rank(key, metrics, type='min'):
+            values = [m[key] for m in metrics]
+            sortx = np.argsort(values)
+            if type == 'max':
+                sortx = np.argsort(values)[::-1]
+            elif type == 'min':
+                sortx = np.argsort(values)
+            else:
+                raise KeyError(type)
+            ranked_epochs = np.array(monitor.epochs)[sortx]
+            return ranked_epochs
+
+        for key in monitor.min_keys:
+            rankings[key + '_raw'] = _rank(key, monitor.raw_metrics, 'min')
+            rankings[key + '_smooth'] = _rank(key, monitor.smooth_metrics, 'min')
+
+        for key in monitor.max_keys:
+            rankings[key + '_raw'] = _rank(key, monitor.raw_metrics, 'max')
+            rankings[key + '_smooth'] = _rank(key, monitor.smooth_metrics, 'max')
+
+        for key in monitor.max_keys:
+            values = [m[key] for m in monitor.raw_metrics]
+            sortx = np.argsort(values)[::-1]
+            ranked_epochs = np.array(monitor.epochs)[sortx]
+            rankings[key] = ranked_epochs
+
+        # borda-like weighted rank aggregation.
+        # probably could do something better.
+        epoch_to_weight = ub.ddict(lambda: 0)
+        for key, ranking in rankings.items():
+            # weights = np.linspace(0, 1, num=len(ranking))[::-1]
+            weights = np.logspace(0, 2, num=len(ranking))[::-1] / 100
+            for epoch, w in zip(ranking, weights):
+                epoch_to_weight[epoch] += w
+
+        agg_ranking = ub.argsort(epoch_to_weight)[::-1]
+        return agg_ranking

@@ -29,6 +29,7 @@ TODO:
             [ ] ...
         [ ] detection
             [ ] ...
+            [ ] VOC2007
         [ ] identification
             [ ] 1-vs-all
             [ ] N-vs-all
@@ -126,11 +127,15 @@ def train_mnist():
             TensorType = getattr(torch, TensorType.split('.')[1])
         return TensorType(tensor.numpy().take(indices, axis=axis))
 
-    vali_dset.train_data   = _torch_take(learn_dset.train_data, valid_idx, axis=0)
-    vali_dset.train_labels = _torch_take(learn_dset.train_labels, valid_idx, axis=0).long()
+    vali_dset.train_data   = _torch_take(learn_dset.train_data, valid_idx,
+                                         axis=0)
+    vali_dset.train_labels = _torch_take(learn_dset.train_labels, valid_idx,
+                                         axis=0).long()
 
-    train_dset.train_data   = _torch_take(learn_dset.train_data, train_idx, axis=0)
-    train_dset.train_labels = _torch_take(learn_dset.train_labels, train_idx, axis=0).long()
+    train_dset.train_data   = _torch_take(learn_dset.train_data, train_idx,
+                                          axis=0)
+    train_dset.train_labels = _torch_take(learn_dset.train_labels, train_idx,
+                                          axis=0).long()
 
     datasets = {
         'train': train_dset,
@@ -176,6 +181,8 @@ def train_mnist():
     if xpu.is_gpu():
         data_kw.update({'num_workers': 6, 'pin_memory': True})
     for tag in ['train', 'vali', 'test']:
+        if tag not in datasets:
+            continue
         dset = datasets[tag]
         shuffle = tag == 'train'
         data_kw_ = data_kw.copy()
@@ -184,8 +191,6 @@ def train_mnist():
         loader = torch.utils.data.DataLoader(dset, shuffle=shuffle,
                                              **data_kw_)
         loaders[tag] = loader
-
-    workdir = os.path.expanduser('~/data/work/mnist/')
 
     harn = clab.fit_harness.FitHarness(
         xpu=xpu, hyper=hyper, loaders=loaders, dry=dry,
@@ -199,9 +204,11 @@ def train_mnist():
         # ignore_label = datasets['train'].ignore_label
         # labels = datasets['train'].task.labels
         label = labels[0]
-        metrics_dict = clab.metrics._clf_metrics(output, label, all_labels=all_labels)
+        metrics_dict = clab.metrics._clf_metrics(output, label,
+                                                 all_labels=all_labels)
         return metrics_dict
 
+    workdir = ub.truepath('~/data/work/mnist/')
     train_dpath = harn.setup_dpath(workdir, hashed=True)
     print('train_dpath = {!r}'.format(train_dpath))
 

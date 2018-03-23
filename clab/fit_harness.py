@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function, unicode_literals
+import parse
 import numpy as np
 import sys
 import shutil
@@ -27,8 +28,8 @@ logger = getLogger(__name__)
 print = util.protect_print(logger.info)
 
 Prog = tqdm.tqdm
-# import functools
-# Prog = functools.partial(ub.ProgIter, verbose=3)
+import functools
+Prog = functools.partial(ub.ProgIter, verbose=1)
 
 
 def number_of_parameters(model, trainable=True):
@@ -128,7 +129,8 @@ class FitHarness(object):
             'vali': 1,
             'test': 1,
 
-            'snapshot': 10,
+            'snapshot': 1,
+            'cleanup': 1,
         }
         harn.config = {
             'show_prog': True,
@@ -311,10 +313,20 @@ class FitHarness(object):
         lr_str = ','.join(['{:.2g}'.format(lr) for lr in lrs])
         desc = 'epoch lr:{} │ {}'.format(lr_str, harn.monitor.message())
         harn.debug(desc)
-        harn.main_prog.set_description(desc)
-        harn.main_prog.set_postfix(
-            {'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]})
-        harn.main_prog.refresh()
+        harn.main_prog.set_description(desc, refresh=False)
+        if isinstance(harn.main_prog, ub.ProgIter):
+            if not harn.main_prog.started:
+                # harn.main_prog.ensure_newline()
+                harn.main_prog.clearline = False
+                harn.main_prog.freq = 1
+                harn.main_prog.adjust = False
+                harn.main_prog.begin()
+        else:
+            harn.main_prog.set_postfix(
+                {'wall': time.strftime('%H:%M') + ' ' + time.tzname[0]},
+                refresh=False)
+            # Update TQDM, but let ProgIter refresh itself
+            harn.main_prog.refresh()
 
     @profiler.profile
     def run(harn):
@@ -395,6 +407,10 @@ class FitHarness(object):
                     if harn.check_interval('snapshot', harn.epoch):
                         save_path = harn.save_snapshot()
 
+                if harn.check_interval('cleanup', harn.epoch):
+                    harn.cleanup_snapshots()
+                    pass
+
                 harn.main_prog.update(1)
 
                 # check for termination
@@ -418,6 +434,22 @@ class FitHarness(object):
         # harn.log('Best epochs / loss: {}'.format(
         #     ub.repr2(list(harn.monitor.memory), nl=1)))
         harn.log('Exiting harness.')
+
+    def cleanup_snapshots(harn):
+        """
+        Remove old snapshots
+        """
+        snapshots = harn.prev_snapshots()
+        epochs = [parse.parse('{}_epoch_{num:d}.pt', path).named['num']
+                  for path in snapshots]
+        num_keep_recent = 10
+        num_keep_best = 10
+
+        if harn.monitor:
+            best_epochs = harn.monitor.best_epochs()
+            ub.oset().intersection(epochs)
+
+        recent = epochs[:-num_keep_recent]
 
     def _step_scheduler(harn, improved):
         """
@@ -936,7 +968,6 @@ def get_snapshot(train_dpath, epoch='recent'):
     """
     Get a path to a particular epoch or the most recent one
     """
-    import parse
     snapshots = sorted(glob.glob(train_dpath + '/*/_epoch_*.pt'))
     if epoch is None:
         epoch = 'recent'
