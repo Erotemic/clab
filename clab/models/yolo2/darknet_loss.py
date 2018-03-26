@@ -106,16 +106,14 @@ class DarknetLoss(BaseLossWithCudaState):
         criterion.coord_scale = coord_scale
         criterion.iou_thresh = iou_thresh
 
-        if workers is None:
-            criterion.pool = None
-        else:
-            criterion.pool = Pool(processes=workers)
-
         criterion.anchors = np.ascontiguousarray(anchors, dtype=np.float)
-        criterion.mse = nn.MSELoss(size_average=False)
+        criterion.cls_mse = nn.MSELoss(size_average=False)
+        criterion.iou_mse = nn.MSELoss(size_average=False)
+        criterion.box_mse = nn.MSELoss(size_average=False)
 
     def forward(criterion, aoff_pred, iou_pred, prob_pred,
-                gt_boxes=None, gt_classes=None, gt_weights=None, inp_size=None):
+                gt_boxes=None, gt_classes=None, gt_weights=None,
+                inp_size=None):
         """
         Args:
             aoff_pred (torch.FloatTensor): anchor bounding box offsets
@@ -137,6 +135,11 @@ class DarknetLoss(BaseLossWithCudaState):
 
         device = criterion.get_device()
 
+        def logit(p):
+            return -np.log((1 / p) - 1)
+
+        logit(_aoffs[..., 0:2])
+
         aoff_true = np_to_variable(_aoffs, device)
         iou_true  = np_to_variable(_ious, device)
         onehot_class_true = np_to_variable(_classes, device)
@@ -146,19 +149,24 @@ class DarknetLoss(BaseLossWithCudaState):
         class_mask = np_to_variable(_class_mask, device,
                                     dtype=torch.FloatTensor)
 
-        num_boxes = sum(len(boxes) for boxes in gt_boxes)
-
         aoff_mask = aoff_mask.expand_as(aoff_true)
         class_mask = class_mask.expand_as(prob_pred)
 
-        criterion.bbox_loss = criterion.mse(
-            aoff_pred * aoff_mask, aoff_true * aoff_mask) / num_boxes
+        criterion.bbox_loss = criterion.box_mse(
+            aoff_pred * aoff_mask, aoff_true * aoff_mask)
 
-        criterion.iou_loss = criterion.mse(
-            iou_pred * iou_mask, iou_true * iou_mask) / num_boxes
+        criterion.iou_loss = criterion.iou_mse(
+            iou_pred * iou_mask, iou_true * iou_mask)
 
-        criterion.cls_loss = criterion.mse(
-            prob_pred * class_mask, onehot_class_true * class_mask) / num_boxes
+        criterion.cls_loss = criterion.cls_mse(
+            prob_pred * class_mask, onehot_class_true * class_mask)
+
+        # Is this right? What if there are no boxes?
+        # Shouldn't we divide by number of predictions or nothing?
+        # num_boxes = sum(len(boxes) for boxes in gt_boxes)
+        # criterion.bbox_loss /= num_boxes
+        # criterion.iou_loss /= num_boxes
+        # criterion.cls_loss /= num_boxes
 
         total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
         return total_loss
@@ -205,13 +213,10 @@ class DarknetLoss(BaseLossWithCudaState):
 
         args = zip(aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
                    gt_weights_np)
-        args = list(args)
+        # args = list(args)
         # data = args[0]
 
-        if criterion.pool:
-            targets = criterion.pool.map(func, args)
-        else:
-            targets = list(map(func, args))
+        targets = list(map(func, args))
 
         _aoffs = np.stack(tuple((row[0] for row in targets)))
         _ious = np.stack(tuple((row[1] for row in targets)))
@@ -249,7 +254,7 @@ def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
     Example:
         >>> from clab.models.yolo2.darknet_loss import *
         >>> inp_size = (96, 96)
-        >>> n_classes = 20
+        >>> n_classes = 3
         >>> data, anchors = demo_npdata(inp_size=inp_size, C=n_classes)
         >>> object_scale = 5.0
         >>> noobject_scale = 1.0
@@ -293,28 +298,31 @@ def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
     # scale bounding boxes into absolute input image space (tlbr format)
     bbox_norm_pred = yolo_utils.yolo_to_bbox(
         aoff_pred_np[None, :], anchors, out_h, out_w)[0]
-    bbox_abs_pred = scale_bbox(bbox_norm_pred.copy(), in_w, in_h)
+    bbox_abs_pred = scale_bbox(bbox_norm_pred, in_w, in_h)
 
     # FIND IOU BETWEEN ALL PAIRS OF (PRED x TRUE) BOXES
     # -------------------------------------------------
     # for each cell, compare predicted_bbox and gt_bbox
     ious, best_ious = _pred_true_overlap(bbox_abs_pred, gt_boxes_np)
 
-    # ASSIGN EACH TRUE BOX TO AN ANCHOR
-    # -----------------------------------
+    # ASSIGN EACH TRUE BOX TO A GRID CELL AND ANCHOR BOX
+    # --------------------------------------------------
     # for each gt boxes, match the best anchor
     # This makes that anchor responsible for a particular groundtruth
-    gt_anchor_inds = _assign_gt_anchors(gt_boxes_np, anchors, inp_size, out_size)
-
-    # ASSIGN EACH TRUE BOX TO A GRID CELL
-    # -----------------------------------
     # Transform groundtruth from input coordinates to relative output
     # coordinates and locate the cell it should be relative to
-    gt_cell_inds, target_xywh = _transform_gt_coords(gt_boxes_np, inp_size,
-                                                     out_size)
+    gt_aoff, gt_anchor_inds, gt_cell_inds = _bbox_to_yolo_flat(gt_boxes_np,
+                                                               anchors,
+                                                               inp_size,
+                                                               out_size)
 
     # POPULATE OUTPUT
     # -----------------
+
+    # original yolo options that we hard code in to help make a correspondence
+    # between the original loss function and this one.
+    RESCORE = True
+    # Ignore BACKGROUND sections it is 0 for voc.cfg in darknet
 
     # Construct data corresponding to prediction shapes and populate items
     # corresponding with gt-assignments to positive labels and everything else
@@ -347,45 +355,53 @@ def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
 
     # NOTE: other code expects offsets to be from the top left
     # corner of a grid cell. Should (0, 0) be the center?
-    # _aoffs[:, :, 0:2] = 0.5  # cell center in relative output coordinates
+    _aoffs[:, :, 0:2] = 0.5  # cell center in relative output coordinates
     _aoffs[:, :, 2:4] = 1.0  # size of one cell in relative output coords
 
     # Flags that denotes if the prediction does not overlap a real object
     noobj_flags = best_ious < iou_thresh
-    iou_penalty = 0 - iou_pred_np[noobj_flags]
-    _iou_mask[noobj_flags] = noobject_scale * iou_penalty
+    _iou_mask[noobj_flags] = noobject_scale
+
+    # iou_penalty = 0 - iou_pred_np[noobj_flags]
+    # _iou_mask[noobj_flags] = noobject_scale * iou_penalty
 
     # HANDLE ASSIGNED OBJECT CASES
     # ----------------------------
+    # Place the flat groundtruth with cell and anchor locations
+    # into the dense structure corresponding with the network predictions.
 
-    # ious.shape = (n_pred=(n_cells * n_anchors), n_real)
+    # See:
+    # https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L158
+
+    # TODO / FIXME: What happens when more than one class is assigned to the
+    # same anchor box? Does real YOLO do anything special there?
+
     ious_reshaped = ious.reshape([n_cells, n_anchors, n_real])
-    for gt_idx, cell_ind in enumerate(gt_cell_inds):
+    for gt_idx, cell_idx in enumerate(gt_cell_inds):
         # Ignore groundtruth outside of image bounds
-        if cell_ind >= n_cells or cell_ind < 0:
+        if cell_idx >= n_cells or cell_idx < 0:
             continue
 
-        a = gt_anchor_inds[gt_idx]
+        ax = gt_anchor_inds[gt_idx]
         gt_weight = gt_weights_np[gt_idx]
-
-        # Convert the centered output bounding box to yolo format (where w/h is
-        # a multiple of the assigned anchor)
-        gt_xywh = target_xywh[gt_idx]
-        gt_aoff = gt_xywh.copy()
-        gt_aoff[..., 2:4] /= anchors[a]
 
         # Populate mask for assigned object loss
         # 0 ~ 1, should be close to 1
-        pred_iou = iou_pred_np[cell_ind, a, :]
+        # pred_iou = iou_pred_np[cell_idx, ax, :]
 
-        _ious[cell_ind, a, :] = ious_reshaped[cell_ind, a, gt_idx]
-        _iou_mask[cell_ind, a, :] = object_scale * (1 - pred_iou) * gt_weight
+        # _iou_mask[cell_idx, ax, :] = object_scale * (1 - pred_iou) * gt_weight
+        if RESCORE:
+            _ious[cell_idx, ax, :] = ious_reshaped[cell_idx, ax, gt_idx]
+        else:
+            _ious[cell_idx, ax, :] = 1
 
-        _aoffs[cell_ind, a, :] = gt_aoff
-        _aoff_mask[cell_ind, a, :] = coord_scale * gt_weight
+        _iou_mask[cell_idx, ax, :] = object_scale * gt_weight
 
-        _classes[cell_ind, a, gt_classes_np[gt_idx]] = 1.
-        _class_mask[cell_ind, a, :] = class_scale * gt_weight
+        _aoffs[cell_idx, ax, :] = gt_aoff[gt_idx]
+        _aoff_mask[cell_idx, ax, :] = coord_scale * gt_weight
+
+        _classes[cell_idx, ax, gt_classes_np[gt_idx]] = 1.
+        _class_mask[cell_idx, ax, :] = class_scale * gt_weight
 
     return _aoffs, _ious, _classes, _aoff_mask, _iou_mask, _class_mask
 
@@ -413,7 +429,7 @@ def _pred_true_overlap(bbox_abs_pred, gt_boxes_np):
         >>> aoff_pred_np = data[0]
         >>> bbox_norm_pred = yolo_utils.yolo_to_bbox(
         >>>     aoff_pred_np[None, :], anchors, H, W)[0]
-        >>> bbox_abs_pred = scale_bbox(bbox_norm_pred.copy(), *inp_size)
+        >>> bbox_abs_pred = scale_bbox(bbox_norm_pred, *inp_size)
         >>> ious, best_ious = _pred_true_overlap(
         >>>     bbox_abs_pred, gt_boxes_np)
         >>> print('ious = {!r}'.format(ious))
@@ -438,69 +454,35 @@ def _pred_true_overlap(bbox_abs_pred, gt_boxes_np):
     return ious, best_ious
 
 
-def _assign_gt_anchors(gt_boxes_np, anchors, inp_size, out_size):
+def _bbox_to_yolo_flat(gt_boxes_np, anchors, inp_size, out_size):
     """
-    For each groundtruth box, assign an anchor to be responsible for it
-
-    Args:
-        gt_boxes_np : in absolute input coordinates (tlbr format)
-        anchors : width / height of anchor boxes in output coordinates
-
-    Returns:
-        ndarray: maps each gt index to an anchor index.
-
-    Example:
-        >>> from clab.models.yolo2.darknet_loss import *
-        >>> A, H, W = 5, 3, 3
-        >>> inp_size = (96, 96)
-        >>> out_size = (H, W)
-        >>> data, anchors = demo_npdata(A, H, W, inp_size)
-        >>> gt_boxes_np = data[2]
-        >>> gt_anchor_inds = _assign_gt_anchors(gt_boxes_np, anchors, inp_size,
-        >>>                                  out_size)
-        >>> print('gt_anchor_inds = {!r}'.format(gt_anchor_inds))
-    """
-    # for each gt boxes, match the best anchor
-    # Input pixel w/h and output grid w/h
-    in_w, in_h = map(float, inp_size)
-    out_w, out_h = map(float, out_size)
-
-    # Transform groundtruth into absolute output coordinates
-    gt_absout_boxes = scale_bbox(
-        gt_boxes_np.copy(), sf_x=(out_w / in_w), sf_y=(out_h / in_h))
-
-    # each anchor corresponds to one of $A$ predictors in the grid cell.
-    # we want each predictor to be responsible for only one ground truth object
-    anchor_ious = yolo_utils.anchor_intersections(anchors, gt_absout_boxes)
-    gt_anchor_inds = np.argmax(anchor_ious, axis=0)
-    return gt_anchor_inds
-
-
-def _transform_gt_coords(gt_boxes_np, inp_size, out_size):
-    """
-    Transforms tlbr groundtruth boxes into a coordinates compatible with YOLO
-    output.
+    Transforms tlbr groundtruth boxes into YOLO anchor box offsets.
 
     Args:
         gt_boxes_np (ndarray): [N, 4] tlbr groundtruth boxes in input
             coordinates for a single item in a batch.
 
     Returns:
-        tuple: gt_cell_inds, target_xywh - cell indices corresponding to
-            xywh bounding boxes with xy positions relative to the center of
-            their cells and wh relative to output coordinates.
+        tuple:
+            gt_cell_inds - cell indices corresponding to xywh bounding boxes
+            gt_aoff - with xy positions relative to the center of their
+                cells and wh relative to output coordinates.
 
     Example:
         >>> from clab.models.yolo2.darknet_loss import *
         >>> A, H, W = 5, 3, 3
         >>> inp_size = (96, 96)
         >>> out_size = (H, W)
-        >>> data, anchors = demo_npdata(A, H, W, inp_size)
+        >>> data, anchors = demo_npdata(A, H, W, inp_size, rng=1)
         >>> gt_boxes_np = data[2]
-        >>> gt_cell_inds, target_xywh = _transform_gt_coords(gt_boxes_np,
-        >>>                                                   inp_size, out_size)
+        >>> _yf = _bbox_to_yolo_flat(gt_boxes_np, anchors, inp_size, out_size)
+        >>> gt_aoff, gt_anchor_inds, gt_cell_inds = _yf
         >>> print('gt_cell_inds = {}'.format(gt_cell_inds))
-        >>> print('target_xywh = {}'.format(target_xywh))
+        >>> print('gt_aoff = {}'.format(gt_aoff))
+        >>> boxes_out = yolo_utils.flat_yolo_to_bbox_py(gt_aoff, gt_anchor_inds,
+        >>>                                             gt_cell_inds, anchors,
+        >>>                                             out_size, inp_size)
+        >>> assert np.allclose(boxes_out, gt_boxes_np)
     """
     # locate the cell of each gt_box
     # determine which cell each ground truth box belongs to
@@ -513,36 +495,53 @@ def _transform_gt_coords(gt_boxes_np, inp_size, out_size):
     cell_w = in_w / out_w
     cell_h = in_h / out_h
 
-    x1 = gt_boxes_np[:, 0]
-    y1 = gt_boxes_np[:, 1]
-    x2 = gt_boxes_np[:, 2]
-    y2 = gt_boxes_np[:, 3]
+    # Scale transform from input to output coordinates
+    sf_x, sf_y = (out_w / in_w), (out_h / in_h)
 
-    # Get centers of the groundtruth boxes in output coordinates
+    # Centers of the groundtruth boxes in output coordinates
+    x1, y1 = gt_boxes_np[:, 0], gt_boxes_np[:, 1]
+    x2, y2 = gt_boxes_np[:, 2], gt_boxes_np[:, 3]
     cx = (x1 + x2) * 0.5 / cell_w
     cy = (y1 + y2) * 0.5 / cell_h
 
-    # Get width / height of groundtruth bounding boxes (input coordinates)
-    gt_width  = x2 - x1
-    gt_height = y2 - y1
+    # Groundtruth width / height (in input coordinates)
+    gt_width_in  = x2 - x1
+    gt_height_in = y2 - y1
+
+    # Groundtruth width / height (in output coordinates)
+    gt_width_out = gt_width_in * sf_x
+    gt_height_out = gt_height_in * sf_y
+
+    # each anchor corresponds to one of $A$ predictors in the grid cell.
+    # we want each predictor to be responsible for only one ground truth object
+    gt_boxes_out = scale_bbox(gt_boxes_np, sf_x, sf_y)
+    anchor_ious = yolo_utils.anchor_intersections(anchors, gt_boxes_out)
+    gt_anchor_inds = np.argmax(anchor_ious, axis=0)
 
     # Lookup indices of which cell the groundtruth belongs to
     gt_cell_inds = np.floor(cy) * out_w + np.floor(cx)
     gt_cell_inds = gt_cell_inds.astype(np.int)
 
     # Translate each groundtruth box to be relative to its respective cell
-    # Target boxes are in relative (to cell position) output coordinates.
-    target_xywh = np.empty(gt_boxes_np.shape, dtype=np.float)
+    # Transform w/h to be a multiple of the assigned anchor size.
+    gt_anchors = anchors[gt_anchor_inds]
+    gt_exp_width = gt_width_out / gt_anchors.T[0]
+    gt_exp_height = gt_height_out / gt_anchors.T[1]
 
-    target_xywh[:, 0] = cx - np.floor(cx)  # cx
-    target_xywh[:, 1] = cy - np.floor(cy)  # cy
-    target_xywh[:, 2] = (gt_width / in_w) * out_w  # tw
-    target_xywh[:, 3] = (gt_height / in_h) * out_h  # th
-    return gt_cell_inds, target_xywh
+    # Convert the centered output bounding box to yolo format (where w/h is
+    # a multiple of the assigned anchor)
+    gt_aoff = np.empty(gt_boxes_np.shape, dtype=np.float)
+    gt_aoff[:, 0] = cx - np.floor(cx)  # cx
+    gt_aoff[:, 1] = cy - np.floor(cy)  # cy
+    gt_aoff[:, 2] = gt_exp_width  # tw
+    gt_aoff[:, 3] = gt_exp_height  # th
+
+    return gt_aoff, gt_anchor_inds, gt_cell_inds
 
 
 def scale_bbox(bboxes, sf_x, sf_y):
     """ works with tlbr or xywh """
+    bboxes = bboxes.copy()
     bboxes[..., 0:4:2] *= sf_x
     bboxes[..., 1:4:2] *= sf_y
     return bboxes

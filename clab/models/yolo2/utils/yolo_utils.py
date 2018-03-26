@@ -157,6 +157,10 @@ def yolo_to_bbox(aoff_pred, anchors, H, W):
             anchors. The coordinates are specified such that (1, 1) is the
             bottom right corner of the image and (0, 0) is the top left.
 
+    Notes:
+        YOLO FORMAT SPECIFIES bbox x and y as the CENTER of the bbox
+        in relative coords
+
     Example:
         >>> from clab.models.yolo2 import darknet
         >>> B, W, H, A = 4, 3, 3, 5
@@ -193,19 +197,19 @@ def yolo_to_bbox_py(aoff_pred, anchors, H, W):
             ind = row * W + col
             for a in range(num_anchors):
                 # Relative offsets produced by YOLO
-                # tx and ty are in relative normalized coordinates
-                # tw and th are multiples of anchor box scales
-                tx, ty, tw, th = aoff_pred[b, ind, a]
+                # sig_tx and sig_ty are in relative normalized coordinates
+                # exp_tw and th are multiples of anchor box scales
+                sig_tx, sig_ty, exp_tw, exp_th = aoff_pred[b, ind, a]
 
                 anchor_w, anchor_h = anchors[a]
 
                 # Center of the grid cell for this anchored prediction.
-                cx = (col + tx)
-                cy = (row + ty)
+                cx = (col + sig_tx)
+                cy = (row + sig_ty)
 
                 # The w/h are specified as multiples of anchor w/h
-                half_bw = (tw * anchor_w * 0.5)
-                half_bh = (th * anchor_h * 0.5)
+                half_bw = (exp_tw * anchor_w * 0.5)
+                half_bh = (exp_th * anchor_h * 0.5)
 
                 # In normalized coordinates i.e. (0, 0, 1, 1) = img_tlbr
                 bbox_out[b, ind, a, 0] = cx - half_bw
@@ -218,6 +222,50 @@ def yolo_to_bbox_py(aoff_pred, anchors, H, W):
     bbox_out[..., 0::2] /= W
     bbox_out[..., 1::2] /= H
     return bbox_out
+
+
+def flat_yolo_to_bbox_py(gt_aoff, gt_anchor_inds, gt_cell_inds, anchors,
+                         out_size, inp_size):
+    """
+    Inverts _bbox_to_yolo_flat. Alternative form of yolo_to_bbox_py
+    """
+    W, H = out_size
+    H = int(H)
+    W = int(W)
+    boxes_out = []
+
+    for aoff, anchor_idx, cell_idx in zip(gt_aoff, gt_anchor_inds, gt_cell_inds):
+        sig_tx, sig_ty, exp_tw, exp_th = aoff
+
+        row = cell_idx // W
+        col = cell_idx - row * W
+
+        anchor_w, anchor_h = anchors[anchor_idx]
+
+        # Center of the grid cell for this anchored prediction.
+        cx = (col + sig_tx)
+        cy = (row + sig_ty)
+
+        # The w/h are specified as multiples of anchor w/h
+        half_bw = (exp_tw * anchor_w * 0.5)
+        half_bh = (exp_th * anchor_h * 0.5)
+
+        # In normalized coordinates i.e. (0, 0, 1, 1) = img_tlbr
+        tlbr = [
+            cx - half_bw,
+            cy - half_bh,
+            cx + half_bw,
+            cy + half_bh,
+        ]
+        boxes_out.append(tlbr)
+
+    boxes_out = np.array(boxes_out).reshape(-1, 4)
+
+    # Normalize the final predictions such that the image coordinates span from
+    # (0, 0) in the top left to (1, 1) in the bottom right.
+    boxes_out[..., 0::2] *= (inp_size[0] / W)
+    boxes_out[..., 1::2] *= (inp_size[1] / H)
+    return boxes_out
 
 
 def to_tlbr(xywh):

@@ -556,10 +556,10 @@ def setup_harness(workers=None):
         # darknet criterion needs to know the input image shape
         inp_size = tuple(inputs[0].shape[-2:])
 
-        bbox_pred, iou_pred, prob_pred = outputs
+        aoff_pred, iou_pred, prob_pred = outputs
         gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
 
-        loss = harn.criterion(bbox_pred, iou_pred, prob_pred, gt_boxes,
+        loss = harn.criterion(aoff_pred, iou_pred, prob_pred, gt_boxes,
                               gt_classes, gt_weights=gt_weights,
                               inp_size=inp_size)
         return outputs, loss
@@ -597,7 +597,7 @@ def setup_harness(workers=None):
         """
         # Accumulate relevant outputs to measure
         gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
-        # bbox_pred, iou_pred, prob_pred = outputs
+        # aoff_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
         inp_size = inputs[0].shape[-2:][::-1]
 

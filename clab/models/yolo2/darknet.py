@@ -220,25 +220,34 @@ class Darknet19(nn.Module):
             If the cell is offset from the top left corner of the image by (cx,
             cy) and the bounding box prior has width and height pw, ph, then
             the predictions correspond to:
+
                 bx = σ(tx) + cx
                 by = σ(ty) + cy
                 bw = pw * exp(tw)
                 bh = ph * exp(th)
                 Pr(object) ∗ IOU(b, object) = σ(to)
+
+            Note:
+                bx, by is the center of the bounding box
+                bw, bh are factors of the w/h of the associated anchor
         """
 
-        # Anchor xy offset predictions are relative to the top left corner of
-        # the grid cell for which they were predicted in output coordinates.
-        xy_sig_pred = F.sigmoid(final[:, :, :, 0:2])
+        # Compute real values of tx, ty, tw, th from paper
+        raw_aoff_pred = final[:, :, :, 0:2]
+
+        # Anchor xy offset predictions of the CENTER of the bbox are relative
+        # to the corner of the grid cell for which they were predicted in
+        # output coordinates.
+        center_xy_sig_pred = F.sigmoid(raw_aoff_pred[:, :, :, 0:2])
 
         # Anchor wh preedictions are multiplicitive factors of the
         # anchor width / height.
-        wh_exp_pred = torch.exp(final[:, :, :, 2:4])
+        wh_exp_pred = torch.exp(raw_aoff_pred[:, :, :, 2:4])
 
         # Stack xy addative and wh multiplicative offsets into aoff format
-        aoff_pred = torch.cat([xy_sig_pred, wh_exp_pred], dim=3)
+        aoff_pred = torch.cat([center_xy_sig_pred, wh_exp_pred], dim=3)
 
-        # Predict IOU
+        # Predict IOU: sigma(to)
         iou_pred = F.sigmoid(final[:, :, :, 4:5])
 
         # TODO: do we do heirarchy stuff here?
@@ -259,6 +268,8 @@ class Darknet19(nn.Module):
         Args:
             aoff_pred (ndarray): [B, HxW, A, 4]
                 anchor offsets in the format (sig(x), sig(y), exp(w), exp(h))
+                note: in the aoff format x and y are centers of the box
+                and wh represenets multiples of the anchor w/h
 
             iou_pred (ndarray): [B, HxW, A, 1]
                 predicted iou (is this the objectness score?)
@@ -356,8 +367,8 @@ class Darknet19(nn.Module):
             probs = prob_pred[bx]
             orig_w, orig_h = orig_sizes[bx]
 
-            # Convert anchored predictions to absolute bounding boxes
-            # in normalized space
+            # Convert anchored predictions to absolute tlbr bounding boxes in
+            # normalized space
             aoffs = np.ascontiguousarray(aoffs, dtype=np.float)
             norm_boxes = yolo_utils.yolo_to_bbox(aoffs, anchors, H, W)[0]
 
@@ -517,11 +528,11 @@ def demo_predictions(B, W, H, A, rng=None):
     from clab import util
     rng = util.ensure_rng(rng)
     # Simulate the final layers
-    final01 = torch.FloatTensor(np.random.rand(B, H * W, A, 2))
-    final23 = torch.FloatTensor(np.random.rand(B, H * W, A, 2))
+    final0123 = torch.FloatTensor(np.random.rand(B, H * W, A, 4))
     final4 = torch.FloatTensor(np.random.rand(B, H * W, A, 1))
-    xy_sig_pred = F.sigmoid(final01)
-    wh_exp_pred = torch.exp(final23)
+    # raw_aoff_pred_ = final0123
+    xy_sig_pred = F.sigmoid(final0123[..., 0:2])
+    wh_exp_pred = torch.exp(final0123[..., 2:4])
     aoff_pred = torch.cat([xy_sig_pred, wh_exp_pred], dim=3)
     iou_pred = F.sigmoid(final4)
     return aoff_pred, iou_pred
