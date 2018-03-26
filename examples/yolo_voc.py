@@ -25,6 +25,7 @@ from clab import monitor
 from clab import nninit
 from clab.lr_scheduler import ListedLR
 from clab.models.yolo2 import darknet
+from clab.models.yolo2 import darknet_loss
 
 
 class YoloVOCDataset(voc.VOCDataset):
@@ -482,13 +483,13 @@ def setup_harness(workers=None):
             'anchors': datasets['train'].anchors
         }),
 
-        criterion=(darknet.DarknetLoss, {
+        criterion=(darknet_loss.DarknetLoss, {
             'anchors': datasets['train'].anchors,
             'object_scale': 5.0,
             'noobject_scale': 1.0,
             'class_scale': 1.0,
             'coord_scale': 1.0,
-            'iou_thresh': 0.6,
+            'iou_thresh': 0.24,
         }),
 
         optimizer=(torch.optim.SGD, dict(
