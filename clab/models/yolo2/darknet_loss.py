@@ -347,7 +347,7 @@ def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
 
     # NOTE: other code expects offsets to be from the top left
     # corner of a grid cell. Should (0, 0) be the center?
-    _aoffs[:, :, 0:2] = 0.5  # cell center in relative output coordinates
+    # _aoffs[:, :, 0:2] = 0.5  # cell center in relative output coordinates
     _aoffs[:, :, 2:4] = 1.0  # size of one cell in relative output coords
 
     # Flags that denotes if the prediction does not overlap a real object

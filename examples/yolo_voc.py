@@ -397,7 +397,7 @@ def setup_harness(workers=None):
     print('xpu = {!r}'.format(xpu))
 
     # NOTE: It is important to have a high enought ulimit for DataParallel
-    if True:
+    if 0:
         import resource
         rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
         if rlimit[0] <= 8192:
