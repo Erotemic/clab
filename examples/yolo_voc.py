@@ -449,7 +449,7 @@ def setup_harness(workers=None):
         }
     elif data_choice == 'notest':
         datasets = {
-            'test': YoloVOCDataset(devkit_dpath, split='test'),
+            'train': YoloVOCDataset(devkit_dpath, split='train'),
             'vali': YoloVOCDataset(devkit_dpath, split='val'),
         }
     elif data_choice == 'normal':
