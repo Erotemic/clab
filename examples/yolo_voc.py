@@ -434,7 +434,7 @@ def setup_harness(workers=None):
     batch_size = int(ub.argval('--batch_size', default=16))
     n_cpus = psutil.cpu_count(logical=True)
     workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
-    other_batch_size = batch_size // 4
+    other_batch_size = batch_size
 
     import os
 
@@ -547,11 +547,11 @@ def setup_harness(workers=None):
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
         """
         # hack for data parallel
-        if harn.current_tag == 'train':
-            outputs = harn.model(*inputs)
-        else:
-            # Run test and validation on a single GPU
-            outputs = harn.model.module(*inputs)
+        # if harn.current_tag == 'train':
+        outputs = harn.model(*inputs)
+        # else:
+        #     # Run test and validation on a single GPU
+        #     outputs = harn.model.module(*inputs)
 
         # darknet criterion needs to know the input image shape
         inp_size = tuple(inputs[0].shape[-2:])
@@ -669,6 +669,8 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --batch_size=16
 
     python ~/code/clab/examples/yolo_voc.py train --nice=small_batch --workers=6 --gpu=0,1,2,3 --batch_size=16 --data=combined
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=small_batch --workers=2 --gpu=0 --batch_size=16 --data=combined
     """
     harn = setup_harness()
     with harn.xpu:
