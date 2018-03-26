@@ -441,17 +441,26 @@ def setup_harness(workers=None):
     if not os.path.exists(devkit_dpath):
         YoloVOCDataset.ensure_voc2007()
 
-    if ub.argval('--data', 'normal') == 'combined':
+    data_choice = ub.argval('--data', 'normal')
+
+    if data_choice == 'combined':
         datasets = {
             'test': YoloVOCDataset(devkit_dpath, split='test'),
             'train': YoloVOCDataset(devkit_dpath, split='trainval'),
         }
-    else:
+    elif data_choice == 'notest':
+        datasets = {
+            'test': YoloVOCDataset(devkit_dpath, split='test'),
+            'vali': YoloVOCDataset(devkit_dpath, split='val'),
+        }
+    elif data_choice == 'normal':
         datasets = {
             'train': YoloVOCDataset(devkit_dpath, split='train'),
             'vali': YoloVOCDataset(devkit_dpath, split='val'),
             'test': YoloVOCDataset(devkit_dpath, split='test'),
         }
+    else:
+        raise KeyError(data_choice)
 
     # Check that the dataset exists
     # item = datasets['train'][0]

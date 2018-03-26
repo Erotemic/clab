@@ -233,7 +233,7 @@ class Darknet19(nn.Module):
         """
 
         # Compute real values of tx, ty, tw, th from paper
-        raw_aoff_pred = final[:, :, :, 0:2]
+        raw_aoff_pred = final[:, :, :, 0:4]
 
         # Anchor xy offset predictions of the CENTER of the bbox are relative
         # to the corner of the grid cell for which they were predicted in
