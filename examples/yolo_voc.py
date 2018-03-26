@@ -76,15 +76,12 @@ class YoloVOCDataset(voc.VOCDataset):
         self.augmenter = None
 
         if split == 'train':
-
             # From YOLO-V1 paper:
             #     For data augmentation we introduce random scaling and
             #     translations of up to 20% of the original image size. We
             #     also randomly adjust the exposure and saturation of the image
             #     by up to a factor of 1.5 in the HSV color space.
-
-            # Not sure if this changed in V2 yet.
-
+            # YoloV2 seems to use the same augmentation as YoloV1
             augmentors = [
                 iaa.Fliplr(p=.5),
                 iaa.Flipud(p=.5),
@@ -95,12 +92,16 @@ class YoloVOCDataset(voc.VOCDataset):
                     shear=(-7, 7),
                     order=[0, 1, 3],
                     cval=(0, 255),
-                    mode=ia.ALL,  # use any of scikit-image's warping modes (see 2nd image from the top for examples)
+                    mode=ia.ALL,
+                    # use any of scikit-image's warping modes (see 2nd image
+                    # from the top for examples)
                     # Note: currently requires imgaug master version
                     backend='cv2',
                 ),
-                iaa.AddToHueAndSaturation((-20, 20)),  # change hue and saturation
-                iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),  # improve or worsen the contrast
+                # change hue and saturation
+                iaa.AddToHueAndSaturation((-20, 20)),
+                # improve or worsen the contrast
+                iaa.ContrastNormalization((0.5, 2.0), per_channel=0.5),
             ]
             self.augmenter = iaa.Sequential(augmentors)
 
@@ -124,8 +125,9 @@ class YoloVOCDataset(voc.VOCDataset):
             >>> plt.gca().set_ylim(xy.min() - 1, wh.max() / 2 + 1)
             >>> plt.gca().set_aspect('equal')
         """
-        all_norm_wh = []
         from PIL import Image
+        from sklearn import cluster
+        all_norm_wh = []
         for i in ub.ProgIter(range(len(self))):
             annots = self._load_annotation(i)
             img_wh = np.array(Image.open(self.gpaths[i]).size)
@@ -136,7 +138,6 @@ class YoloVOCDataset(voc.VOCDataset):
             all_norm_wh.extend(norm_wh.tolist())
         # Re-normalize to the size of the grid
         all_wh = np.array(all_norm_wh) * self.base_wh[0] / self.factor
-        from sklearn import cluster
         algo = cluster.KMeans(
             n_clusters=5, n_init=20, max_iter=10000, tol=1e-6,
             algorithm='elkan', verbose=0)
@@ -186,9 +187,9 @@ class YoloVOCDataset(voc.VOCDataset):
 
         # squish the bounding box and image into a standard size
         w, h = inp_size
-        im_shape = image.shape[0:2]
-        sx = float(w) / im_shape[1]
-        sy = float(h) / im_shape[0]
+        im_w, im_h = image.shape[0:2][::-1]
+        sx = float(w) / im_w
+        sy = float(h) / im_h
         tlbr[:, 0::2] *= sx
         tlbr[:, 1::2] *= sy
         interpolation = cv2.INTER_AREA if (sx + sy) <= 2 else cv2.INTER_CUBIC
@@ -219,10 +220,10 @@ class YoloVOCDataset(voc.VOCDataset):
         boxes = torch.FloatTensor(tlbr)
 
         # Return index information in the label as well
-        orig_sz = torch.LongTensor(im_shape)
+        orig_size = torch.LongTensor([im_w, im_h])
         index = torch.LongTensor([index])
         gt_weights = torch.FloatTensor(gt_weights)
-        label = (boxes, gt_classes, orig_sz, index, gt_weights)
+        label = (boxes, gt_classes, orig_size, index, gt_weights)
         return chw01, label
 
     @ub.memoize_method
@@ -321,21 +322,22 @@ def test():
             gt_classes = [c.numpy() for c in gt_classes]
 
             gt_weights = labels[4]
-            im_shapes, indices = labels[2:4]
+            orig_sizes, indices = labels[2:4]
             inp_size = im_data.shape[-2:]
-            postout = model.module.postprocess(outputs, inp_size, im_shapes)
+            postout = model.module.postprocess(outputs, inp_size, orig_sizes)
 
             out_boxes, out_scores, out_cxs = postout
 
-            for gx, boxes, cxs, weights, orig_shape in zip(indices, gt_boxes, gt_classes, gt_weights, im_shapes):
+            zipped = zip(indices, gt_boxes, gt_classes, gt_weights, orig_sizes)
+            for gx, boxes, cxs, weights, orig_size in zipped:
                 cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
                 for cx, idxs in cx_to_idxs.items():
                     # hack weights (ishard) into the dataset
                     sbox = np.hstack([boxes[idxs], weights[idxs][:, None]])
-                    # NOTE; Unnormalize the true bboxes back to orig coords
-                    sf = np.array(orig_shape) / np.array(inp_size)
-                    sbox[:, 0:4:2] *= sf[1]
-                    sbox[:, 1:4:2] *= sf[0]
+                    # Unnormalize the true bboxes back to orig coords
+                    sx, sy = np.array(orig_size) / np.array(inp_size)
+                    sbox[:, 0:4:2] *= sx
+                    sbox[:, 1:4:2] *= sy
                     all_true_boxes[cx][gx] = sbox
 
             for gx, boxes, scores, cxs in zip(indices, out_boxes, out_scores, out_cxs):
@@ -591,7 +593,7 @@ def setup_harness(workers=None):
         gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
         # bbox_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
-        inp_size = inputs[0].shape[-2:]
+        inp_size = inputs[0].shape[-2:][::-1]
 
         conf_thresh = harn.postproc_params['conf_thresh']
         nms_thresh = harn.postproc_params['nms_thresh']
@@ -616,13 +618,13 @@ def setup_harness(workers=None):
             true_cxs = batch_true_cls_inds[bx].data.cpu().numpy()
             true_weights = gt_weights[bx].data.cpu().numpy()
 
-            # NOTE; Unnormalize the true bboxes back to orig coords
-            orig_shape = batch_orig_sz[bx]
-            sf = np.array(orig_shape) / np.array(inp_size)
+            # Unnormalize the true bboxes back to orig coords
+            orig_size = batch_orig_sz[bx]
+            sx, sy = np.array(orig_size) / np.array(inp_size)
             if len(true_boxes_):
                 true_boxes = np.hstack([true_boxes_, true_weights[:, None]])
-                true_boxes[:, 0:4:2] *= sf[1]
-                true_boxes[:, 1:4:2] *= sf[0]
+                true_boxes[:, 0:4:2] *= sx
+                true_boxes[:, 1:4:2] *= sy
 
             y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
                                                  pred_boxes, pred_scores,

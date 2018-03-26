@@ -16,12 +16,13 @@ def anchor_intersections(anchors, query_boxes):
     This assumes query boxes are normalized and centerated at the anchors.
 
     Args:
-        anchors: (A, 2) aspect ratios of anchor boxes
-        query_boxes: (K, 4) normalized query boxes centered at anchor posisions
-            in tlbr format.
+        anchors (ndarray): (A, 2) aspect ratios of anchor boxes
+        query_boxes (ndarray): (K, 4) normalized query boxes centered at anchor
+            posisions in tlbr format. (Note: only the width and height of
+            the bboxes matter)
 
     Returns:
-        overlaps: (A, K) ndarray of intersec between boxes and query_boxes
+        ndarray: (A, K) ndarray of intersec between boxes and query_boxes
 
     Example:
         >>> A = 5
@@ -142,23 +143,30 @@ def bbox_overlaps_py(boxes, query_boxes):
 def yolo_to_bbox(aoff_pred, anchors, H, W):
     """
     Transform anchored predictions and predicted relative offsets into absolute
-    bounding boxes. A cython version is available.
+    bounding boxes in the tlbr format. A cython version is available.
 
     Args:
         aoff_pred : [B, W * H, A, 4] predicted anchor offsets
-        anchors : [A, 2] anchor box aspect ratios
+        anchors : [A, 2] anchor box aspect ratios. Specified relative
+           to output grid size (i.e. W x H)
+        W (int): width of output grid
+        H (int): height of output grid
 
     Returns:
         bbox_out : [B, W * H, A, 4] absolute bounding boxes independent of
-            anchors, but scaled in the range 0 to 1.
+            anchors. The coordinates are specified such that (1, 1) is the
+            bottom right corner of the image and (0, 0) is the top left.
 
     Example:
-        >>> B, W, H, A = 1, 3, 3, 5
-        >>> aoff_pred = np.random.randn(B, W * H, A, 4)
+        >>> from clab.models.yolo2 import darknet
+        >>> B, W, H, A = 4, 3, 3, 5
+        >>> aoff_pred = darknet.demo_predictions(B, W, H, A)[0].numpy()
+        >>> aoff_pred[-1, 0:2] = 0
+        >>> aoff_pred[-1, 2:4] = 1
         >>> anchors = np.abs(np.random.randn(A, 2))
         >>> bbox_out1 = yolo_to_bbox_py(aoff_pred, anchors, H, W)
         >>> bbox_out2 = yolo_to_bbox(aoff_pred, anchors, H, W)
-        >>> assert np.all(bbox_out1 == bbox_out2)
+        >>> assert np.all(np.abs(bbox_out1 - bbox_out2) < 1e-9)
 
     Timeit:
        >>> %timeit yolo_to_bbox_py(aoff_pred, anchors, H, W)
@@ -166,6 +174,9 @@ def yolo_to_bbox(aoff_pred, anchors, H, W):
        >>> %timeit yolo_to_bbox(aoff_pred, anchors, H, W)
        42.9 µs ± 1.43 µs per loop
     """
+    aoff_pred = aoff_pred.astype(np.float)
+    H = int(H)
+    W = int(W)
     return yolo_to_bbox_c(aoff_pred, anchors, H, W)
 
 
@@ -177,17 +188,35 @@ def yolo_to_bbox_py(aoff_pred, anchors, H, W):
     bbox_out = np.zeros((bsize, H * W, num_anchors, 4), dtype=np.float)
     for b in range(bsize):
         for row, col in it.product(range(H), range(W)):
+            # (row, col) is the top left corner of the grid cell in absolute
+            # output coordinates.
             ind = row * W + col
             for a in range(num_anchors):
-                cx = (aoff_pred[b, ind, a, 0] + col) / W
-                cy = (aoff_pred[b, ind, a, 1] + row) / H
-                bw = aoff_pred[b, ind, a, 2] * anchors[a][0] / W * 0.5
-                bh = aoff_pred[b, ind, a, 3] * anchors[a][1] / H * 0.5
+                # Relative offsets produced by YOLO
+                # tx and ty are in relative normalized coordinates
+                # tw and th are multiples of anchor box scales
+                tx, ty, tw, th = aoff_pred[b, ind, a]
 
-                bbox_out[b, ind, a, 0] = cx - bw
-                bbox_out[b, ind, a, 1] = cy - bh
-                bbox_out[b, ind, a, 2] = cx + bw
-                bbox_out[b, ind, a, 3] = cy + bh
+                anchor_w, anchor_h = anchors[a]
+
+                # Center of the grid cell for this anchored prediction.
+                cx = (col + tx)
+                cy = (row + ty)
+
+                # The w/h are specified as multiples of anchor w/h
+                half_bw = (tw * anchor_w * 0.5)
+                half_bh = (th * anchor_h * 0.5)
+
+                # In normalized coordinates i.e. (0, 0, 1, 1) = img_tlbr
+                bbox_out[b, ind, a, 0] = cx - half_bw
+                bbox_out[b, ind, a, 1] = cy - half_bh
+                bbox_out[b, ind, a, 2] = cx + half_bw
+                bbox_out[b, ind, a, 3] = cy + half_bh
+
+    # Normalize the final predictions such that the image coordinates span from
+    # (0, 0) in the top left to (1, 1) in the bottom right.
+    bbox_out[..., 0::2] /= W
+    bbox_out[..., 1::2] /= H
     return bbox_out
 
 
@@ -253,21 +282,32 @@ def random_boxes(num, box_format='tlbr', scale=100):
 
 def clip_boxes(boxes, im_shape):
     """
-    Clip boxes to image boundaries.
+    Clip boxes to image boundaries inplace.
+
+    Args:
+        boxes (ndarray): multiple boxes in tlbr format
+        im_shape (tuple): (H, W) of original image
+
+    Example:
+        >>> boxes = np.array([[-10, -10, 120, 120], [1, -2, 30, 50]])
+        >>> im_shape = (100, 110)  # H, W
+        >>> clip_boxes(boxes, im_shape)
+        array([[  0,   0, 109,  99],
+               [  1,   0,  30,  50]])
     """
     if boxes.shape[0] == 0:
         return boxes
 
-    assert isinstance(boxes, (np.ndarray, list)), 'got boxes={}'.format(boxes)
+    if not isinstance(boxes, (np.ndarray, list)):
+        raise TypeError('got boxes={!r}'.format(boxes))
 
-    # x1 >= 0
-    boxes[:, 0::4] = np.maximum(np.minimum(boxes[:, 0::4], im_shape[1] - 1), 0)
-    # y1 >= 0
-    boxes[:, 1::4] = np.maximum(np.minimum(boxes[:, 1::4], im_shape[0] - 1), 0)
-    # x2 < im_shape[1]
-    boxes[:, 2::4] = np.maximum(np.minimum(boxes[:, 2::4], im_shape[1] - 1), 0)
-    # y2 < im_shape[0]
-    boxes[:, 3::4] = np.maximum(np.minimum(boxes[:, 3::4], im_shape[0] - 1), 0)
+    im_h, im_w = im_shape
+    x1, y1, x2, y2 = boxes.T
+    np.minimum(x1, im_w - 1, out=x1)  # x1 >= 0
+    np.minimum(y1, im_h - 1, out=y1)  # y1 >= 0
+    np.minimum(x2, im_w - 1, out=x2)  # x2 < im_shape[1]
+    np.minimum(y2, im_h - 1, out=y2)  # y2 < im_shape[0]
+    boxes = np.maximum(boxes, 0, out=boxes)
     return boxes
 
 

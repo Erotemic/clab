@@ -17,8 +17,6 @@ import torch.nn.functional as F
 
 from .layers.reorg.reorg_layer import ReorgLayer
 from .utils import yolo_utils
-from functools import partial
-from multiprocessing import Pool
 
 
 class Conv2d_Noli(nn.Module):
@@ -54,402 +52,6 @@ class Conv2d_Norm_Noli(nn.Module):
         if self.relu is not None:
             x = self.relu(x)
         return x
-
-
-def np_to_variable(x, device=None, dtype=torch.FloatTensor):
-    v = torch.autograd.Variable(torch.from_numpy(x).type(dtype))
-    if device is not None:
-        v = v.cuda(device)
-    return v
-
-
-class BaseLossWithCudaState(torch.nn.modules.loss._Loss):
-    """
-    Keep track of if the module is in cpu or gpu mode
-    """
-    def __init__(self):
-        super(BaseLossWithCudaState, self).__init__()
-        self._iscuda = False
-        self._device_num = None
-
-    def cuda(self, device_num=None, **kwargs):
-        self._iscuda = True
-        self._device_num = device_num
-        return super(BaseLossWithCudaState, self).cuda(device_num, **kwargs)
-
-    def cpu(self):
-        self._iscuda = False
-        self._device_num = None
-        return super(BaseLossWithCudaState, self).cpu()
-
-    @property
-    def is_cuda(self):
-        return self._iscuda
-
-    def get_device(self):
-        return self._device_num
-
-
-def demo_batch(batch_size=1, inp_size=(100, 100), n_classes=20, rng=None,
-               n=None):
-    rng = np.random
-    # number of groundtruth boxes per image in the batch
-    if n is None:
-        ntrues = [rng.randint(0, 10) for _ in range(batch_size)]
-    else:
-        ntrues = [n for _ in range(batch_size)]
-    scale = min(inp_size) / 2.0
-    gt_boxes = [yolo_utils.random_boxes(n, 'xywh', scale=scale)
-                for n in ntrues]
-    gt_classes = [rng.randint(0, n_classes, n) for n in ntrues]
-    gt_weights = [np.ones(n) for n in ntrues]
-    orig_size = [inp_size for _ in range(batch_size)]
-    indices = np.arange(batch_size)
-
-    im_data = torch.randn(batch_size, 3, *inp_size)
-
-    im_data = torch.FloatTensor(im_data)
-    im_data = torch.FloatTensor(im_data)
-
-    indices = torch.LongTensor([indices])
-    orig_size = torch.LongTensor(orig_size)
-    gt_weights = [torch.FloatTensor(item) for item in gt_weights]
-    gt_classes = [torch.LongTensor(item) for item in gt_classes]
-
-    inputs = [im_data]
-    labels = [gt_boxes, gt_classes, orig_size, indices, gt_weights]
-    return inputs, labels
-
-
-class DarknetLoss(BaseLossWithCudaState):
-    """
-
-    From YoloV1:
-
-        Our final layer predicts both class probabilities and bounding box
-        coordinates.
-
-        We normalize the bounding box width and height by the image width and
-        height so that they fall between 0 and 1.
-
-        We parametrize the bounding box x and y coordinates to be offsets of a
-        particular grid cell location so they are also bounded between 0 and 1.
-
-        YOLO predicts multiple bounding boxes per grid cell.
-        At training time we only want one bounding box predictor to be
-        responsible for each object.
-
-        We assign one predictor to be “responsible” for predicting an object
-        based on which prediction has the highest current IOU with the ground
-        truth.
-
-        [To avoid instability] we increase the loss from bounding box
-        coordinate predictions and decrease the loss from confidence
-        predictions for boxes that don’t contain objects.
-
-        We use two parameters, λ_coord and λ_noobj to accomplish this.
-        We set λ_coord = 5 and λ_noobj = .5.
-
-
-    References:
-        https://github.com/pjreddie/darknet/blob/56be49aa4854b81b855f6a9daffce4b4ad1fbb9e/src/network.c#L239
-        https://github.com/pjreddie/darknet/blob/8215a8864d4ad07e058acafd75b2c6ff6600b9e8/src/detection_layer.c#L67
-
-        https://github.com/pjreddie/darknet/blob/master/src/region_layer.c#L174
-
-        https://stats.stackexchange.com/questions/287486/yolo-loss-function-explanation
-
-    Example:
-        >>> from clab.models.yolo2.darknet import *
-        >>> model = Darknet19(num_classes=20)
-        >>> criterion = DarknetLoss(model.anchors)
-        >>> inp_size = (96, 96)
-        >>> inputs, labels = demo_batch(1, inp_size)
-        >>> output = model(*inputs)
-        >>> aoff_pred, iou_pred, prob_pred = output
-        >>> gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
-        >>> loss = criterion(aoff_pred, iou_pred, prob_pred, gt_boxes,
-        >>>                  gt_classes, gt_weights, inp_size)
-    """
-    def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
-                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
-                 workers=None):
-        # train
-        super(DarknetLoss, criterion).__init__()
-        criterion.bbox_loss = None
-        criterion.iou_loss = None
-        criterion.cls_loss = None
-
-        criterion.object_scale = object_scale
-        criterion.noobject_scale = noobject_scale
-        criterion.class_scale = class_scale
-        criterion.coord_scale = coord_scale
-        criterion.iou_thresh = iou_thresh
-
-        if workers is None:
-            criterion.pool = None
-        else:
-            criterion.pool = Pool(processes=workers)
-
-        criterion.anchors = np.ascontiguousarray(anchors, dtype=np.float)
-        criterion.mse = nn.MSELoss(size_average=False)
-
-    def forward(criterion, aoff_pred, iou_pred, prob_pred,
-                gt_boxes=None, gt_classes=None, gt_weights=None, inp_size=None):
-
-        num_classes = prob_pred.shape[-1]
-
-        _tup = criterion._build_target(aoff_pred, iou_pred, gt_boxes,
-                                       gt_classes, gt_weights, inp_size,
-                                       num_classes, criterion.anchors)
-        _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
-
-        # is_cuda = criterion.is_cuda
-        device = criterion.get_device()
-
-        _boxes   = np_to_variable(_boxes, device)
-        _ious    = np_to_variable(_ious, device)
-        _classes = np_to_variable(_classes, device)
-        box_mask = np_to_variable(_box_mask, device, dtype=torch.FloatTensor)
-        iou_mask = np_to_variable(_iou_mask, device, dtype=torch.FloatTensor)
-        class_mask = np_to_variable(_class_mask, device,
-                                    dtype=torch.FloatTensor)
-
-        num_boxes = sum(len(boxes) for boxes in gt_boxes)
-
-        # _boxes[:, :, :, 2:4] = torch.log(_boxes[:, :, :, 2:4])
-        box_mask = box_mask.expand_as(_boxes)
-
-        criterion.bbox_loss = criterion.mse(aoff_pred * box_mask,
-                                            _boxes * box_mask) / num_boxes
-        criterion.iou_loss = criterion.mse(iou_pred * iou_mask,
-                                           _ious * iou_mask) / num_boxes
-
-        class_mask = class_mask.expand_as(prob_pred)
-        criterion.cls_loss = criterion.mse(prob_pred * class_mask,
-                                           _classes * class_mask) / num_boxes
-
-        total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
-        return total_loss
-
-    def _build_target(criterion, aoff_pred, iou_pred, gt_boxes, gt_classes,
-                      gt_weights, inp_size, num_classes, anchors):
-        """
-        Determine which ground truths to compare against which predictions?
-
-        Args:
-            aoff_pred_np: [B, H x W, A, 4]:
-                (sig(tx), sig(ty), exp(tw), exp(th))
-
-        Example:
-            >>> from clab.models.yolo2.darknet import *
-            >>> num_classes = 20
-            >>> model = Darknet19(num_classes=num_classes)
-            >>> criterion = DarknetLoss(model.anchors)
-            >>> inp_size = (96, 96)
-            >>> inputs, labels = demo_batch(10, inp_size)
-            >>> output = model(*inputs)
-            >>> aoff_pred, iou_pred, prob_pred = output
-            >>> gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
-            >>> _tup = criterion._build_target(aoff_pred, iou_pred, gt_boxes,
-            >>>                                gt_classes, gt_weights, inp_size,
-            >>>                                num_classes, criterion.anchors)
-        """
-        losskw = dict(object_scale=criterion.object_scale,
-                      noobject_scale=criterion.noobject_scale,
-                      class_scale=criterion.class_scale,
-                      coord_scale=criterion.coord_scale,
-                      iou_thresh=criterion.iou_thresh)
-
-        func = partial(_built_target_item, inp_size=inp_size,
-                       num_classes=num_classes, anchors=anchors, **losskw)
-
-        # convert to numpy?
-        aoff_pred_np = aoff_pred.data.cpu().numpy()
-        iou_pred_np = iou_pred.data.cpu().numpy()
-
-        gt_boxes_np = [item.data.cpu().numpy() for item in gt_boxes]
-        gt_classes_np = [item.data.cpu().numpy() for item in gt_classes]
-        gt_weights_np = [item.data.cpu().numpy() for item in gt_weights]
-
-        args = zip(aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
-                   gt_weights_np)
-        args = list(args)
-        # data = args[0]
-
-        if criterion.pool:
-            targets = criterion.pool.map(func, args)
-        else:
-            targets = list(map(func, args))
-
-        _boxes = np.stack(tuple((row[0] for row in targets)))
-        _ious = np.stack(tuple((row[1] for row in targets)))
-        _classes = np.stack(tuple((row[2] for row in targets)))
-        _box_mask = np.stack(tuple((row[3] for row in targets)))
-        _iou_mask = np.stack(tuple((row[4] for row in targets)))
-        _class_mask = np.stack(tuple((row[5] for row in targets)))
-
-        return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
-
-
-def _built_target_item(data, inp_size, num_classes, anchors, object_scale=5.0,
-                       noobject_scale=1.0, class_scale=1.0, coord_scale=1.0,
-                       iou_thresh=0.5):
-    """
-
-    Constructs the relevant ground truth terms of the YOLO loss function
-
-
-    Assign predicted boxes to groundtruth boxes and compute their IOU for the
-    loss calculation.
-
-    Example:
-        >>> from clab.models.yolo2.darknet import *
-        >>> A, H, W = 5, 3, 3
-        >>> inp_size = (96, 96)
-        >>> num_classes = 20
-        >>> inputs, labels = demo_batch(1, inp_size)
-        >>> gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
-        >>> aoff_pred_np = np.random.randn(H * W, A, 4)
-        >>> iou_pred_np = np.random.rand(H * W, A, 1)
-        >>> anchors = np.abs(np.random.randn(A, 2))
-        >>> gt_boxes_np = [item.cpu().numpy() for item in gt_boxes][0]
-        >>> gt_classes_np = [item.cpu().numpy() for item in gt_classes][0]
-        >>> gt_weights_np = [item.cpu().numpy() for item in gt_weights][0]
-        >>> data = (aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
-        >>>         gt_weights)
-        >>> object_scale = 5.0
-        >>> noobject_scale = 1.0
-        >>> class_scale = 1.0
-        >>> coord_scale = 1.0
-        >>> iou_thresh = 0.5
-        >>> _tup = _built_target_item(data, inp_size, num_classes, anchors)
-        >>> _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
-
-    Example:
-        >>> from clab.models.yolo2.darknet import *
-        >>> A, H, W = 5, 3, 3
-        >>> inp_size = (96, 96)
-        >>> num_classes = 20
-        >>> inputs, labels = demo_batch(1, inp_size, n=0)
-        >>> gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
-        >>> aoff_pred_np = np.random.randn(H * W, A, 4)
-        >>> iou_pred_np = np.random.rand(H * W, A, 1)
-        >>> anchors = np.abs(np.random.randn(A, 2))
-        >>> gt_boxes_np = [item.cpu().numpy() for item in gt_boxes][0]
-        >>> gt_classes_np = [item.cpu().numpy() for item in gt_classes][0]
-        >>> gt_weights_np = [item.cpu().numpy() for item in gt_weights][0]
-        >>> data = (aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np,
-        >>>         gt_weights)
-        >>> _tup = _built_target_item(data, inp_size, num_classes, anchors)
-        >>> _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask = _tup
-    """
-    # TODO: incorporate sample gt_weights (generalizes dontcare)
-    aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np, gt_weights_np = data
-
-    out_size = [s // 32 for s in inp_size]
-    W, H = out_size
-
-    # net output
-    hw, num_anchors, _ = aoff_pred_np.shape
-
-    # PREALLOCATE OUTPUT
-    # -----------------
-    # gt
-    _classes = np.zeros([hw, num_anchors, num_classes], dtype=np.float)
-    _class_mask = np.zeros([hw, num_anchors, 1], dtype=np.float)
-
-    _ious = np.zeros([hw, num_anchors, 1], dtype=np.float)
-    _iou_mask = np.zeros([hw, num_anchors, 1], dtype=np.float)
-
-    _boxes = np.zeros([hw, num_anchors, 4], dtype=np.float)
-    _boxes[:, :, 0:2] = 0.5
-    _boxes[:, :, 2:4] = 1.0
-    _box_mask = np.zeros([hw, num_anchors, 1], dtype=np.float) + 0.01
-
-    # APPLY OFFSETS TO EACH ANCHOR BOX
-    # --------------------------------
-    # get prediected boxes centered at each grid cell.
-    anchors = np.ascontiguousarray(anchors, dtype=np.float)
-    aoff_pred_np_ = np.expand_dims(aoff_pred_np, 0)
-    aoff_pred_np_ = np.ascontiguousarray(aoff_pred_np_, dtype=np.float)
-    bbox_abs_pred = yolo_utils.yolo_to_bbox(aoff_pred_np_, anchors, H, W)
-    # bbox_abs_pred = [hw, num_anchors, [x1, y1, x2, y2]]   range: 0 ~ 1
-    bbox_abs_pred = bbox_abs_pred[0]
-    bbox_abs_pred[:, :, 0::2] *= float(inp_size[0])  # rescale x
-    bbox_abs_pred[:, :, 1::2] *= float(inp_size[1])  # rescale y
-
-    # FIND IOU BETWEEN ALL PAIRS OF (PRED x TRUE) BOXES
-    # -------------------------------------------------
-    # for each cell, compare predicted_bbox and gt_bbox
-    gt_boxes_b = np.asarray(gt_boxes_np, dtype=np.float).reshape([-1, 4])
-    pred_boxes_b = bbox_abs_pred.reshape([-1, 4])
-    ious = yolo_utils.bbox_ious(
-        np.ascontiguousarray(pred_boxes_b, dtype=np.float),
-        np.ascontiguousarray(gt_boxes_b, dtype=np.float)
-    )
-    # determine which iou is best
-    if ious.size > 0:
-        best_ious = np.max(ious, axis=1).reshape(_iou_mask.shape)
-        iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
-        _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
-
-    # ASSIGN EACH TRUE BOX TO A GRID CELL
-    # -----------------------------------
-    # locate the cell of each gt_box
-    # determine which cell each ground truth box belongs to
-    cell_w = float(inp_size[0]) / W
-    cell_h = float(inp_size[1]) / H
-    cx = (gt_boxes_b[:, 0] + gt_boxes_b[:, 2]) * 0.5 / cell_w
-    cy = (gt_boxes_b[:, 1] + gt_boxes_b[:, 3]) * 0.5 / cell_h
-    gt_cell_inds = np.floor(cy) * W + np.floor(cx)
-    gt_cell_inds = gt_cell_inds.astype(np.int)
-
-    target_boxes = np.empty(gt_boxes_b.shape, dtype=np.float)
-    target_boxes[:, 0] = cx - np.floor(cx)  # cx
-    target_boxes[:, 1] = cy - np.floor(cy)  # cy
-    target_boxes[:, 2] = ((gt_boxes_b[:, 2] - gt_boxes_b[:, 0]) /
-                          inp_size[0] * out_size[0])  # tw
-    target_boxes[:, 3] = ((gt_boxes_b[:, 3] - gt_boxes_b[:, 1]) /
-                          inp_size[1] * out_size[1])  # th
-
-    # ASSIGN EACH TRUE BOX TO AN ANCHOR
-    # -----------------------------------
-    # for each gt boxes, match the best anchor
-    gt_boxes_resize = np.copy(gt_boxes_b)
-    gt_boxes_resize[:, 0::2] *= (out_size[0] / float(inp_size[0]))
-    gt_boxes_resize[:, 1::2] *= (out_size[1] / float(inp_size[1]))
-    gt_boxes_resize = np.ascontiguousarray(gt_boxes_resize, dtype=np.float)
-
-    # each anchor corresponds to one of $A$ predictors in the grid cell.
-    # we want each predictor to be responsible for only one ground truth object
-    anchor_ious = yolo_utils.anchor_intersections(anchors, gt_boxes_resize)
-    anchor_inds = np.argmax(anchor_ious, axis=0)
-
-    ious_reshaped = np.reshape(ious, [hw, num_anchors, len(gt_cell_inds)])
-    for i, cell_ind in enumerate(gt_cell_inds):
-        if cell_ind >= hw or cell_ind < 0:
-            # print('cell inds size {}'.format(len(gt_cell_inds)))
-            # print('cell over {} hw {}'.format(cell_ind, hw))
-            continue
-        a = anchor_inds[i]
-
-        # 0 ~ 1, should be close to 1
-        iou_pred_cell_anchor = iou_pred_np[cell_ind, a, :]
-        _iou_mask[cell_ind, a, :] = object_scale * (1 - iou_pred_cell_anchor)  # noqa
-        # _ious[cell_ind, a, :] = anchor_ious[a, i]
-        _ious[cell_ind, a, :] = ious_reshaped[cell_ind, a, i]
-
-        _box_mask[cell_ind, a, :] = coord_scale
-        target_boxes[i, 2:4] /= anchors[a]
-        _boxes[cell_ind, a, :] = target_boxes[i]
-
-        _class_mask[cell_ind, a, :] = class_scale
-        _classes[cell_ind, a, gt_classes_np[i]] = 1.
-
-    # _boxes[:, :, 2:4] = np.maximum(_boxes[:, :, 2:4], 0.001)
-    # _boxes[:, :, 2:4] = np.log(_boxes[:, :, 2:4])
-    return _boxes, _ious, _classes, _box_mask, _iou_mask, _class_mask
 
 
 class Darknet19(nn.Module):
@@ -571,7 +173,8 @@ class Darknet19(nn.Module):
         # cat [conv1s, conv3]
         self.conv4, c4 = _make_layers((reorg_n_feat_out + c3), [(1024, 3)])
 
-        # linear
+        # linear: add 5 extra outputs at the start for the 4 bounding box
+        # offsets and the objectness score.
         out_channels = self.num_anchors * (self.num_classes + 5)
         self.conv5 = Conv2d_Noli(c4, out_channels, 1, 1, relu=False)
 
@@ -614,22 +217,29 @@ class Darknet19(nn.Module):
             The network predicts 5 coordinates for each bounding box,
             tx, ty, tw, th, and to.
 
-            If the cell is offset from the top left corner of the image by (cx, cy)
-            and the bounding box prior has width and height pw, ph, then the
-            predictions correspond to:
+            If the cell is offset from the top left corner of the image by (cx,
+            cy) and the bounding box prior has width and height pw, ph, then
+            the predictions correspond to:
                 bx = σ(tx) + cx
                 by = σ(ty) + cy
                 bw = pw * exp(tw)
                 bh = ph * exp(th)
                 Pr(object) ∗ IOU(b, object) = σ(to)
         """
+
+        # Anchor xy offset predictions are relative to the top left corner of
+        # the grid cell for which they were predicted in output coordinates.
         xy_sig_pred = F.sigmoid(final[:, :, :, 0:2])
+
+        # Anchor wh preedictions are multiplicitive factors of the
+        # anchor width / height.
         wh_exp_pred = torch.exp(final[:, :, :, 2:4])
-        # Predict: Anchor Offsets (relative offsets to the anchors).
+
+        # Stack xy addative and wh multiplicative offsets into aoff format
         aoff_pred = torch.cat([xy_sig_pred, wh_exp_pred], dim=3)
 
         # Predict IOU
-        iou_pred   = F.sigmoid(final[:, :, :, 4:5])
+        iou_pred = F.sigmoid(final[:, :, :, 4:5])
 
         # TODO: do we do heirarchy stuff here?
         score_pred = final[:, :, :, 5:].contiguous()
@@ -641,7 +251,7 @@ class Darknet19(nn.Module):
         output = (aoff_pred, iou_pred, prob_pred)
         return output
 
-    def postprocess(self, output, inp_size, im_shapes, conf_thresh=0.24,
+    def postprocess(self, output, inp_size, orig_sizes, conf_thresh=0.24,
                     nms_thresh=0.5, max_per_image=300):
         """
         Postprocess the raw network output into usable bounding boxes
@@ -656,10 +266,10 @@ class Darknet19(nn.Module):
             prob_pred (ndarray): [B, HxW, A, C]
                 predicted class probability
 
-            inp_size (tuple): size of input to network
+            inp_size (tuple): size (W, H) of input to network
 
-            im_shapes (list): [B, 2]
-                size of each in image before rescale
+            orig_sizes (list): [B, 2]
+                size (W, H) of each in image before rescale
 
             conf_thresh (float): threshold for filtering bboxes. Keep only the
                 detections above this confidence value.
@@ -687,7 +297,7 @@ class Darknet19(nn.Module):
                 http://ethereon.github.io/netscope/#/gist/d08a41711e48cf111e330827b1279c31
 
         CommandLine:
-            python -m clab.models.yolo2.darknet Darknet19.postprocess
+            python -m clab.models.yolo2.darknet Darknet19.postprocess --show
 
         Example:
             >>> from clab.models.yolo2.darknet import *
@@ -699,10 +309,10 @@ class Darknet19(nn.Module):
             >>> im_data = torch.cat([im_data, im_data])  # make a batch size of 2
             >>> output = self(im_data)
             >>> # Define remaining params
-            >>> im_shapes = [rgb255.shape[0:2]] * len(im_data)
+            >>> orig_sizes = torch.LongTensor([rgb255.shape[0:2][::-1]] * len(im_data))
             >>> conf_thresh = 0.01
             >>> nms_thresh = 0.5
-            >>> postout = self.postprocess(output, inp_size, im_shapes, conf_thresh, nms_thresh)
+            >>> postout = self.postprocess(output, inp_size, orig_sizes, conf_thresh, nms_thresh)
             >>> out_boxes, out_scores, out_cxs = postout
             >>> # xdoc: +REQUIRES(--show)
             >>> from clab.util import mplutil
@@ -718,17 +328,21 @@ class Darknet19(nn.Module):
             >>> mplutil.figure(fnum=1, doclf=True)
             >>> mplutil.imshow(rgb255, colorspace='rgb')
             >>> mplutil.draw_boxes(out_boxes[0])
+            >>> mplutil.show_if_requested()
         """
         aoff_pred_, iou_pred_, prob_pred_ = output
+
+        # convert to numpy
         aoff_pred = aoff_pred_.data.cpu().numpy()
         iou_pred  = iou_pred_.data.cpu().numpy()
         prob_pred = prob_pred_.data.cpu().numpy()
-        im_shapes = im_shapes.data.cpu().numpy()
+
+        orig_sizes = orig_sizes.data.cpu().numpy()
 
         # num_classes, num_anchors = cfg.num_classes, cfg.num_anchors
         num_classes = self.num_classes
         anchors = self.anchors
-        out_size = np.array(inp_size) // 32  # hacked
+        out_size = np.array(inp_size) // 32  # hacked we know the factor is 32
         W, H = out_size
 
         out_boxes = []
@@ -737,18 +351,21 @@ class Darknet19(nn.Module):
 
         # For each image in the batch, postprocess the predicted boxes
         for bx in range(aoff_pred.shape[0]):
-            aoffs = aoff_pred[bx]
+            aoffs = aoff_pred[bx][None, :]
             ious  = iou_pred[bx]
             probs = prob_pred[bx]
-            im_shape = im_shapes[bx]
+            orig_w, orig_h = orig_sizes[bx]
 
             # Convert anchored predictions to absolute bounding boxes
+            # in normalized space
             aoffs = np.ascontiguousarray(aoffs, dtype=np.float)
-            boxes = yolo_utils.yolo_to_bbox(aoffs[None, :], anchors, H, W)[0]
+            norm_boxes = yolo_utils.yolo_to_bbox(aoffs, anchors, H, W)[0]
+
             # Scale the bounding boxes to the size of the original image.
             # and convert to integer representation.
-            boxes[..., 0::2] *= float(im_shape[1])
-            boxes[..., 1::2] *= float(im_shape[0])
+            boxes = norm_boxes.copy()
+            boxes[..., 0::2] *= float(orig_w)
+            boxes[..., 1::2] *= float(orig_h)
             boxes = boxes.astype(np.int)
 
             # converts [1, W * H, A, 4] -> [W * H * A, 4]
@@ -782,7 +399,7 @@ class Darknet19(nn.Module):
             cx_to_inds = ub.group_items(range(len(cls_inds)), cls_inds)
             cx_to_inds = ub.map_vals(np.array, cx_to_inds)
             for cx, inds in cx_to_inds.items():
-                # Do get predictions for each class
+                # get predictions for each class
                 c_bboxes = boxes[inds]
                 c_scores = scores[inds]
                 c_keep = yolo_utils.nms_detections(c_bboxes, c_scores,
@@ -795,7 +412,7 @@ class Darknet19(nn.Module):
             cls_inds = cls_inds[keep_nms]
 
             # clip
-            boxes = yolo_utils.clip_boxes(boxes, im_shape)
+            boxes = yolo_utils.clip_boxes(boxes, im_shape=(orig_h, orig_w))
 
             # sort boxes by descending score
             sortx = scores.argsort()[::-1]
@@ -863,11 +480,57 @@ class Darknet19(nn.Module):
             v.copy_(param)
 
 
+def demo_batch(batch_size=1, inp_size=(100, 100), n_classes=20, rng=None,
+               n=None):
+    from clab import util
+    rng = util.ensure_rng(rng)
+    # number of groundtruth boxes per image in the batch
+    if n is None:
+        ntrues = [rng.randint(0, 10) for _ in range(batch_size)]
+    else:
+        ntrues = [n for _ in range(batch_size)]
+    scale = min(inp_size) / 2.0
+    gt_boxes = [yolo_utils.random_boxes(n, 'tlbr', scale=scale).reshape(-1, 4)
+                for n in ntrues]
+    gt_classes = [rng.randint(0, n_classes, n) for n in ntrues]
+    gt_weights = [np.ones(n) for n in ntrues]
+    orig_size = [inp_size for _ in range(batch_size)]
+    indices = np.arange(batch_size)
+
+    im_data = torch.randn(batch_size, 3, *inp_size)
+
+    im_data = torch.FloatTensor(im_data)
+    im_data = torch.FloatTensor(im_data)
+
+    indices = torch.LongTensor([indices])
+    orig_size = torch.LongTensor(orig_size)
+    gt_weights = [torch.FloatTensor(item) for item in gt_weights]
+    gt_classes = [torch.LongTensor(item) for item in gt_classes]
+
+    inputs = [im_data]
+    labels = [gt_boxes, gt_classes, orig_size, indices, gt_weights]
+    return inputs, labels
+
+
+def demo_predictions(B, W, H, A, rng=None):
+    """ dummy predictions in the same format as the output layer """
+    from clab import util
+    rng = util.ensure_rng(rng)
+    # Simulate the final layers
+    final01 = torch.FloatTensor(np.random.rand(B, H * W, A, 2))
+    final23 = torch.FloatTensor(np.random.rand(B, H * W, A, 2))
+    final4 = torch.FloatTensor(np.random.rand(B, H * W, A, 1))
+    xy_sig_pred = F.sigmoid(final01)
+    wh_exp_pred = torch.exp(final23)
+    aoff_pred = torch.cat([xy_sig_pred, wh_exp_pred], dim=3)
+    iou_pred = F.sigmoid(final4)
+    return aoff_pred, iou_pred
+
+
 def demo_weights():
     """
     Weights trained on VOC by yolo9000-pytorch
     """
-    import ubelt as ub
     import os
     url = 'https://data.kitware.com/api/v1/item/5ab13b0e8d777f068578e251/download'
     dpath = ub.ensure_app_cache_dir('clab/yolo_v2')
@@ -883,7 +546,6 @@ def initial_weights():
     """
     Weights pretrained trained ImageNet by yolo9000-pytorch
     """
-    import ubelt as ub
     import os
     url = 'https://data.kitware.com/api/v1/file/5ab513438d777f068578f1d0/download'
     dpath = ub.ensure_app_cache_dir('clab/yolo_v2')

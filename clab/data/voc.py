@@ -231,7 +231,6 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
         imbgr = cv2.imread(fpath)
         imrgb_255 = cv2.cvtColor(imbgr, cv2.COLOR_BGR2RGB)
         return imrgb_255
-        # imrgb_01 = imrgb.astype(np.float32) / 255.0
 
     def _load_annotation(self, index):
         import xml.etree.ElementTree as ET
