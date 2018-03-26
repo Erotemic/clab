@@ -161,6 +161,11 @@ class DarknetLoss(BaseLossWithCudaState):
         criterion.cls_loss = criterion.cls_mse(
             prob_pred * class_mask, onehot_class_true * class_mask)
 
+        batch_size = aoff_pred.shape[0]
+        criterion.bbox_loss /= batch_size
+        criterion.iou_loss /= batch_size
+        criterion.cls_loss /= batch_size
+
         # Is this right? What if there are no boxes?
         # Shouldn't we divide by number of predictions or nothing?
         # num_boxes = sum(len(boxes) for boxes in gt_boxes)
