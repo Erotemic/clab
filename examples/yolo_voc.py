@@ -546,7 +546,12 @@ def setup_harness(workers=None):
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
         """
-        outputs = harn.model(*inputs)
+        # hack for data parallel
+        if harn.current_tag == 'train':
+            outputs = harn.model(*inputs)
+        else:
+            # Run test and validation on a single GPU
+            outputs = harn.model.module(*inputs)
 
         # darknet criterion needs to know the input image shape
         inp_size = tuple(inputs[0].shape[-2:])
@@ -662,6 +667,8 @@ def train():
 
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
     python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --batch_size=16
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=small_batch --workers=6 --gpu=0,1,2,3 --batch_size=16 --data=combined
     """
     harn = setup_harness()
     with harn.xpu:

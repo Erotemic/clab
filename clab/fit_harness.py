@@ -546,6 +546,8 @@ class FitHarness(object):
         harn.debug(' * len(loader) = {}'.format(len(loader)))
         harn.debug(' * loader.batch_size = {}'.format(loader.batch_size))
 
+        harn.current_tag = tag
+
         # Use exponentially weighted or windowed moving averages across epochs
         iter_moving_metrics = harn._run_metrics[tag]
         # Use simple moving average within an epoch
