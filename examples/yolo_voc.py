@@ -236,7 +236,7 @@ class YoloVOCDataset(voc.VOCDataset):
         return super(YoloVOCDataset, self)._load_annotation(index)
 
 
-def make_loaders(datasets, train_batch_size=16, other_batch_size=1, workers=0):
+def make_loaders(datasets, batch_size=16, workers=0):
     """
     Example:
         >>> datasets = {'train': YoloVOCDataset(split='train'),
@@ -263,7 +263,6 @@ def make_loaders(datasets, train_batch_size=16, other_batch_size=1, workers=0):
     loaders = {}
     for key, dset in datasets.items():
         assert len(dset) > 0, 'must have some data'
-        batch_size = train_batch_size if key == 'train' else other_batch_size
         # use custom sampler that does multiscale training
         batch_sampler = multiscale_batch_sampler.MultiScaleBatchSampler(
             dset, batch_size=batch_size, shuffle=(key == 'train')
@@ -466,9 +465,7 @@ def setup_harness(workers=None):
     # item = datasets['train'][0]
     # print('item = {!r}'.format(item))
 
-    loaders = make_loaders(datasets,
-                           train_batch_size=batch_size,
-                           other_batch_size=other_batch_size,
+    loaders = make_loaders(datasets, batch_size=batch_size,
                            workers=workers if workers is not None else workers)
 
     """
@@ -679,7 +676,7 @@ def train():
 
     python ~/code/clab/examples/yolo_voc.py train --nice=small_batch --workers=6 --gpu=0,1,2,3 --batch_size=16 --data=combined
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=small_batch --workers=2 --gpu=0 --batch_size=16 --data=combined
+    python ~/code/clab/examples/yolo_voc.py train --nice=simple --workers=2 --gpu=0 --batch_size=16 --data=notest
     """
     harn = setup_harness()
     with harn.xpu:
