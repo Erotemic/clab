@@ -60,8 +60,9 @@ class YoloVOCDataset(voc.VOCDataset):
         ...     print(a.shape)
     """
 
-    def __init__(self, devkit_dpath=None, split='train'):
-        super(YoloVOCDataset, self).__init__(devkit_dpath, split=split)
+    def __init__(self, devkit_dpath=None, split='train', years=[2007, 2012]):
+        super(YoloVOCDataset, self).__init__(devkit_dpath, split=split,
+                                             years=years)
 
         """
         From YOLO9000.pdf:
