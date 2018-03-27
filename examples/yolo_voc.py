@@ -454,21 +454,28 @@ def setup_harness(workers=None):
 
     data_choice = ub.argval('--data', 'normal')
 
+    if ub.argflag('--2007'):
+        dsetkw = {'years': [2007]}
+    elif ub.argflag('--2012'):
+        dsetkw = {'years': [2007, 2012]}
+    else:
+        raise Exception
+
     if data_choice == 'combined':
         datasets = {
-            'test': YoloVOCDataset(devkit_dpath, split='test'),
-            'train': YoloVOCDataset(devkit_dpath, split='trainval'),
+            'test': YoloVOCDataset(devkit_dpath, split='test', **dsetkw),
+            'train': YoloVOCDataset(devkit_dpath, split='trainval', **dsetkw),
         }
     elif data_choice == 'notest':
         datasets = {
-            'train': YoloVOCDataset(devkit_dpath, split='train'),
-            'vali': YoloVOCDataset(devkit_dpath, split='val'),
+            'train': YoloVOCDataset(devkit_dpath, split='train', **dsetkw),
+            'vali': YoloVOCDataset(devkit_dpath, split='val', **dsetkw),
         }
     elif data_choice == 'normal':
         datasets = {
-            'train': YoloVOCDataset(devkit_dpath, split='train'),
-            'vali': YoloVOCDataset(devkit_dpath, split='val'),
-            'test': YoloVOCDataset(devkit_dpath, split='test'),
+            'train': YoloVOCDataset(devkit_dpath, split='train', **dsetkw),
+            'vali': YoloVOCDataset(devkit_dpath, split='val', **dsetkw),
+            'test': YoloVOCDataset(devkit_dpath, split='test', **dsetkw),
         }
     else:
         raise KeyError(data_choice)
@@ -699,7 +706,8 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw
 
     python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=num_boxes
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=bsize
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_longcw_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=bsize --2012
 
     """
     harn = setup_harness()

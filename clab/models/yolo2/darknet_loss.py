@@ -96,7 +96,7 @@ class DarknetLoss(BaseLossWithCudaState):
     """
     def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
                  class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
-                 reproduce_longcw=False, workers=None):
+                 reproduce_longcw=False, workers=None, denom='num_boxes'):
         # train
         super(DarknetLoss, criterion).__init__()
         criterion.bbox_loss = None
@@ -114,10 +114,11 @@ class DarknetLoss(BaseLossWithCudaState):
         criterion.reproduce_longcw = reproduce_longcw
 
         criterion.mse = nn.MSELoss(size_average=False)
+        criterion.denom = denom
 
     def forward(criterion, aoff_pred, iou_pred, prob_pred,
                 gt_boxes=None, gt_classes=None, gt_weights=None,
-                inp_size=None, epoch=None, denom='num_boxes'):
+                inp_size=None, epoch=None):
         """
         Args:
             aoff_pred (torch.FloatTensor): anchor bounding box offsets
@@ -188,12 +189,12 @@ class DarknetLoss(BaseLossWithCudaState):
             criterion.cls_loss = yolo_mse(class_mask, cls_onehot_true,
                                           prob_pred)
 
-            if num_boxes == 'num_boxes':
+            if criterion.denom == 'num_boxes':
                 denom = num_boxes + 1
-            elif denom == 'bsize':
+            elif criterion.denom == 'bsize':
                 denom = bsize
             else:
-                raise KeyError(denom)
+                raise KeyError(criterion.denom)
 
             criterion.bbox_loss /= denom
             criterion.iou_loss /= denom
