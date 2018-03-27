@@ -243,9 +243,43 @@ class DarknetLoss(BaseLossWithCudaState):
         return _aoffs, _ious, _classes, _aoff_mask, _iou_mask, _class_mask
 
 
-def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
+def ignore():
+    # inp_size = (96, 96)
+    inp_size = (416, 416)
+    W = H = inp_size[0] // 32
+    n_classes = 3
+    data1, anchors = demo_npdata(5, W, H, inp_size=inp_size, C=n_classes)
+    _tup1 = build_target_item(data1, inp_size, n_classes, anchors, epoch=1)
+    (_boxes1, _ious1, _classes1, _box_mask1, _iou_mask1, _class_mask1) = _tup1
+
+    import ubelt as ub
+    orig_darknet = ub.import_module_from_path(ub.truepath('~/code/yolo2-pytorch/darknet.py'))
+    orig_darknet.cfg.anchors = anchors
+    orig_darknet.cfg.multi_scale_inp_size[0][:] = inp_size
+    orig_darknet.cfg.multi_scale_out_size[0][:] = [W, H]
+    orig_darknet.cfg.num_classes = n_classes
+
+    pbox, piou, gbox, gcls, gw = data1
+    data2 =  (pbox, gbox, gcls, gw, piou)
+    _tup2 = orig_darknet._process_batch(data2, size_index=0)
+    (_boxes2, _ious2, _classes2, _box_mask2, _iou_mask2, _class_mask2) = _tup2
+
+    ba = _boxes1.reshape(-1, 4)
+    bb = _boxes2.reshape(-1, 4)
+
+    ba[(ba != bb).sum(axis=-1) > 0]
+    bb[(ba != bb).sum(axis=-1) > 0]
+
+    np.where(_ious2 != _ious1)[0]
+
+
+    ba[(ba != bb).sum(axis=-1) > 0]
+    bb[(ba != bb).sum(axis=-1) > 0]
+
+
+def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
                       noobject_scale=1.0, class_scale=1.0, coord_scale=1.0,
-                      iou_thresh=0.5, epoch=None):
+                      iou_thresh=0.6, epoch=None):
     """
 
     Constructs the relevant ground truth terms of the YOLO loss function
@@ -288,7 +322,7 @@ def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
         >>> _aoffs, _ious, _classes, _aoff_mask, _iou_mask, _class_mask = _tup
     """
     # gt_weights generalizes dontcare
-    aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np, gt_weights_np = data
+    aoff_pred_np, iou_pred_np, gt_boxes_np, gt_classes_np, gt_weights_np = data1
 
     # PREPARE INPUT
     # -------------
