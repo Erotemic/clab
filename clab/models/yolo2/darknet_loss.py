@@ -137,9 +137,13 @@ class DarknetLoss(BaseLossWithCudaState):
 
         device = criterion.get_device()
 
-        # def logit(p):
-        #     return -np.log((1 / p) - 1)
-        # logit(_aoffs[..., 0:2])
+        def logit(p):
+            import scipy.special
+            eps = np.finfo(np.float).eps
+            p = min(max(eps, p), 1 - eps)
+            scipy.special.logit(p)
+            # return -np.log((1 / p) - 1)
+        logit(_aoffs[..., 0:2])
 
         aoff_true = np_to_variable(_aoffs, device)
         iou_true  = np_to_variable(_ious, device)
