@@ -164,6 +164,7 @@ class DarknetLoss(BaseLossWithCudaState):
         # def longcw_mse(w, y, x):
         #     # This was the original formulation by longcw.
         #     # I think it might be slightly off.
+        #     return criterion.iou_mse(iou_pred * iou_mask, iou_true * iou_mask)
         #     return (((w * y) - (w * x)) ** 2).sum()
         # yolo_mse(aoff_mask, aoff_true, aoff_pred)
         # longcw_mse(aoff_mask, aoff_true, aoff_pred)
@@ -172,14 +173,14 @@ class DarknetLoss(BaseLossWithCudaState):
         criterion.iou_loss = yolo_mse(iou_mask, iou_true, iou_pred)
         criterion.cls_loss = yolo_mse(class_mask, onehot_class_true, prob_pred)
 
-        criterion.bbox_loss = criterion.box_mse(
-            aoff_pred * aoff_mask, aoff_true * aoff_mask)
+        # criterion.bbox_loss = criterion.box_mse(
+        #     aoff_pred * aoff_mask, aoff_true * aoff_mask)
 
-        criterion.iou_loss = criterion.iou_mse(
-            iou_pred * iou_mask, iou_true * iou_mask)
+        # criterion.iou_loss = criterion.iou_mse(
+        #     iou_pred * iou_mask, iou_true * iou_mask)
 
-        criterion.cls_loss = criterion.cls_mse(
-            prob_pred * class_mask, onehot_class_true * class_mask)
+        # criterion.cls_loss = criterion.cls_mse(
+        #     prob_pred * class_mask, onehot_class_true * class_mask)
 
         # Is this right? What if there are no boxes?
         # Shouldn't we divide by number of predictions or nothing?
