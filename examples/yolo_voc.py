@@ -495,7 +495,7 @@ def setup_harness(workers=None):
             'class_scale': 1.0,
             'coord_scale': 1.0,
             'iou_thresh': 0.6,
-            'reproduce_longcw': False,
+            'reproduce_longcw': ub.argflag('--longcw'),
         }),
 
         optimizer=(torch.optim.SGD, dict(
@@ -677,6 +677,11 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=small_batch --workers=6 --gpu=0,1,2,3 --batch_size=16 --data=combined
 
     python ~/code/clab/examples/yolo_voc.py train --nice=simple --workers=2 --gpu=0 --batch_size=16 --data=notest
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=custom_batch64 --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=custom_batch16 --workers=2 --gpu=0 --batch_size=16 --data=combined
+    python ~/code/clab/examples/yolo_voc.py train --nice=longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw
     """
     harn = setup_harness()
     with harn.xpu:
