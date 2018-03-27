@@ -708,7 +708,17 @@ def train():
 
     python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=num_boxes
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_longcw_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=bsize --2012
+    # -------------
+    # ARETHA
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_boxes --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=num_boxes --2012
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo07_batch16_div_bsize --workers=2 --gpu=3 --batch_size=16 --data=combined --denom=bsize --2007
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo07_batch16_div_boxes --workers=2 --gpu=2 --batch_size=16 --data=combined --denom=num_boxes --2007
+
+    # -------------
+    # HERMES
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch32_div_bsize --workers=4 --gpu=2,3 --batch_size=32 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch64_div_bsize --workers=8 --gpu=0,1,2,3 --batch_size=64 --data=combined --denom=bsize --2012
 
     """
     harn = setup_harness()

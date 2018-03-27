@@ -95,7 +95,7 @@ class DarknetLoss(BaseLossWithCudaState):
         >>>                  gt_classes, gt_weights, inp_size)
     """
     def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
-                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
+                 class_scale=1.0, coord_scale=1.0, iou_thresh=0.6,
                  reproduce_longcw=False, workers=None, denom='num_boxes'):
         # train
         super(DarknetLoss, criterion).__init__()
