@@ -492,6 +492,7 @@ def setup_harness(workers=None):
     # item = datasets['train'][0]
     # print('item = {!r}'.format(item))
 
+    print('Making loaders')
     loaders = make_loaders(datasets, batch_size=batch_size,
                            workers=workers if workers is not None else workers)
 
@@ -509,6 +510,7 @@ def setup_harness(workers=None):
             thresh in 2.0.cfg is iou_thresh here
     """
 
+    print('Making hyperparams')
     hyper = hyperparams.HyperParams(
 
         model=(darknet.Darknet19, {
@@ -552,6 +554,7 @@ def setup_harness(workers=None):
         augment=datasets['train'].augmenter,
     )
 
+    print('Making harness')
     harn = fit_harness.FitHarness(
         hyper=hyper, xpu=xpu, loaders=loaders, max_iter=max_epoch,
         workdir=workdir,
@@ -687,6 +690,7 @@ def setup_harness(workers=None):
         # harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
         harn.batch_confusions.clear()
 
+    print('Returning harness')
     return harn
 
 
