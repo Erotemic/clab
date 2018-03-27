@@ -166,15 +166,17 @@ class DarknetLoss(BaseLossWithCudaState):
         criterion.cls_loss = criterion.cls_mse(
             prob_pred * class_mask, onehot_class_true * class_mask)
 
+        # Is this right? What if there are no boxes?
+        # Shouldn't we divide by number of predictions or nothing?
+        # denom = num_boxes = sum(len(boxes) for boxes in gt_boxes)
         bsize, wh, A, _ = aoff_pred.shape
-        denom = (bsize * wh)
+        denom = sum(len(boxes) for boxes in gt_boxes) + 1
+        # denom = (bsize * wh)
+        # denom = bsize
         criterion.bbox_loss /= denom
         criterion.iou_loss /= denom
         criterion.cls_loss /= denom
 
-        # Is this right? What if there are no boxes?
-        # Shouldn't we divide by number of predictions or nothing?
-        # num_boxes = sum(len(boxes) for boxes in gt_boxes)
         # criterion.bbox_loss /= num_boxes
         # criterion.iou_loss /= num_boxes
         # criterion.cls_loss /= num_boxes
