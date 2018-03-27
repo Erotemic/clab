@@ -253,7 +253,7 @@ def ignore():
     W = H = inp_size[0] // 32
     n_classes = 3
 
-    for i in range(1000):
+    for i in ub.ProgIter(range(1000)):
         data1, anchors = demo_npdata(5, W, H, inp_size=inp_size, C=n_classes,
                                      n=1000)
         _tup1 = build_target_item(data1, inp_size, n_classes, anchors, epoch=1)
@@ -398,7 +398,7 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
     # original yolo options that we hard code in to help make a correspondence
     # between the original loss function and this one.
     RESCORE = 1
-    WEIRD = 1
+    ORIGINAL_LONGCW_LOGIC = 1
     # Ignore BACKGROUND sections it is 0 for voc.cfg in darknet
 
     # Construct data corresponding to prediction shapes and populate items
@@ -442,7 +442,7 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
     # Flags that denotes if the prediction does not overlap a real object
 
     # https://github.com/longcw/yolo2-pytorch/issues/23
-    if WEIRD:
+    if ORIGINAL_LONGCW_LOGIC:
         iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
         _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
     else:
@@ -481,7 +481,7 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
         # 0 ~ 1, should be close to 1
         # pred_iou = iou_pred_np[cell_idx, ax, :]
         # _iou_mask[cell_idx, ax, :] = object_scale * (1 - pred_iou) * gt_weight
-        if WEIRD:
+        if ORIGINAL_LONGCW_LOGIC:
             iou_pred_cell_anchor = iou_pred_np[cell_idx, ax, :]
             _iou_mask[cell_idx, ax, :] = object_scale * (1 - iou_pred_cell_anchor)  # noqa
         else:
