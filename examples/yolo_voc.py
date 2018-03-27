@@ -47,9 +47,14 @@ class YoloVOCDataset(voc.VOCDataset):
     with minimal processing) for multiscale training.
 
     Example:
-        >>> assert len(YoloVOCDataset(split='train')) == 2501
-        >>> assert len(YoloVOCDataset(split='test')) == 4952
-        >>> assert len(YoloVOCDataset(split='val')) == 2510
+        >>> assert len(YoloVOCDataset(split='train', years=[2007])) == 2501
+        >>> assert len(YoloVOCDataset(split='test', years=[2007])) == 4952
+        >>> assert len(YoloVOCDataset(split='val', years=[2007])) == 2510
+        >>> assert len(YoloVOCDataset(split='trainval', years=[2007])) == 5011
+
+        >>> assert len(YoloVOCDataset(split='train', years=[2007, 2012])) == 8218
+        >>> assert len(YoloVOCDataset(split='test', years=[2007, 2012])) == 4952
+        >>> assert len(YoloVOCDataset(split='val', years=[2007, 2012])) == 8333
 
     Example:
         >>> self = YoloVOCDataset()
@@ -124,7 +129,7 @@ class YoloVOCDataset(voc.VOCDataset):
         """
 
         Example:
-            >>> self = YoloVOCDataset(split='trainval')
+            >>> self = YoloVOCDataset(split='train', years=[2007])
             >>> anchors = self._find_anchors()
             >>> print('anchors = {}'.format(ub.repr2(anchors, precision=2)))
             >>> # xdoctest: +REQUIRES(--show)
@@ -143,7 +148,7 @@ class YoloVOCDataset(voc.VOCDataset):
         from PIL import Image
         from sklearn import cluster
         all_norm_wh = []
-        for i in ub.ProgIter(range(len(self))):
+        for i in ub.ProgIter(range(len(self)), desc='find anchors'):
             annots = self._load_annotation(i)
             img_wh = np.array(Image.open(self.gpaths[i]).size)
             boxes = np.array(annots['boxes'])
@@ -398,6 +403,7 @@ def setup_harness(workers=None):
         >>> harn = setup_harness(workers=0)
         >>> harn.initialize()
         >>> harn.dry = True
+        >>> # xdoc: +SKIP
         >>> harn.run()
     """
     workdir = ub.truepath('~/work/VOC2007')
@@ -461,7 +467,7 @@ def setup_harness(workers=None):
     elif ub.argflag('--2012'):
         dsetkw = {'years': [2007, 2012]}
     else:
-        raise Exception
+        dsetkw = {'years': [2007]}
 
     if data_choice == 'combined':
         datasets = {
@@ -731,7 +737,7 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         export PYTHONPATH=$PYTHONPATH:/home/joncrall/code/clab/examples
-        python ~/code/clab/examples/yolo_voc.py
+        python -m xdoctest ~/code/clab/examples/yolo_voc.py all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)
