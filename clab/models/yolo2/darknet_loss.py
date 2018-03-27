@@ -90,6 +90,7 @@ class DarknetLoss(BaseLossWithCudaState):
         >>> output = model(*inputs)
         >>> aoff_pred, iou_pred, prob_pred = output
         >>> gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
+        >>> epoch = 1
         >>> loss = criterion(aoff_pred, iou_pred, prob_pred, gt_boxes,
         >>>                  gt_classes, gt_weights, inp_size)
     """
@@ -126,7 +127,6 @@ class DarknetLoss(BaseLossWithCudaState):
             gt_weights (list): example weights
             inp_size (tuple): WxH of image passed through the network
         """
-
         n_classes = prob_pred.shape[-1]
 
         # Transform groundtruth into formats comparable to predictions
@@ -157,9 +157,20 @@ class DarknetLoss(BaseLossWithCudaState):
         aoff_mask = aoff_mask.expand_as(aoff_true)
         class_mask = class_mask.expand_as(prob_pred)
 
-        # box_diff = (aoff_true - aoff_pred) * aoff_mask
-        # iou_diff = (iou_true - iou_pred) * iou_mask
-        # cls_diff = (class_mask - onehot_class_true) * class_mask
+        def yolo_mse(w, y, x):
+            # The 0.5 is to be consistent with darknet
+            return ((0.5 * w) * (x - y) ** 2).sum()
+
+        # def longcw_mse(w, y, x):
+        #     # This was the original formulation by longcw.
+        #     # I think it might be slightly off.
+        #     return (((w * y) - (w * x)) ** 2).sum()
+        # yolo_mse(aoff_mask, aoff_true, aoff_pred)
+        # longcw_mse(aoff_mask, aoff_true, aoff_pred)
+
+        criterion.bbox_loss = yolo_mse(aoff_mask, aoff_true, aoff_pred)
+        criterion.iou_loss = yolo_mse(iou_mask, iou_true, iou_pred)
+        criterion.cls_loss = yolo_mse(class_mask, onehot_class_true, prob_pred)
 
         criterion.bbox_loss = criterion.box_mse(
             aoff_pred * aoff_mask, aoff_true * aoff_mask)
@@ -252,6 +263,7 @@ def ignore():
     inp_size = (416, 416)
     W = H = inp_size[0] // 32
     n_classes = 3
+    import ubelt as ub
 
     for i in ub.ProgIter(range(1000)):
         data1, anchors = demo_npdata(5, W, H, inp_size=inp_size, C=n_classes,
@@ -259,7 +271,6 @@ def ignore():
         _tup1 = build_target_item(data1, inp_size, n_classes, anchors, epoch=1)
         (_boxes1, _ious1, _classes1, _box_mask1, _iou_mask1, _class_mask1) = _tup1
 
-        import ubelt as ub
         orig_darknet = ub.import_module_from_path(ub.truepath('~/code/yolo2-pytorch/darknet.py'))
         orig_darknet.cfg.anchors = anchors
         orig_darknet.cfg.multi_scale_inp_size[0][:] = inp_size
