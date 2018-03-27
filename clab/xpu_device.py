@@ -234,7 +234,9 @@ class XPU(ub.NiceRepr):
 
     def __enter__(xpu):
         if xpu._device:
+            print('xpu._device = {!r}'.format(xpu._device))
             xpu._device.__enter__()
+            print('Entered device')
         return xpu
 
     def __exit__(xpu, ex_type, ex_value, tb):
