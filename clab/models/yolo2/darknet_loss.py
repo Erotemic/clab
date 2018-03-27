@@ -96,7 +96,7 @@ class DarknetLoss(BaseLossWithCudaState):
     """
     def __init__(criterion, anchors, object_scale=5.0, noobject_scale=1.0,
                  class_scale=1.0, coord_scale=1.0, iou_thresh=0.5,
-                 workers=None):
+                 reproduce_longcw=False, workers=None):
         # train
         super(DarknetLoss, criterion).__init__()
         criterion.bbox_loss = None
@@ -110,9 +110,10 @@ class DarknetLoss(BaseLossWithCudaState):
         criterion.iou_thresh = iou_thresh
 
         criterion.anchors = np.ascontiguousarray(anchors, dtype=np.float)
-        criterion.cls_mse = nn.MSELoss(size_average=False)
-        criterion.iou_mse = nn.MSELoss(size_average=False)
-        criterion.box_mse = nn.MSELoss(size_average=False)
+
+        criterion.reproduce_longcw = reproduce_longcw
+
+        criterion.mse = nn.MSELoss(size_average=False)
 
     def forward(criterion, aoff_pred, iou_pred, prob_pred,
                 gt_boxes=None, gt_classes=None, gt_weights=None,
@@ -147,7 +148,7 @@ class DarknetLoss(BaseLossWithCudaState):
 
         aoff_true = np_to_variable(_aoffs, device)
         iou_true  = np_to_variable(_ious, device)
-        onehot_class_true = np_to_variable(_classes, device)
+        cls_onehot_true = np_to_variable(_classes, device)
 
         aoff_mask = np_to_variable(_aoff_mask, device, dtype=torch.FloatTensor)
         iou_mask = np_to_variable(_iou_mask, device, dtype=torch.FloatTensor)
@@ -161,43 +162,40 @@ class DarknetLoss(BaseLossWithCudaState):
             # The 0.5 is to be consistent with darknet
             return ((0.5 * w) * (x - y) ** 2).sum()
 
-        # def longcw_mse(w, y, x):
-        #     # This was the original formulation by longcw.
-        #     # I think it might be slightly off.
-        #     return criterion.iou_mse(iou_pred * iou_mask, iou_true * iou_mask)
-        #     return (((w * y) - (w * x)) ** 2).sum()
-        # yolo_mse(aoff_mask, aoff_true, aoff_pred)
-        # longcw_mse(aoff_mask, aoff_true, aoff_pred)
-
-        criterion.bbox_loss = yolo_mse(aoff_mask, aoff_true, aoff_pred)
-        criterion.iou_loss = yolo_mse(iou_mask, iou_true, iou_pred)
-        criterion.cls_loss = yolo_mse(class_mask, onehot_class_true, prob_pred)
-
-        # criterion.bbox_loss = criterion.box_mse(
-        #     aoff_pred * aoff_mask, aoff_true * aoff_mask)
-
-        # criterion.iou_loss = criterion.iou_mse(
-        #     iou_pred * iou_mask, iou_true * iou_mask)
-
-        # criterion.cls_loss = criterion.cls_mse(
-        #     prob_pred * class_mask, onehot_class_true * class_mask)
+        def longcw_mse(w, y, x):
+            # This was the original formulation by longcw.
+            # I think it might be slightly off.
+            # return (((w * y) - (w * x)) ** 2).sum()
+            return criterion.mse(iou_pred * iou_mask, iou_true * iou_mask)
 
         # Is this right? What if there are no boxes?
         # Shouldn't we divide by number of predictions or nothing?
         # denom = num_boxes = sum(len(boxes) for boxes in gt_boxes)
         bsize, wh, A, _ = aoff_pred.shape
-        denom = sum(len(boxes) for boxes in gt_boxes) + 1
-        # denom = (bsize * wh)
-        # denom = bsize
-        criterion.bbox_loss /= denom
-        criterion.iou_loss /= denom
-        criterion.cls_loss /= denom
+        num_boxes = sum(len(boxes) for boxes in gt_boxes)
 
-        # criterion.bbox_loss /= num_boxes
-        # criterion.iou_loss /= num_boxes
-        # criterion.cls_loss /= num_boxes
+        if criterion.reproduce_longcw:
+            criterion.bbox_loss = longcw_mse(aoff_mask, aoff_true, aoff_pred)
+            criterion.iou_loss = longcw_mse(iou_mask, iou_true, iou_pred)
+            criterion.cls_loss = longcw_mse(class_mask, cls_onehot_true,
+                                            prob_pred)
+            criterion.bbox_loss /= num_boxes
+            criterion.iou_loss /= num_boxes
+            criterion.cls_loss /= num_boxes
+        else:
+            criterion.bbox_loss = yolo_mse(aoff_mask, aoff_true, aoff_pred)
+            criterion.iou_loss = yolo_mse(iou_mask, iou_true, iou_pred)
+            criterion.cls_loss = yolo_mse(class_mask, cls_onehot_true,
+                                          prob_pred)
 
-        total_loss = criterion.bbox_loss + criterion.iou_loss + criterion.cls_loss
+            denom = num_boxes + 1
+
+            criterion.bbox_loss /= denom
+            criterion.iou_loss /= denom
+            criterion.cls_loss /= denom
+
+        total_loss = (criterion.bbox_loss + criterion.iou_loss +
+                      criterion.cls_loss)
         return total_loss
 
     def _build_target(criterion, aoff_pred, iou_pred, gt_boxes, gt_classes,
@@ -227,11 +225,11 @@ class DarknetLoss(BaseLossWithCudaState):
                       noobject_scale=criterion.noobject_scale,
                       class_scale=criterion.class_scale,
                       coord_scale=criterion.coord_scale,
-                      iou_thresh=criterion.iou_thresh)
+                      iou_thresh=criterion.iou_thresh,
+                      reproduce_longcw=criterion.reproduce_longcw)
 
         func = partial(build_target_item, inp_size=inp_size,
-                       n_classes=n_classes, anchors=anchors,
-                       epoch=epoch,
+                       n_classes=n_classes, anchors=anchors, epoch=epoch,
                        **losskw)
 
         # convert to numpy?
@@ -318,7 +316,7 @@ def ignore():
 
 def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
                       noobject_scale=1.0, class_scale=1.0, coord_scale=1.0,
-                      iou_thresh=0.6, epoch=None):
+                      iou_thresh=0.6, reproduce_longcw=False, epoch=None):
     """
 
     Constructs the relevant ground truth terms of the YOLO loss function
@@ -410,7 +408,6 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
     # original yolo options that we hard code in to help make a correspondence
     # between the original loss function and this one.
     RESCORE = 1
-    ORIGINAL_LONGCW_LOGIC = 1
     # Ignore BACKGROUND sections it is 0 for voc.cfg in darknet
 
     # Construct data corresponding to prediction shapes and populate items
@@ -441,7 +438,7 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
     # If a bounding box prior is not assigned to a ground truth object it
     # incurs no loss for coordinate or class predictions, only objectness.
 
-    if True or (epoch is not None and epoch <= 60):
+    if reproduce_longcw or (epoch is not None and epoch <= 60):
         # HACK: While the network is warming up we encourage it to predict the
         # exact anchor boxes as the real YOLO-v2 does in the first 12800 iters
         _aoff_mask += 0.01
@@ -454,7 +451,7 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
     # Flags that denotes if the prediction does not overlap a real object
 
     # https://github.com/longcw/yolo2-pytorch/issues/23
-    if ORIGINAL_LONGCW_LOGIC:
+    if reproduce_longcw:
         iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
         _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
     else:
@@ -493,9 +490,10 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
         # 0 ~ 1, should be close to 1
         # pred_iou = iou_pred_np[cell_idx, ax, :]
         # _iou_mask[cell_idx, ax, :] = object_scale * (1 - pred_iou) * gt_weight
-        if ORIGINAL_LONGCW_LOGIC:
-            iou_pred_cell_anchor = iou_pred_np[cell_idx, ax, :]
-            _iou_mask[cell_idx, ax, :] = object_scale * (1 - iou_pred_cell_anchor)  # noqa
+        if reproduce_longcw:
+            # iou_pred_cell_anchor = iou_pred_np[cell_idx, ax, :]
+            iou_penalty = 1 - iou_pred_np[cell_idx, ax, :]
+            _iou_mask[cell_idx, ax, :] = object_scale * iou_penalty * gt_weight
         else:
             _iou_mask[cell_idx, ax, :] = object_scale * gt_weight
 

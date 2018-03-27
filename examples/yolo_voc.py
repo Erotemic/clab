@@ -495,6 +495,7 @@ def setup_harness(workers=None):
             'class_scale': 1.0,
             'coord_scale': 1.0,
             'iou_thresh': 0.6,
+            'reproduce_longcw': False,
         }),
 
         optimizer=(torch.optim.SGD, dict(
