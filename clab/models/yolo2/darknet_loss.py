@@ -1,5 +1,5 @@
 from functools import partial
-from multiprocessing import Pool
+# from multiprocessing import Pool
 import torch
 import numpy as np
 import torch.nn as nn
@@ -83,6 +83,8 @@ class DarknetLoss(BaseLossWithCudaState):
         >>> from clab.models.yolo2.darknet_loss import *
         >>> model = darknet.Darknet19(num_classes=20)
         >>> criterion = DarknetLoss(model.anchors)
+        >>> #inp_size = (416, 416)
+        >>> #inputs, labels = darknet.demo_batch(16, inp_size)
         >>> inp_size = (96, 96)
         >>> inputs, labels = darknet.demo_batch(1, inp_size)
         >>> output = model(*inputs)
@@ -113,7 +115,7 @@ class DarknetLoss(BaseLossWithCudaState):
 
     def forward(criterion, aoff_pred, iou_pred, prob_pred,
                 gt_boxes=None, gt_classes=None, gt_weights=None,
-                inp_size=None):
+                inp_size=None, epoch=None):
         """
         Args:
             aoff_pred (torch.FloatTensor): anchor bounding box offsets
@@ -130,15 +132,14 @@ class DarknetLoss(BaseLossWithCudaState):
         # Transform groundtruth into formats comparable to predictions
         _tup = criterion._build_target(aoff_pred, iou_pred, gt_boxes,
                                        gt_classes, gt_weights, inp_size,
-                                       n_classes, criterion.anchors)
+                                       n_classes, criterion.anchors, epoch)
         _aoffs, _ious, _classes, _aoff_mask, _iou_mask, _class_mask = _tup
 
         device = criterion.get_device()
 
-        def logit(p):
-            return -np.log((1 / p) - 1)
-
-        logit(_aoffs[..., 0:2])
+        # def logit(p):
+        #     return -np.log((1 / p) - 1)
+        # logit(_aoffs[..., 0:2])
 
         aoff_true = np_to_variable(_aoffs, device)
         iou_true  = np_to_variable(_ious, device)
@@ -152,6 +153,10 @@ class DarknetLoss(BaseLossWithCudaState):
         aoff_mask = aoff_mask.expand_as(aoff_true)
         class_mask = class_mask.expand_as(prob_pred)
 
+        # box_diff = (aoff_true - aoff_pred) * aoff_mask
+        # iou_diff = (iou_true - iou_pred) * iou_mask
+        # cls_diff = (class_mask - onehot_class_true) * class_mask
+
         criterion.bbox_loss = criterion.box_mse(
             aoff_pred * aoff_mask, aoff_true * aoff_mask)
 
@@ -161,10 +166,11 @@ class DarknetLoss(BaseLossWithCudaState):
         criterion.cls_loss = criterion.cls_mse(
             prob_pred * class_mask, onehot_class_true * class_mask)
 
-        batch_size = aoff_pred.shape[0]
-        criterion.bbox_loss /= batch_size
-        criterion.iou_loss /= batch_size
-        criterion.cls_loss /= batch_size
+        bsize, wh, A, _ = aoff_pred.shape
+        denom = (bsize * wh)
+        criterion.bbox_loss /= denom
+        criterion.iou_loss /= denom
+        criterion.cls_loss /= denom
 
         # Is this right? What if there are no boxes?
         # Shouldn't we divide by number of predictions or nothing?
@@ -177,7 +183,7 @@ class DarknetLoss(BaseLossWithCudaState):
         return total_loss
 
     def _build_target(criterion, aoff_pred, iou_pred, gt_boxes, gt_classes,
-                      gt_weights, inp_size, n_classes, anchors):
+                      gt_weights, inp_size, n_classes, anchors, epoch=None):
         """
         Determine which ground truths to compare against which predictions?
 
@@ -206,7 +212,9 @@ class DarknetLoss(BaseLossWithCudaState):
                       iou_thresh=criterion.iou_thresh)
 
         func = partial(build_target_item, inp_size=inp_size,
-                       n_classes=n_classes, anchors=anchors, **losskw)
+                       n_classes=n_classes, anchors=anchors,
+                       epoch=epoch,
+                       **losskw)
 
         # convert to numpy?
         aoff_pred_np = aoff_pred.data.cpu().numpy()
@@ -235,7 +243,7 @@ class DarknetLoss(BaseLossWithCudaState):
 
 def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
                       noobject_scale=1.0, class_scale=1.0, coord_scale=1.0,
-                      iou_thresh=0.5):
+                      iou_thresh=0.5, epoch=None):
     """
 
     Constructs the relevant ground truth terms of the YOLO loss function
@@ -356,7 +364,11 @@ def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
     # From YoloV3:
     # If a bounding box prior is not assigned to a ground truth object it
     # incurs no loss for coordinate or class predictions, only objectness.
-    # _aoff_mask += 0.01
+
+    if epoch is not None and epoch <= 5:
+        # HACK: While the network is warming up we encourage it to predict the
+        # exact anchor boxes as the real YOLO-v2 does in the first 12800 iters
+        _aoff_mask += 0.01
 
     # NOTE: other code expects offsets to be from the top left
     # corner of a grid cell. Should (0, 0) be the center?
@@ -364,11 +376,18 @@ def build_target_item(data, inp_size, n_classes, anchors, object_scale=5.0,
     _aoffs[:, :, 2:4] = 1.0  # size of one cell in relative output coords
 
     # Flags that denotes if the prediction does not overlap a real object
-    noobj_flags = best_ious < iou_thresh
-    _iou_mask[noobj_flags] = noobject_scale
 
-    # iou_penalty = 0 - iou_pred_np[noobj_flags]
-    # _iou_mask[noobj_flags] = noobject_scale * iou_penalty
+    # https://github.com/longcw/yolo2-pytorch/issues/23
+    if True:
+        noobj_flags = best_ious <= iou_thresh
+        _iou_mask[noobj_flags] = noobject_scale
+
+        # We wont care about anything above the thresh UNLESS it is specifically
+        # assigned to in the next step.
+        _iou_mask[~noobj_flags] = 0
+    else:
+        iou_penalty = 0 - iou_pred_np[noobj_flags]
+        _iou_mask[noobj_flags] = noobject_scale * iou_penalty
 
     # HANDLE ASSIGNED OBJECT CASES
     # ----------------------------

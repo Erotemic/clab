@@ -433,7 +433,6 @@ def setup_harness(workers=None):
     batch_size = int(ub.argval('--batch_size', default=16))
     n_cpus = psutil.cpu_count(logical=True)
     workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
-    other_batch_size = batch_size
 
     import os
 
@@ -495,7 +494,7 @@ def setup_harness(workers=None):
             'noobject_scale': 1.0,
             'class_scale': 1.0,
             'coord_scale': 1.0,
-            'iou_thresh': 0.24,
+            'iou_thresh': 0.6,
         }),
 
         optimizer=(torch.optim.SGD, dict(
@@ -567,7 +566,7 @@ def setup_harness(workers=None):
 
         loss = harn.criterion(aoff_pred, iou_pred, prob_pred, gt_boxes,
                               gt_classes, gt_weights=gt_weights,
-                              inp_size=inp_size)
+                              inp_size=inp_size, epoch=harn.epoch)
         return outputs, loss
 
     @harn.add_batch_metric_hook
