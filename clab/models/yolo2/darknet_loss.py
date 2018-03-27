@@ -252,33 +252,56 @@ def ignore():
     inp_size = (416, 416)
     W = H = inp_size[0] // 32
     n_classes = 3
-    data1, anchors = demo_npdata(5, W, H, inp_size=inp_size, C=n_classes)
-    _tup1 = build_target_item(data1, inp_size, n_classes, anchors, epoch=1)
-    (_boxes1, _ious1, _classes1, _box_mask1, _iou_mask1, _class_mask1) = _tup1
 
-    import ubelt as ub
-    orig_darknet = ub.import_module_from_path(ub.truepath('~/code/yolo2-pytorch/darknet.py'))
-    orig_darknet.cfg.anchors = anchors
-    orig_darknet.cfg.multi_scale_inp_size[0][:] = inp_size
-    orig_darknet.cfg.multi_scale_out_size[0][:] = [W, H]
-    orig_darknet.cfg.num_classes = n_classes
+    for i in range(1000):
+        data1, anchors = demo_npdata(5, W, H, inp_size=inp_size, C=n_classes,
+                                     n=1000)
+        _tup1 = build_target_item(data1, inp_size, n_classes, anchors, epoch=1)
+        (_boxes1, _ious1, _classes1, _box_mask1, _iou_mask1, _class_mask1) = _tup1
 
-    pbox, piou, gbox, gcls, gw = data1
-    data2 =  (pbox, gbox, gcls, gw, piou)
-    _tup2 = orig_darknet._process_batch(data2, size_index=0)
-    (_boxes2, _ious2, _classes2, _box_mask2, _iou_mask2, _class_mask2) = _tup2
+        import ubelt as ub
+        orig_darknet = ub.import_module_from_path(ub.truepath('~/code/yolo2-pytorch/darknet.py'))
+        orig_darknet.cfg.anchors = anchors
+        orig_darknet.cfg.multi_scale_inp_size[0][:] = inp_size
+        orig_darknet.cfg.multi_scale_out_size[0][:] = [W, H]
+        orig_darknet.cfg.num_classes = n_classes
 
-    ba = _boxes1.reshape(-1, 4)
-    bb = _boxes2.reshape(-1, 4)
+        pbox, piou, gbox, gcls, gw = data1
+        data2 =  (pbox, gbox, gcls, gw, piou)
+        _tup2 = orig_darknet._process_batch(data2, size_index=0)
+        (_boxes2, _ious2, _classes2, _box_mask2, _iou_mask2, _class_mask2) = _tup2
 
-    ba[(ba != bb).sum(axis=-1) > 0]
-    bb[(ba != bb).sum(axis=-1) > 0]
+        if np.any(_box_mask1 != _box_mask2):
+            raise Exception
 
-    np.where(_ious2 != _ious1)[0]
+        flags = ~np.isclose(_iou_mask1, _iou_mask2)
+        if np.any(flags):
+            print(np.where(flags))
+            print(_iou_mask1[flags])
+            print(_iou_mask2[flags])
+            raise Exception
 
+        flags = ~np.isclose(_class_mask1, _class_mask2)
+        if np.any(flags):
+            raise Exception
 
-    ba[(ba != bb).sum(axis=-1) > 0]
-    bb[(ba != bb).sum(axis=-1) > 0]
+        flags = ~np.isclose(_classes2, _classes1)
+        if np.any(flags):
+            raise Exception
+
+        flags = ~np.isclose(_ious1, _ious2)
+        if np.any(flags):
+            raise Exception
+            _ious1[flags]
+            _ious2[flags]
+
+        ba = _boxes1.reshape(-1, 4)
+        bb = _boxes2.reshape(-1, 4)
+        flags = ~np.isclose(ba, bb)
+        if np.any(flags):
+            print(ba[(~np.isclose(ba, bb)).sum(axis=-1) > 0])
+            print(bb[(~np.isclose(ba, bb)).sum(axis=-1) > 0])
+            raise Exception
 
 
 def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
@@ -313,7 +336,7 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
         >>> noobject_scale = 1.0
         >>> class_scale = 1.0
         >>> coord_scale = 1.0
-        >>> iou_thresh = 0.5
+        >>> iou_thresh = 0.6
         >>> _tup = build_target_item(data, inp_size, n_classes, anchors)
         >>> _aoffs, _ious, _classes, _aoff_mask, _iou_mask, _class_mask = _tup
 
@@ -374,7 +397,8 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
 
     # original yolo options that we hard code in to help make a correspondence
     # between the original loss function and this one.
-    RESCORE = True
+    RESCORE = 1
+    WEIRD = 1
     # Ignore BACKGROUND sections it is 0 for voc.cfg in darknet
 
     # Construct data corresponding to prediction shapes and populate items
@@ -405,7 +429,7 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
     # If a bounding box prior is not assigned to a ground truth object it
     # incurs no loss for coordinate or class predictions, only objectness.
 
-    if epoch is not None and epoch <= 5:
+    if True or (epoch is not None and epoch <= 60):
         # HACK: While the network is warming up we encourage it to predict the
         # exact anchor boxes as the real YOLO-v2 does in the first 12800 iters
         _aoff_mask += 0.01
@@ -418,16 +442,16 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
     # Flags that denotes if the prediction does not overlap a real object
 
     # https://github.com/longcw/yolo2-pytorch/issues/23
-    if True:
+    if WEIRD:
+        iou_penalty = 0 - iou_pred_np[best_ious < iou_thresh]
+        _iou_mask[best_ious <= iou_thresh] = noobject_scale * iou_penalty
+    else:
         noobj_flags = best_ious <= iou_thresh
         _iou_mask[noobj_flags] = noobject_scale
 
         # We wont care about anything above the thresh UNLESS it is specifically
         # assigned to in the next step.
         _iou_mask[~noobj_flags] = 0
-    else:
-        iou_penalty = 0 - iou_pred_np[noobj_flags]
-        _iou_mask[noobj_flags] = noobject_scale * iou_penalty
 
     # HANDLE ASSIGNED OBJECT CASES
     # ----------------------------
@@ -449,17 +473,19 @@ def build_target_item(data1, inp_size, n_classes, anchors, object_scale=5.0,
         ax = gt_anchor_inds[gt_idx]
         gt_weight = gt_weights_np[gt_idx]
 
-        # Populate mask for assigned object loss
-        # 0 ~ 1, should be close to 1
-        # pred_iou = iou_pred_np[cell_idx, ax, :]
-
-        # _iou_mask[cell_idx, ax, :] = object_scale * (1 - pred_iou) * gt_weight
         if RESCORE:
             _ious[cell_idx, ax, :] = ious_reshaped[cell_idx, ax, gt_idx]
         else:
             _ious[cell_idx, ax, :] = 1
 
-        _iou_mask[cell_idx, ax, :] = object_scale * gt_weight
+        # 0 ~ 1, should be close to 1
+        # pred_iou = iou_pred_np[cell_idx, ax, :]
+        # _iou_mask[cell_idx, ax, :] = object_scale * (1 - pred_iou) * gt_weight
+        if WEIRD:
+            iou_pred_cell_anchor = iou_pred_np[cell_idx, ax, :]
+            _iou_mask[cell_idx, ax, :] = object_scale * (1 - iou_pred_cell_anchor)  # noqa
+        else:
+            _iou_mask[cell_idx, ax, :] = object_scale * gt_weight
 
         _aoffs[cell_idx, ax, :] = gt_aoff[gt_idx]
         _aoff_mask[cell_idx, ax, :] = coord_scale * gt_weight
