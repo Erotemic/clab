@@ -734,6 +734,7 @@ def train():
     """
     harn = setup_harness()
     print('Making default xpu')
+    print('harn.xpu = {!r}'.format(harn.xpu))
     with harn.xpu:
         print('Running')
         harn.run()
