@@ -448,10 +448,11 @@ def setup_harness(workers=None):
     n_cpus = psutil.cpu_count(logical=True)
     workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
 
-    import os
-
-    if not os.path.exists(devkit_dpath):
-        YoloVOCDataset.ensure_voc_data()
+    # import os
+    # if not os.path.exists(devkit_dpath):
+    print('ensure devkit_dpath = {!r}'.format(devkit_dpath))
+    YoloVOCDataset.ensure_voc_data()
+    print('Got the dataset')
 
     data_choice = ub.argval('--data', 'normal')
 
