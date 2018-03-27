@@ -5,6 +5,19 @@ Currently setup is a bit hacked.
 
 pip install cffi
 python setup.py build_ext --inplace
+
+
+Conda:
+    conda create --name py36 python=3.6
+    conda activate py36
+    pip install pytest pip -U
+    conda install -c pytorch pytorch
+
+    pip install git+https://gitlab.com/EAVISE/lightnet.git
+    pip install git+https://gitlab.com/EAVISE/brambox.git
+
+git@gitlab.com:EAVISE/brambox.git
+git clone git@gitlab.com:Erotemic/lightnet.git
 """
 from clab.util import profiler  # NOQA
 import psutil
@@ -437,7 +450,7 @@ def setup_harness(workers=None):
     import os
 
     if not os.path.exists(devkit_dpath):
-        YoloVOCDataset.ensure_voc2007()
+        YoloVOCDataset.ensure_voc_data()
 
     data_choice = ub.argval('--data', 'normal')
 
@@ -496,6 +509,7 @@ def setup_harness(workers=None):
             'coord_scale': 1.0,
             'iou_thresh': 0.6,
             'reproduce_longcw': ub.argflag('--longcw'),
+            'denom': ub.argflag('--denom', deafult='num_boxes'),
         }),
 
         optimizer=(torch.optim.SGD, dict(
@@ -680,8 +694,13 @@ def train():
 
     python ~/code/clab/examples/yolo_voc.py train --nice=custom_batch64 --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=custom_batch16 --workers=2 --gpu=0 --batch_size=16 --data=combined
-    python ~/code/clab/examples/yolo_voc.py train --nice=longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo_custom_batch16 --workers=2 --gpu=0 --batch_size=16 --data=combined
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw
+
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=num_boxes
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=bsize
+
     """
     harn = setup_harness()
     with harn.xpu:
