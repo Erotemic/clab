@@ -517,7 +517,7 @@ def setup_harness(workers=None):
             'coord_scale': 1.0,
             'iou_thresh': 0.6,
             'reproduce_longcw': ub.argflag('--longcw'),
-            'denom': ub.argflag('--denom', default='num_boxes'),
+            'denom': ub.argval('--denom', default='num_boxes'),
         }),
 
         optimizer=(torch.optim.SGD, dict(
