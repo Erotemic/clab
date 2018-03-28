@@ -462,7 +462,7 @@ def _calculate_fan_in_and_fan_out(tensor):
     else:
         num_input_fmaps = tensor.size(1)
         num_output_fmaps = tensor.size(0)
-        receptive_field_size = np.prod(tensor.numpy().shape[2:])
+        receptive_field_size = np.prod(tensor.cpu().numpy().shape[2:])
         fan_in = num_input_fmaps * receptive_field_size
         fan_out = num_output_fmaps * receptive_field_size
 
@@ -605,7 +605,7 @@ def orthogonal(tensor, gain=1):
             raise ValueError("Only tensors with 2 or more dimensions are supported.")
 
         with torch.no_grad():
-            flattened_shape = (tensor.size(0), int(np.prod(tensor.numpy().shape[1:])))
+            flattened_shape = (tensor.size(0), int(np.prod(tensor.cpu().numpy().shape[1:])))
             flattened = torch.Tensor(flattened_shape[0], flattened_shape[1]).normal_(0, 1)
 
             u, s, v = np.linalg.svd(flattened.numpy(), full_matrices=False)
@@ -646,7 +646,7 @@ def sparse(tensor, sparsity, std=0.01):
             row_indices = np.arange(rows)
             np.random.shuffle(row_indices)
             zero_indices = row_indices[:num_zeros]
-            tensor.numpy()[zero_indices, col_idx] = 0
+            tensor.cpu().numpy()[zero_indices, col_idx] = 0
 
         return tensor
 
@@ -661,10 +661,10 @@ def shock_he(tensor):
     Example:
         >>> tensor = torch.eye(3, 3)
         >>> tensor[0, 0] = 0
-        >>> np.linalg.matrix_rank(tensor.numpy())
+        >>> np.linalg.matrix_rank(tensor.cpu().numpy())
         2
         >>> shock_he(tensor)
-        >>> np.linalg.matrix_rank(tensor.numpy())
+        >>> np.linalg.matrix_rank(tensor.cpu().numpy())
         3
     """
     if isinstance(tensor, Variable) and torch.__version__.startswith('0.3'):
