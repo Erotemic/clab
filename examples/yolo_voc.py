@@ -293,104 +293,16 @@ def make_loaders(datasets, batch_size=16, workers=0):
     return loaders
 
 
-def test():
-    """
-    import sys
-    sys.path.append('/home/joncrall/code/clab/examples')
-    from yolo_voc import *
-    """
-    devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
-    dset = YoloVOCDataset(devkit_dpath, split='test')
-    loader = dset.make_loader(batch_size=8, num_workers=4)
-
-    xpu = xpu_device.XPU.cast('argv')
-    model = darknet.Darknet19(**{
-        'num_classes': dset.num_classes,
-        'anchors': dset.anchors
-    })
-    model = xpu.mount(model)
-
-    weights_fpath = darknet.demo_weights()
-    state_dict = torch.load(weights_fpath)['model_state_dict']
-    model.module.load_state_dict(state_dict)
-
-    num_images = len(dset)
-    # gx = 212
-    # cx = 0
-
-    cacher = ub.Cacher('all_boxes', cfgstr='v1', enabled=False)
-    data = cacher.tryload()
-    if data is None:
-        all_pred_boxes = [
-            [np.empty([0, 5], dtype=np.float32)
-             for _ in range(num_images)]
-            for _ in range(dset.num_classes)]
-
-        all_true_boxes = [
-            [np.empty([0, 5], dtype=np.float32)
-             for _ in range(num_images)]
-            for _ in range(dset.num_classes)]
-
-        for batch in ub.ProgIter(loader, freq=1, adjust=False):
-            im_data, labels = batch
-            im_data = xpu.move(im_data)
-            outputs = model(im_data)
-
-            gt_boxes, gt_classes = labels[0:2]
-            gt_boxes = [b.numpy() for b in gt_boxes]
-            gt_classes = [c.numpy() for c in gt_classes]
-
-            gt_weights = labels[4]
-            orig_sizes, indices = labels[2:4]
-            inp_size = im_data.shape[-2:]
-            postout = model.module.postprocess(outputs, inp_size, orig_sizes)
-
-            out_boxes, out_scores, out_cxs = postout
-
-            zipped = zip(indices, gt_boxes, gt_classes, gt_weights, orig_sizes)
-            for gx, boxes, cxs, weights, orig_size in zipped:
-                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
-                for cx, idxs in cx_to_idxs.items():
-                    # hack weights (ishard) into the dataset
-                    sbox = np.hstack([boxes[idxs], weights[idxs][:, None]])
-                    # Unnormalize the true bboxes back to orig coords
-                    sx, sy = np.array(orig_size) / np.array(inp_size)
-                    sbox[:, 0:4:2] *= sx
-                    sbox[:, 1:4:2] *= sy
-                    all_true_boxes[cx][gx] = sbox
-
-            for gx, boxes, scores, cxs in zip(indices, out_boxes, out_scores, out_cxs):
-                cx_to_idxs = ub.group_items(range(len(cxs)), cxs)
-                for cx, idxs in cx_to_idxs.items():
-                    sbox = np.hstack([boxes[idxs], scores[idxs][:, None]])
-                    all_pred_boxes[cx][gx] = sbox
-
-        data = (all_true_boxes, all_pred_boxes)
-        cacher.save(data)
-    all_true_boxes, all_pred_boxes = data
-
-    # Test our scoring implementation
-    voceval = voc.EvaluateVOC(all_true_boxes, all_pred_boxes)
-    mean_ap, ap_list = voceval.compute()
-    print('mean_ap = {!r}'.format(mean_ap))
-
-    if False:
-        # HACK IN THE ORIGINAL SCORING CODE
-        import pickle
-        import os
-        output_dir = ub.ensuredir('test')
-        det_file = os.path.join(output_dir, 'detections.pkl')
-        with open(det_file, 'wb') as f:
-            pickle.dump(all_pred_boxes, f, pickle.HIGHEST_PROTOCOL)
-
-        print('Evaluating detections')
-        import sys
-        sys.path.append(ub.truepath('~/code/yolo2-pytorch'))
-        from datasets import pascal_voc
-        link = ub.symlink('/home/joncrall/data/VOC/VOCdevkit/',
-                          '/home/joncrall/data/VOC/VOCdevkit2007/', verbose=3)
-        imdb = pascal_voc.VOCDataset('voc_2007_test', os.path.dirname(link), 1, None)
-        imdb.evaluate_detections(all_pred_boxes, output_dir)
+def ensure_ulimit():
+    # NOTE: It is important to have a high enought ulimit for DataParallel
+    try:
+        import resource
+        rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if rlimit[0] <= 8192:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (8192, rlimit[1]))
+    except Exception:
+        print('Unable to fix ulimit. Ensure manually')
+        raise
 
 
 def setup_harness(workers=None):
@@ -408,6 +320,36 @@ def setup_harness(workers=None):
     """
     workdir = ub.truepath('~/work/VOC2007')
     devkit_dpath = ub.truepath('~/data/VOC/VOCdevkit')
+    YoloVOCDataset.ensure_voc_data()
+
+    if ub.argflag('--2007'):
+        dsetkw = {'years': [2007]}
+    elif ub.argflag('--2012'):
+        dsetkw = {'years': [2007, 2012]}
+    else:
+        dsetkw = {'years': [2007]}
+
+    data_choice = ub.argval('--data', 'normal')
+
+    if data_choice == 'combined':
+        datasets = {
+            'test': YoloVOCDataset(devkit_dpath, split='test', **dsetkw),
+            'train': YoloVOCDataset(devkit_dpath, split='trainval', **dsetkw),
+        }
+    elif data_choice == 'notest':
+        datasets = {
+            'train': YoloVOCDataset(devkit_dpath, split='train', **dsetkw),
+            'vali': YoloVOCDataset(devkit_dpath, split='val', **dsetkw),
+        }
+    elif data_choice == 'normal':
+        datasets = {
+            'train': YoloVOCDataset(devkit_dpath, split='train', **dsetkw),
+            'vali': YoloVOCDataset(devkit_dpath, split='val', **dsetkw),
+            'test': YoloVOCDataset(devkit_dpath, split='test', **dsetkw),
+        }
+    else:
+        raise KeyError(data_choice)
+
     nice = ub.argval('--nice', default=None)
 
     pretrained_fpath = darknet.initial_weights()
@@ -416,20 +358,13 @@ def setup_harness(workers=None):
     xpu = xpu_device.XPU.cast('argv')
     print('xpu = {!r}'.format(xpu))
 
-    # NOTE: It is important to have a high enought ulimit for DataParallel
-    if 0:
-        import resource
-        rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-        if rlimit[0] <= 8192:
-            resource.setrlimit(resource.RLIMIT_NOFILE, (8192, rlimit[1]))
+    ensure_ulimit()
 
     postproc_params = dict(
-        conf_thresh=0.001,  # I'm .90 sure 0.001 is right
-        # nms_thresh=0.45,  # I'm .98 sure 0.5 is right
-        nms_thresh=0.5,     # I'm .98 sure 0.5 is right
-        ovthresh=0.5,       # I'm 1-eps sure 0.5 is right
+        conf_thresh=0.001,
+        nms_thresh=0.5,
+        ovthresh=0.5,
     )
-    # ub.argval('--nms-thresh', default=0.45)  # 0.5 might be right
 
     max_epoch = 160
 
@@ -454,7 +389,6 @@ def setup_harness(workers=None):
             9:  0.0009,
             10: 0.0010,
             # cooldown learning rate
-            # 30: 0.0005,
             60: 0.0001,
             90: 0.00001,
         }
@@ -462,44 +396,6 @@ def setup_harness(workers=None):
     batch_size = int(ub.argval('--batch_size', default=16))
     n_cpus = psutil.cpu_count(logical=True)
     workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
-
-    # import os
-    # if not os.path.exists(devkit_dpath):
-    print('ensure devkit_dpath = {!r}'.format(devkit_dpath))
-    YoloVOCDataset.ensure_voc_data()
-    print('Got the dataset')
-
-    data_choice = ub.argval('--data', 'normal')
-
-    if ub.argflag('--2007'):
-        dsetkw = {'years': [2007]}
-    elif ub.argflag('--2012'):
-        dsetkw = {'years': [2007, 2012]}
-    else:
-        dsetkw = {'years': [2007]}
-
-    if data_choice == 'combined':
-        datasets = {
-            'test': YoloVOCDataset(devkit_dpath, split='test', **dsetkw),
-            'train': YoloVOCDataset(devkit_dpath, split='trainval', **dsetkw),
-        }
-    elif data_choice == 'notest':
-        datasets = {
-            'train': YoloVOCDataset(devkit_dpath, split='train', **dsetkw),
-            'vali': YoloVOCDataset(devkit_dpath, split='val', **dsetkw),
-        }
-    elif data_choice == 'normal':
-        datasets = {
-            'train': YoloVOCDataset(devkit_dpath, split='train', **dsetkw),
-            'vali': YoloVOCDataset(devkit_dpath, split='val', **dsetkw),
-            'test': YoloVOCDataset(devkit_dpath, split='test', **dsetkw),
-        }
-    else:
-        raise KeyError(data_choice)
-
-    # Check that the dataset exists
-    # item = datasets['train'][0]
-    # print('item = {!r}'.format(item))
 
     print('Making loaders')
     loaders = make_loaders(datasets, batch_size=batch_size,
@@ -563,7 +459,6 @@ def setup_harness(workers=None):
         augment=datasets['train'].augmenter,
     )
 
-    print('Making harness')
     harn = fit_harness.FitHarness(
         hyper=hyper, xpu=xpu, loaders=loaders, max_iter=max_epoch,
         workdir=workdir,
@@ -699,7 +594,6 @@ def setup_harness(workers=None):
         # harn.log_value(tag + ' epoch max-AP', max_ap, harn.epoch)
         harn.batch_confusions.clear()
 
-    print('Returning harness')
     return harn
 
 
