@@ -424,32 +424,41 @@ def setup_harness(workers=None):
             resource.setrlimit(resource.RLIMIT_NOFILE, (8192, rlimit[1]))
 
     postproc_params = dict(
-        conf_thresh=0.001,
-        nms_thresh=0.45,
-        ovthresh=0.5,
+        conf_thresh=0.001,  # I'm .90 sure 0.001 is right
+        # nms_thresh=0.45,  # I'm .98 sure 0.5 is right
+        nms_thresh=0.5,     # I'm .98 sure 0.5 is right
+        ovthresh=0.5,       # I'm 1-eps sure 0.5 is right
     )
+    # ub.argval('--nms-thresh', default=0.45)  # 0.5 might be right
 
     max_epoch = 160
 
     lr_step_points = {
         0: 0.001,
-        # warmup learning rate
-        # 0:  0.0001,
-        # 1:  0.0001,
-        # 2:  0.0002,
-        # 3:  0.0003,
-        # 4:  0.0004,
-        # 5:  0.0005,
-        # 6:  0.0006,
-        # 7:  0.0007,
-        # 8:  0.0008,
-        # 9:  0.0009,
-        # 10: 0.0010,
-        # cooldown learning rate
-        # 30: 0.0005,
         60: 0.0001,
         90: 0.00001,
     }
+
+    if ub.argflag('--warmup'):
+        lr_step_points = {
+            # warmup learning rate
+            0:  0.0001,
+            1:  0.0001,
+            2:  0.0002,
+            3:  0.0003,
+            4:  0.0004,
+            5:  0.0005,
+            6:  0.0006,
+            7:  0.0007,
+            8:  0.0008,
+            9:  0.0009,
+            10: 0.0010,
+            # cooldown learning rate
+            # 30: 0.0005,
+            60: 0.0001,
+            90: 0.00001,
+        }
+
     batch_size = int(ub.argval('--batch_size', default=16))
     n_cpus = psutil.cpu_count(logical=True)
     workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
@@ -720,6 +729,10 @@ def train():
     python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=num_boxes
 
     # -------------
+    # ACIDALIA
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=bsize --2012
+
+    # -------------
     # ARETHA
     python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_boxes --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=num_boxes --2012
     python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
@@ -729,6 +742,8 @@ def train():
     # -------------
     # HERMES
     python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch32_div_bsize --workers=4 --gpu=2,3 --batch_size=32 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc.py train --nice=combo07_batch32_div_bsize --workers=4 --gpu=0,1 --batch_size=32 --data=combined --denom=bsize --2007
+
     python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch64_div_bsize --workers=8 --gpu=0,1,2,3 --batch_size=64 --data=combined --denom=bsize --2012
 
     """
