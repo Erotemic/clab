@@ -339,6 +339,13 @@ def ensure_lightnet_initial_weights():
     return torch_fpath
 
 
+def demo_lightnet_weights():
+    from os.path import dirname, join
+    import lightnet
+    fpath = join(dirname(dirname(lightnet.__file__)), 'examples', 'yolo-voc', 'lightnet_weights.pt')
+    return fpath
+
+
 def setup_harness(workers=None):
     """
     CommandLine:
@@ -524,8 +531,8 @@ def setup_harness(workers=None):
             >>> batch = harn._demo_batch(0, 'train')
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
-            >>> weights_fpath = darknet.demo_weights()
-            >>> state_dict = torch.load(weights_fpath)['model_state_dict']
+            >>> weights_fpath = demo_lightnet_weights()
+            >>> state_dict = torch.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
         """
@@ -563,40 +570,43 @@ def setup_harness(workers=None):
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
             >>> loader = harn.loaders['train']
-            >>> #weights_fpath = darknet.demo_weights()
-            >>> #state_dict = torch.load(weights_fpath)['model_state_dict']
-            >>> #harn.model.module.load_state_dict(state_dict)
+            >>> weights_fpath = demo_lightnet_weights()
+            >>> state_dict = torch.load(weights_fpath)['weights']
+            >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
             >>> tag = 'train'
             >>> on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss)
         """
         # Accumulate relevant outputs to measure
-        target, gt_weights, orig_size, index = labels
-        # gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
-        # aoff_pred, iou_pred, prob_pred = outputs
-        im_sizes = orig_size
+        target, gt_weights, orig_size, batch_index = labels
         inp_size = inputs[0].shape[-2:][::-1]
 
         conf_thresh = harn.postproc_params['conf_thresh']
         nms_thresh = harn.postproc_params['nms_thresh']
         ovthresh = harn.postproc_params['ovthresh']
 
+        get_bboxes = harn.model.module.postprocess
+        get_bboxes.conf_thresh = conf_thresh
+        get_bboxes.nms_thresh = nms_thresh
+
         postout = harn.model.module.postprocess(outputs)
+
         batch_pred_boxes = []
         batch_pred_scores = []
         batch_pred_cls_inds = []
-        for item in postout:
-            tlbr = util.Boxes(postout[..., 0:4], 'cxywh').scale(inp_size).format('tlbr').data
+        for item_ in postout:
+            item = item_.cpu().numpy()
+            cxywh = util.Boxes(item[..., 0:4], 'cxywh')
+            tlbr = cxywh.scale(inp_size).asformat('tlbr').data
             batch_pred_boxes.append(tlbr)
-            batch_pred_scores.append(postout[..., 4])
-            batch_pred_cls_inds.append(postout[..., 5])
-            pass
+            batch_pred_scores.append(item[..., 4])
+            batch_pred_cls_inds.append(item[..., 5])
 
         batch_true_cls_inds = target[..., 0]
         batch_true_boxes = target[..., 1:5]
 
         batch_orig_sz = orig_size
-        batch_img_inds = index
+        batch_img_inds = batch_index
 
         y_batch = []
         for bx, index in enumerate(batch_img_inds.data.cpu().numpy().ravel()):
@@ -612,7 +622,7 @@ def setup_harness(workers=None):
             # Unnormalize the true bboxes back to orig coords
             orig_size = batch_orig_sz[bx]
             if len(true_boxes_):
-                true_boxes = util.Boxes(true_boxes_).scale(orig_size).format('tlbr').data
+                true_boxes = util.Boxes(true_boxes_, 'cxywh').scale(orig_size).asformat('tlbr').data
                 true_boxes = np.hstack([true_boxes, true_weights[:, None]])
 
             y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
