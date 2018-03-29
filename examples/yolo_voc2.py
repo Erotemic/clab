@@ -405,7 +405,8 @@ def setup_harness(workers=None):
 
     postproc_params = dict(
         conf_thresh=0.001,
-        nms_thresh=0.5,
+        # nms_thresh=0.5,
+        nms_thresh=0.4,
         ovthresh=0.5,
     )
 
@@ -703,7 +704,7 @@ def train():
     python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
     python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize_light --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
 
-    python ~/code/clab/examples/yolo_voc2.py train --nice=notest_light_07 --workers=8 --gpu=1 --batch_size=16 --data=notest --2007
+    python ~/code/clab/examples/yolo_voc2.py train --nice=notest_light_07 --workers=8 --gpu=1 --batch_size=16 --data=notest --2007 --warmup
 
     """
     harn = setup_harness()
