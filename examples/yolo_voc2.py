@@ -536,7 +536,7 @@ def setup_harness(workers=None):
         target = labels[0]
 
         bsize = inputs[0].shape[0]
-        loss = harn.criterion(outputs, target, step=harn.epoch * bsize)
+        loss = harn.criterion(outputs, target, seen=harn.epoch * bsize)
         return outputs, loss
 
     @harn.add_batch_metric_hook
@@ -589,6 +589,12 @@ def setup_harness(workers=None):
         # batch_true_boxes, batch_true_cls_inds = labels[0:2]
         # batch_orig_sz, batch_img_inds = labels[2:4]
 
+        batch_true_cls_inds = target[..., 0]
+        batch_true_boxes = target[..., 1:5]
+
+        batch_orig_sz = orig_size
+        batch_img_inds = index
+
         y_batch = []
         for bx, index in enumerate(batch_img_inds.data.cpu().numpy().ravel()):
             pred_boxes  = batch_pred_boxes[bx]
@@ -602,7 +608,7 @@ def setup_harness(workers=None):
 
             # Unnormalize the true bboxes back to orig coords
             orig_size = batch_orig_sz[bx]
-            sx, sy = np.array(orig_size) / np.array(inp_size)
+            sx, sy = np.array(inp_size)
             if len(true_boxes_):
                 true_boxes = np.hstack([true_boxes_, true_weights[:, None]])
                 true_boxes[:, 0:4:2] *= sx
