@@ -581,13 +581,16 @@ def setup_harness(workers=None):
         nms_thresh = harn.postproc_params['nms_thresh']
         ovthresh = harn.postproc_params['ovthresh']
 
-        postout = harn.model.module.postprocess(outputs, inp_size, im_sizes,
-                                                conf_thresh, nms_thresh)
-        # batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
-        # Compute: y_pred, y_true, and y_score for this batch
-        batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
-        # batch_true_boxes, batch_true_cls_inds = labels[0:2]
-        # batch_orig_sz, batch_img_inds = labels[2:4]
+        postout = harn.model.module.postprocess(outputs)
+        batch_pred_boxes = []
+        batch_pred_scores = []
+        batch_pred_cls_inds = []
+        for item in postout:
+            tlbr = util.Boxes(postout[..., 0:4], 'cxywh').scale(inp_size).format('tlbr').data
+            batch_pred_boxes.append(tlbr)
+            batch_pred_scores.append(postout[..., 4])
+            batch_pred_cls_inds.append(postout[..., 5])
+            pass
 
         batch_true_cls_inds = target[..., 0]
         batch_true_boxes = target[..., 1:5]
@@ -608,11 +611,9 @@ def setup_harness(workers=None):
 
             # Unnormalize the true bboxes back to orig coords
             orig_size = batch_orig_sz[bx]
-            sx, sy = np.array(inp_size)
             if len(true_boxes_):
-                true_boxes = np.hstack([true_boxes_, true_weights[:, None]])
-                true_boxes[:, 0:4:2] *= sx
-                true_boxes[:, 1:4:2] *= sy
+                true_boxes = util.Boxes(true_boxes_).scale(orig_size).format('tlbr').data
+                true_boxes = np.hstack([true_boxes, true_weights[:, None]])
 
             y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
                                                  pred_boxes, pred_scores,
