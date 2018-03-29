@@ -49,11 +49,12 @@ else:
     from clab.util.jsonutil import (JSONEncoder, NumpyAwareJSONEncoder,
                                     NumpyEncoder, json_numpy_obj_hook, read_json,
                                     walk_json, write_json,)
-    from clab.util.misc import (PauseTQDM, cc_locs, clean_tensorboard_protobufs,
-                                compact_idstr, ensure_rng, get_stack_frame,
-                                grab_test_image, isiterable, make_idstr,
-                                make_short_idstr, protect_print, random_indices,
-                                read_arr, read_h5arr, roundrobin, super2,
+    from clab.util.misc import (Boxes, PauseTQDM, cc_locs,
+                                clean_tensorboard_protobufs, compact_idstr,
+                                ensure_rng, get_stack_frame, grab_test_image,
+                                isiterable, make_idstr, make_short_idstr,
+                                protect_print, random_indices, read_arr,
+                                read_h5arr, roundrobin, scale_boxes, super2,
                                 write_arr, write_h5arr,)
     from clab.util.mplutil import (Color, PlotNums, adjust_subplots, axes_extent,
                                    colorbar, copy_figure_to_clipboard,

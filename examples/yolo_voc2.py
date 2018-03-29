@@ -19,6 +19,7 @@ Conda:
 git@gitlab.com:EAVISE/brambox.git
 git clone git@gitlab.com:Erotemic/lightnet.git
 """
+from clab import util
 from clab.util import profiler  # NOQA
 import psutil
 import torch
@@ -37,8 +38,10 @@ from clab import fit_harness
 from clab import monitor
 from clab import nninit
 from clab.lr_scheduler import ListedLR
-from clab.models.yolo2 import darknet
-from clab.models.yolo2 import darknet_loss
+
+# Hey! lightnet is pretty modular. No need to copy code.
+from lightnet.network.loss import RegionLoss
+from lightnet.models.network_yolo import Yolo
 
 
 class YoloVOCDataset(voc.VOCDataset):
@@ -69,21 +72,14 @@ class YoloVOCDataset(voc.VOCDataset):
         super(YoloVOCDataset, self).__init__(devkit_dpath, split=split,
                                              years=years)
 
-        """
-        From YOLO9000.pdf:
-            With the addition of anchor boxes we changed the resolution to
-            416×416.
-
-            Since our model downsamples by a factor of 32, we pull from the
-            following multiples of 32: {320, 352, ..., 608}.
-        """
-
+        # From YOLO9000.pdf:
+        # With the addition of anchor boxes we changed the resolution to
+        # 416×416.  Since our model downsamples by a factor of 32, we pull
+        # from the following multiples of 32: {320, 352, ..., 608}.
         self.factor = 32  # downsample factor of yolo grid
         self.base_wh = np.array([416, 416], dtype=np.int)
         assert np.all(self.base_wh % self.factor == 0)
 
-        # self.multi_scale_inp_size = np.array([
-        #     self.base_wh + (self.factor * i) for i in range(-3, 7)])
         self.multi_scale_inp_size = np.array([
             self.base_wh + (self.factor * i) for i in range(-3, 6)])
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
@@ -165,18 +161,14 @@ class YoloVOCDataset(voc.VOCDataset):
         anchors = algo.cluster_centers_
         return anchors
 
-    # def __len__(self):
-    #     return 16
-
     @profiler.profile
     def __getitem__(self, index):
         """
         Example:
-            >>> import sys
-            >>> sys.path.append('/home/joncrall/code/clab/examples')
-            >>> from yolo_voc import *
+            >>> from yolo_voc2 import *
             >>> self = YoloVOCDataset(split='train')
-            >>> chw01, label = self[1]
+            >>> index = 1
+            >>> chw01, label = self[index]
             >>> hwc01 = chw01.numpy().transpose(1, 2, 0)
             >>> print(hwc01.shape)
             >>> boxes, class_idxs = label[0:2]
@@ -186,6 +178,30 @@ class YoloVOCDataset(voc.VOCDataset):
             >>> mplutil.qtensure()  # xdoc: +SKIP
             >>> mplutil.imshow(hwc01, colorspace='rgb')
             >>> mplutil.draw_boxes(boxes.numpy(), box_format='tlbr')
+
+        Ignore:
+            >>> from yolo_voc2 import *
+            >>> # Check that we can collate this data
+            >>> self = YoloVOCDataset(split='train')
+            >>> inbatch = [self[index] for index in range(0, 16)]
+            >>> from clab.data import collate
+            >>> batch = collate.padded_collate(inbatch)
+            >>> inputs, labels = batch
+            >>> assert len(labels) == len(inbatch[0][1])
+            >>> target, gt_weights, origsize, index = labels
+            >>> assert list(target.shape) == [16, 6, 5]
+            >>> assert list(gt_weights.shape) == [16, 6]
+            >>> assert list(origsize.shape) == [16, 2]
+            >>> assert list(index.shape) == [16, 1]
+
+            import ubelt
+            for timer in ubelt.Timerit(100, bestof=10, label='time'):
+                with timer:
+                    collate.padded_collate(inbatch)
+
+            for timer in ubelt.Timerit(100, bestof=10, label='list'):
+                with timer:
+                    collate.list_collate(inbatch)
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -193,27 +209,27 @@ class YoloVOCDataset(voc.VOCDataset):
             inp_size = self.multi_scale_inp_size[size_index]
         else:
             inp_size = self.base_size
+        inp_size = np.array(inp_size)
 
         # load the raw data from VOC
         image = self._load_image(index)
         annot = self._load_annotation(index)
 
-        # VOC loads annotations in tlbr, but yolo expects xywh
-        tlbr = annot['boxes'].astype(np.float32)
+        # VOC loads annotations in tlbr
+        tlbr_orig = util.Boxes(annot['boxes'].astype(np.float), 'tlbr')
         gt_classes = annot['gt_classes']
 
         # Weight samples so we dont care about difficult cases
-        gt_weights = 1.0 - annot['gt_ishard'].astype(np.float32)
+        gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
 
-        # squish the bounding box and image into a standard size
-        w, h = inp_size
-        im_w, im_h = image.shape[0:2][::-1]
-        sx = float(w) / im_w
-        sy = float(h) / im_h
-        tlbr[:, 0::2] *= sx
-        tlbr[:, 1::2] *= sy
-        interpolation = cv2.INTER_AREA if (sx + sy) <= 2 else cv2.INTER_CUBIC
-        hwc255 = cv2.resize(image, (w, h), interpolation=interpolation)
+        # squish the bounding box and image into standard network input coordinates
+        orig_size = np.array(image.shape[0:2][::-1])
+        factor = inp_size / orig_size
+        tlbr_inp = tlbr_orig.scale(factor)
+
+        interpolation = cv2.INTER_AREA if factor.sum() <= 2 else cv2.INTER_CUBIC
+        hwc255 = cv2.resize(image, tuple(inp_size),
+                            interpolation=interpolation)
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
@@ -223,27 +239,30 @@ class YoloVOCDataset(voc.VOCDataset):
 
             bbs = ia.BoundingBoxesOnImage(
                 [ia.BoundingBox(x1, y1, x2, y2)
-                 for x1, y1, x2, y2 in tlbr], shape=hwc255.shape)
+                 for x1, y1, x2, y2 in tlbr_inp.data], shape=hwc255.shape)
             bbs = seq_det.augment_bounding_boxes([bbs])[0]
 
             tlbr = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
-                              for bb in bbs.bounding_boxes])
+                             for bb in bbs.bounding_boxes])
             tlbr = yolo_utils.clip_boxes(tlbr, hwc255.shape[0:2])
+            tlbr_inp = util.Boxes(tlbr, 'tlbr')
 
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
-        gt_classes = torch.LongTensor(gt_classes)
 
-        # The original YOLO-v2 works in xywh, but this implementation seems to
-        # work in tlbr.
-        # xywh = yolo_utils.to_xywh(tlbr)
-        # But does this implementation expect tlbr? I think it does.
-        boxes = torch.FloatTensor(tlbr)
+        # Lightnet YOLO accepts truth tensors in the format:
+        # [class_id, center_x, center_y, w, h]
+        # where coordinates are noramlized between 0 and 1
+        cxywh_norm = tlbr_inp.asformat('cxywh').scale(1 / inp_size)
+
+        target = np.hstack([gt_classes[:, None], cxywh_norm.data])
+        target = torch.FloatTensor(target)
 
         # Return index information in the label as well
-        orig_size = torch.LongTensor([im_w, im_h])
+        orig_size = torch.LongTensor(orig_size)
         index = torch.LongTensor([index])
         gt_weights = torch.FloatTensor(gt_weights)
-        label = (boxes, gt_classes, orig_size, index, gt_weights)
+        label = (target, gt_weights, orig_size, index)
+
         return chw01, label
 
     @ub.memoize_method
@@ -289,10 +308,8 @@ def make_loaders(datasets, batch_size=16, workers=0):
             dset, batch_size=batch_size, shuffle=(key == 'train')
         )
         loader = torch_data.DataLoader(dset, batch_sampler=batch_sampler,
-                                       collate_fn=collate.list_collate,
+                                       collate_fn=collate.padded_collate,
                                        num_workers=workers)
-        # loader = dset.make_loader(batch_sampler=batch_sampler,
-        #                           num_workers=workers)
         loader.batch_size = batch_size
         loaders[key] = loader
     return loaders
@@ -310,11 +327,23 @@ def ensure_ulimit():
         raise
 
 
+def ensure_lightnet_initial_weights():
+    import os
+    weight_fpath = ub.grabdata('https://pjreddie.com/media/files/darknet19_448.conv.23', appname='clab')
+    torch_fpath = weight_fpath + '.pt'
+    if not os.path.exists(torch_fpath):
+        # hack to transform initial state
+        model = Yolo(num_classes=1000)
+        model.load_weights(weight_fpath)
+        torch.save(model.state_dict(), torch_fpath)
+    return torch_fpath
+
+
 def setup_harness(workers=None):
     """
     CommandLine:
-        python ~/code/clab/examples/yolo_voc.py setup_harness
-        python ~/code/clab/examples/yolo_voc.py setup_harness --profile
+        python ~/code/clab/examples/yolo_voc2.py setup_harness
+        python ~/code/clab/examples/yolo_voc2.py setup_harness --profile
 
     Example:
         >>> harn = setup_harness(workers=0)
@@ -357,7 +386,7 @@ def setup_harness(workers=None):
 
     nice = ub.argval('--nice', default=None)
 
-    pretrained_fpath = darknet.initial_weights()
+    pretrained_fpath = ensure_lightnet_initial_weights()
 
     # NOTE: XPU implicitly supports DataParallel just pass --gpu=0,1,2,3
     xpu = xpu_device.XPU.cast('argv')
@@ -423,20 +452,27 @@ def setup_harness(workers=None):
     print('Making hyperparams')
     hyper = hyperparams.HyperParams(
 
-        model=(darknet.Darknet19, {
+        # model=(darknet.Darknet19, {
+        model=(Yolo, {
             'num_classes': datasets['train'].num_classes,
-            'anchors': datasets['train'].anchors
+            'anchors': {
+                'num': 5, 'values': list(ub.flatten(datasets['train'].anchors))
+            },
         }),
 
-        criterion=(darknet_loss.DarknetLoss, {
-            'anchors': datasets['train'].anchors,
-            'object_scale': 5.0,
-            'noobject_scale': 1.0,
-            'class_scale': 1.0,
-            'coord_scale': 1.0,
-            'iou_thresh': 0.6,
-            'reproduce_longcw': ub.argflag('--longcw'),
-            'denom': ub.argval('--denom', default='num_boxes'),
+        criterion=(RegionLoss, {
+            'num_classes': datasets['train'].num_classes,
+            'anchors': {
+                'num': 5, 'values': list(ub.flatten(datasets['train'].anchors))
+            }
+            # 'anchors': datasets['train'].anchors,
+            # 'object_scale': 5.0,
+            # 'noobject_scale': 1.0,
+            # 'class_scale': 1.0,
+            # 'coord_scale': 1.0,
+            # 'thresh': 0.6,
+            # 'reproduce_longcw': ub.argflag('--longcw'),
+            # 'denom': ub.argval('--denom', default='num_boxes'),
         }),
 
         optimizer=(torch.optim.SGD, dict(
@@ -482,7 +518,7 @@ def setup_harness(workers=None):
         Example:
             >>> import sys
             >>> sys.path.append('/home/joncrall/code/clab/examples')
-            >>> from yolo_voc import *
+            >>> from yolo_voc2 import *
             >>> harn = setup_harness(workers=0)
             >>> harn.initialize()
             >>> batch = harn._demo_batch(0, 'train')
@@ -493,22 +529,15 @@ def setup_harness(workers=None):
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
         """
-        # hack for data parallel
-        # if harn.current_tag == 'train':
-        outputs = harn.model(*inputs)
-        # else:
-        #     # Run test and validation on a single GPU
-        #     outputs = harn.model.module(*inputs)
+        outputs = harn.model._forward(*inputs)
 
         # darknet criterion needs to know the input image shape
         inp_size = tuple(inputs[0].shape[-2:])
 
-        aoff_pred, iou_pred, prob_pred = outputs
-        gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
+        target = labels
 
-        loss = harn.criterion(aoff_pred, iou_pred, prob_pred, gt_boxes,
-                              gt_classes, gt_weights=gt_weights,
-                              inp_size=inp_size, epoch=harn.epoch)
+        bsize = inputs[0].shape[0]
+        loss = harn.criterion(output, target, step=harn.epoch * bsize)
         return outputs, loss
 
     @harn.add_batch_metric_hook
@@ -604,46 +633,46 @@ def setup_harness(workers=None):
 
 def train():
     """
-    python ~/code/clab/examples/yolo_voc.py train --nice=baseline --workers=0
-    python ~/code/clab/examples/yolo_voc.py train --nice=trainval2
+    python ~/code/clab/examples/yolo_voc2.py train --nice=baseline --workers=0
+    python ~/code/clab/examples/yolo_voc2.py train --nice=trainval2
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=med_batch --workers=6 --gpu=0,1 --batch_size=32
-    python ~/code/clab/examples/yolo_voc.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
-    python ~/code/clab/examples/yolo_voc.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=normal
-    python ~/code/clab/examples/yolo_voc.py train --nice=three_batch --workers=6 --gpu=1,2,3 --batch_size=48
+    python ~/code/clab/examples/yolo_voc2.py train --nice=med_batch --workers=6 --gpu=0,1 --batch_size=32
+    python ~/code/clab/examples/yolo_voc2.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
+    python ~/code/clab/examples/yolo_voc2.py train --nice=big_batch --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=normal
+    python ~/code/clab/examples/yolo_voc2.py train --nice=three_batch --workers=6 --gpu=1,2,3 --batch_size=48
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
-    python ~/code/clab/examples/yolo_voc.py train --nice=basic --workers=0 --batch_size=16
+    python ~/code/clab/examples/yolo_voc2.py train --nice=basic --workers=0 --gpu=0 --batch_size=16
+    python ~/code/clab/examples/yolo_voc2.py train --nice=basic --workers=0 --batch_size=16
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=small_batch --workers=6 --gpu=0,1,2,3 --batch_size=16 --data=combined
+    python ~/code/clab/examples/yolo_voc2.py train --nice=small_batch --workers=6 --gpu=0,1,2,3 --batch_size=16 --data=combined
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=simple --workers=2 --gpu=0 --batch_size=16 --data=notest
+    python ~/code/clab/examples/yolo_voc2.py train --nice=simple --workers=2 --gpu=0 --batch_size=16 --data=notest
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=custom_batch64 --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
+    python ~/code/clab/examples/yolo_voc2.py train --nice=custom_batch64 --workers=6 --gpu=0,1,2,3 --batch_size=64 --data=combined
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo_custom_batch16 --workers=2 --gpu=0 --batch_size=16 --data=combined
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo_custom_batch16 --workers=2 --gpu=0 --batch_size=16 --data=combined
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=num_boxes
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo_longcw_batch16 --workers=2 --gpu=1 --batch_size=16 --data=combined --longcw --denom=num_boxes
 
     # -------------
     # ACIDALIA
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=bsize --2012
 
     # -------------
     # ARETHA
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_boxes --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=num_boxes --2012
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo07_batch16_div_bsize --workers=2 --gpu=3 --batch_size=16 --data=combined --denom=bsize --2007
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo07_batch16_div_boxes --workers=2 --gpu=2 --batch_size=16 --data=combined --denom=num_boxes --2007
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_boxes --workers=2 --gpu=0 --batch_size=16 --data=combined --denom=num_boxes --2012
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo07_batch16_div_bsize --workers=2 --gpu=3 --batch_size=16 --data=combined --denom=bsize --2007
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo07_batch16_div_boxes --workers=2 --gpu=2 --batch_size=16 --data=combined --denom=num_boxes --2007
 
     # -------------
     # HERMES
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch32_div_bsize --workers=4 --gpu=2,3 --batch_size=32 --data=combined --denom=bsize --2012
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo07_batch32_div_bsize --workers=4 --gpu=0,1 --batch_size=32 --data=combined --denom=bsize --2007
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch32_div_bsize --workers=4 --gpu=2,3 --batch_size=32 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo07_batch32_div_bsize --workers=4 --gpu=0,1 --batch_size=32 --data=combined --denom=bsize --2007
 
-    python ~/code/clab/examples/yolo_voc.py train --nice=combo12_batch64_div_bsize --workers=8 --gpu=0,1,2,3 --batch_size=64 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch64_div_bsize --workers=8 --gpu=0,1,2,3 --batch_size=64 --data=combined --denom=bsize --2012
 
     """
     harn = setup_harness()
@@ -658,7 +687,7 @@ if __name__ == '__main__':
     r"""
     CommandLine:
         export PYTHONPATH=$PYTHONPATH:/home/joncrall/code/clab/examples
-        python -m xdoctest ~/code/clab/examples/yolo_voc.py all
+        python -m xdoctest ~/code/clab/examples/yolo_voc2.py all
     """
     import xdoctest
     xdoctest.doctest_module(__file__)

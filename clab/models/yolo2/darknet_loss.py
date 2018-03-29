@@ -647,6 +647,7 @@ def _bbox_to_yolo_flat(gt_boxes_np, anchors, inp_size, out_size):
 
 def scale_bbox(bboxes, sf_x, sf_y):
     """ works with tlbr or xywh """
+    # return util.misc.scale_boxes(bboxes, (sf_x, sf_y))
     bboxes = bboxes.copy()
     bboxes[..., 0:4:2] *= sf_x
     bboxes[..., 1:4:2] *= sf_y

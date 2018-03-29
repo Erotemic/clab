@@ -2221,8 +2221,11 @@ def draw_border(ax, color, lw=2, offset=None, adjust=True):
 def draw_boxes(boxes, box_format='xywh', color='blue', ax=None):
     """
     Args:
-        boxes (list): list of coordindates in xywh or tlbr format
+        boxes (list): list of coordindates in xywh, tlbr, or cxywh format
         box_format (str): specify how boxes are formated
+            xywh is the top left x and y pixel width and height
+            cxywh is the center xy pixel width and height
+            tlbr is the top left xy and the bottom right xy
         color (str): edge color of the boxes
 
     Example:
@@ -2240,6 +2243,11 @@ def draw_boxes(boxes, box_format='xywh', color='blue', ax=None):
 
     if box_format == 'xywh':
         xywh = boxes
+    elif box_format == 'cxywh':
+        cx, cy, w, h = boxes.T[0:4]
+        x1 = cx - (w / 2)
+        y1 = cy - (h / 2)
+        xywh = np.vstack([x1, y1, w, h]).T
     elif box_format == 'tlbr':
         x1, y1 = boxes.T[0:2]
         w, h = boxes.T[2:4] - boxes.T[0:2]

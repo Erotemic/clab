@@ -13,6 +13,7 @@ import torch
 import glob
 import ubelt as ub
 import numpy as np
+from . import collate
 import torch.utils.data as torch_data
 
 
@@ -311,27 +312,7 @@ class VOCDataset(torch_data.Dataset, ub.NiceRepr):
             >>> assert len(labels) == 2
             >>> assert len(labels[0]) == len(images)
         """
-        def custom_collate_fn(inbatch):
-            # we know the order of data in __getitem__ so we can choose not to
-            # stack the variable length bboxes and labels
-            default_collate = torch_data.dataloader.default_collate
-            inimgs, inlabels = list(map(list, zip(*inbatch)))
-            imgs = default_collate(inimgs)
-
-            # Just transpose the list if we cant collate the labels
-            # However, try to collage each part.
-            n_labels = len(inlabels[0])
-            labels = [None] * n_labels
-            for i in range(n_labels):
-                simple = [x[i] for x in inlabels]
-                if ub.allsame(map(len, simple)):
-                    labels[i] = default_collate(simple)
-                else:
-                    labels[i] = simple
-
-            batch = imgs, labels
-            return batch
-        kwargs['collate_fn'] = custom_collate_fn
+        kwargs['collate_fn'] = collate.list_collate
         loader = torch_data.DataLoader(self, *args, **kwargs)
         return loader
 
