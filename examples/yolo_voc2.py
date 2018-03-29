@@ -543,9 +543,9 @@ def setup_harness(workers=None):
     def custom_metrics(harn, output, labels):
         metrics_dict = ub.odict()
         criterion = harn.criterion
-        metrics_dict['L_bbox'] = float(criterion.bbox_loss.data.cpu().numpy())
-        metrics_dict['L_iou'] = float(criterion.iou_loss.data.cpu().numpy())
-        metrics_dict['L_cls'] = float(criterion.cls_loss.data.cpu().numpy())
+        metrics_dict['L_bbox'] = float(criterion.loss_coord.data.cpu().numpy())
+        metrics_dict['L_iou'] = float(criterion.loss_conf.data.cpu().numpy())
+        metrics_dict['L_cls'] = float(criterion.loss_cls.data.cpu().numpy())
         return metrics_dict
 
     # Set as a harness attribute instead of using a closure
