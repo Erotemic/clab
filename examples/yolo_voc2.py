@@ -563,9 +563,9 @@ def setup_harness(workers=None):
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
             >>> loader = harn.loaders['train']
-            >>> weights_fpath = darknet.demo_weights()
-            >>> state_dict = torch.load(weights_fpath)['model_state_dict']
-            >>> harn.model.module.load_state_dict(state_dict)
+            >>> #weights_fpath = darknet.demo_weights()
+            >>> #state_dict = torch.load(weights_fpath)['model_state_dict']
+            >>> #harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
             >>> tag = 'train'
             >>> on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss)
