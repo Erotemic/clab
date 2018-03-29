@@ -16,8 +16,8 @@ Conda:
     pip install git+https://gitlab.com/EAVISE/lightnet.git
     pip install git+https://gitlab.com/EAVISE/brambox.git
 
-git@gitlab.com:EAVISE/brambox.git
-git clone git@gitlab.com:Erotemic/lightnet.git
+pip install git+https://gitlab.com/EAVISE/brambox.git
+git clone git@gitlab.com:Erotemic/lightnet.git:dev/mine
 """
 from clab import util
 from clab.util import profiler  # NOQA
@@ -529,15 +529,14 @@ def setup_harness(workers=None):
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
         """
-        outputs = harn.model._forward(*inputs)
+        outputs = harn.model.forward(*inputs)
 
         # darknet criterion needs to know the input image shape
-        inp_size = tuple(inputs[0].shape[-2:])
-
-        target = labels
+        # inp_size = tuple(inputs[0].shape[-2:])
+        target = labels[0]
 
         bsize = inputs[0].shape[0]
-        loss = harn.criterion(output, target, step=harn.epoch * bsize)
+        loss = harn.criterion(outputs, target, step=harn.epoch * bsize)
         return outputs, loss
 
     @harn.add_batch_metric_hook
@@ -572,7 +571,8 @@ def setup_harness(workers=None):
             >>> on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss)
         """
         # Accumulate relevant outputs to measure
-        gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
+        target, gt_weights, orig_size, index = labels
+        # gt_boxes, gt_classes, orig_size, indices, gt_weights = labels
         # aoff_pred, iou_pred, prob_pred = outputs
         im_sizes = orig_size
         inp_size = inputs[0].shape[-2:][::-1]
@@ -586,8 +586,8 @@ def setup_harness(workers=None):
         # batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
         # Compute: y_pred, y_true, and y_score for this batch
         batch_pred_boxes, batch_pred_scores, batch_pred_cls_inds = postout
-        batch_true_boxes, batch_true_cls_inds = labels[0:2]
-        batch_orig_sz, batch_img_inds = labels[2:4]
+        # batch_true_boxes, batch_true_cls_inds = labels[0:2]
+        # batch_orig_sz, batch_img_inds = labels[2:4]
 
         y_batch = []
         for bx, index in enumerate(batch_img_inds.data.cpu().numpy().ravel()):
@@ -673,6 +673,9 @@ def train():
     python ~/code/clab/examples/yolo_voc2.py train --nice=combo07_batch32_div_bsize --workers=4 --gpu=0,1 --batch_size=32 --data=combined --denom=bsize --2007
 
     python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch64_div_bsize --workers=8 --gpu=0,1,2,3 --batch_size=64 --data=combined --denom=bsize --2012
+
+
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
 
     """
     harn = setup_harness()
