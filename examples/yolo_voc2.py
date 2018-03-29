@@ -329,7 +329,8 @@ def ensure_ulimit():
 
 def ensure_lightnet_initial_weights():
     import os
-    weight_fpath = ub.grabdata('https://pjreddie.com/media/files/darknet19_448.conv.23', appname='clab')
+    weight_fpath = ub.grabdata(
+        'https://pjreddie.com/media/files/darknet19_448.conv.23', appname='clab')
     torch_fpath = weight_fpath + '.pt'
     if not os.path.exists(torch_fpath):
         # hack to transform initial state
@@ -342,7 +343,8 @@ def ensure_lightnet_initial_weights():
 def demo_lightnet_weights():
     from os.path import dirname, join
     import lightnet
-    fpath = join(dirname(dirname(lightnet.__file__)), 'examples', 'yolo-voc', 'lightnet_weights.pt')
+    fpath = join(dirname(dirname(lightnet.__file__)),
+                 'examples', 'yolo-voc', 'lightnet_weights.pt')
     return fpath
 
 
@@ -456,22 +458,22 @@ def setup_harness(workers=None):
             thresh in 2.0.cfg is iou_thresh here
     """
 
+    # anchors = {'num': 5, 'values': list(ub.flatten(datasets['train'].anchors))}
+    anchors = dict(num=5, values=[1.3221, 1.73145, 3.19275, 4.00944, 5.05587,
+                                  8.09892, 9.47112, 4.84053, 11.2364, 10.0071])
+
     print('Making hyperparams')
     hyper = hyperparams.HyperParams(
 
         # model=(darknet.Darknet19, {
         model=(Yolo, {
             'num_classes': datasets['train'].num_classes,
-            'anchors': {
-                'num': 5, 'values': list(ub.flatten(datasets['train'].anchors))
-            },
+            'anchors': anchors,
         }),
 
         criterion=(RegionLoss, {
             'num_classes': datasets['train'].num_classes,
-            'anchors': {
-                'num': 5, 'values': list(ub.flatten(datasets['train'].anchors))
-            }
+            'anchors': anchors,
             # 'anchors': datasets['train'].anchors,
             # 'object_scale': 5.0,
             # 'noobject_scale': 1.0,
@@ -615,9 +617,9 @@ def setup_harness(workers=None):
 
         y_batch = []
         for bx, index in enumerate(batch_img_inds.data.cpu().numpy().ravel()):
-            pred_boxes  = batch_pred_boxes[bx]
+            pred_boxes = batch_pred_boxes[bx]
             pred_scores = batch_pred_scores[bx]
-            pred_cxs    = batch_pred_cls_inds[bx]
+            pred_cxs = batch_pred_cls_inds[bx]
 
             # Group groundtruth boxes by class
             true_boxes_ = batch_true_boxes[bx].data.cpu().numpy()
@@ -627,7 +629,8 @@ def setup_harness(workers=None):
             # Unnormalize the true bboxes back to orig coords
             orig_size = batch_orig_sz[bx]
             if len(true_boxes_):
-                true_boxes = util.Boxes(true_boxes_, 'cxywh').scale(orig_size).asformat('tlbr').data
+                true_boxes = util.Boxes(true_boxes_, 'cxywh').scale(
+                    orig_size).asformat('tlbr').data
                 true_boxes = np.hstack([true_boxes, true_weights[:, None]])
 
             y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
