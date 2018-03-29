@@ -698,6 +698,9 @@ def train():
 
 
     python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
+    python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize_light --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
+
+    python ~/code/clab/examples/yolo_voc2.py train --nice=notest_light_07 --workers=8 --gpu=1 --batch_size=16 --data=notest --2007
 
     """
     harn = setup_harness()
