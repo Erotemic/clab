@@ -596,11 +596,16 @@ def setup_harness(workers=None):
         batch_pred_cls_inds = []
         for item_ in postout:
             item = item_.cpu().numpy()
-            cxywh = util.Boxes(item[..., 0:4], 'cxywh')
-            tlbr = cxywh.scale(inp_size).asformat('tlbr').data
-            batch_pred_boxes.append(tlbr)
-            batch_pred_scores.append(item[..., 4])
-            batch_pred_cls_inds.append(item[..., 5])
+            if len(item):
+                cxywh = util.Boxes(item[..., 0:4], 'cxywh')
+                tlbr = cxywh.scale(inp_size).asformat('tlbr').data
+                batch_pred_boxes.append(tlbr)
+                batch_pred_scores.append(item[..., 4])
+                batch_pred_cls_inds.append(item[..., 5])
+            else:
+                batch_pred_boxes.append(np.empty((0, 4)))
+                batch_pred_scores.append(np.empty(0))
+                batch_pred_cls_inds.append(np.empty(0))
 
         batch_true_cls_inds = target[..., 0]
         batch_true_boxes = target[..., 1:5]
