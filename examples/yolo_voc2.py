@@ -569,14 +569,22 @@ def setup_harness(workers=None):
             >>> bx = 0
             >>> postout = harn.model.module.postprocess(outputs.clone())
             >>> item = postout[bx].cpu().numpy()
+            >>> item = item[item[:, 4] > .6]
             >>> cxywh = util.Boxes(item[..., 0:4], 'cxywh')
             >>> orig_size = batch_orig_sz[bx].numpy().ravel()
             >>> tlbr = cxywh.scale(orig_size).asformat('tlbr').data
 
+
+            >>> truth_bx = target[bx]
+            >>> truth_bx = truth_bx[truth_bx[:, 0] != -1]
+            >>> truth_tlbr = util.Boxes(truth_bx[..., 1:5].numpy(), 'cxywh').scale(orig_size).asformat('tlbr').data
+
             >>> chw = inputs[0][bx].numpy().transpose(1, 2, 0)
             >>> rgb255 = cv2.resize(chw * 255, tuple(orig_size))
+            >>> mplutil.figure(fnum=1, doclf=True)
             >>> mplutil.imshow(rgb255, colorspace='rgb')
             >>> mplutil.draw_boxes(tlbr, 'tlbr')
+            >>> mplutil.draw_boxes(truth_tlbr, 'tlbr', color='orange')
             >>> mplutil.show_if_requested()
         """
         # Accumulate relevant outputs to measure
@@ -704,6 +712,7 @@ def train():
     python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize_light --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
 
     python ~/code/clab/examples/yolo_voc2.py train --nice=notest_light_07 --workers=8 --gpu=1 --batch_size=16 --data=notest --2007 --warmup
+    python ~/code/clab/examples/yolo_voc2.py train --nice=light_combo12_b32 --workers=8 --gpu=2,4 --batch_size=32 --data=combined --2012 --warmup
 
     """
     harn = setup_harness()
