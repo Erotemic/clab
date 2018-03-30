@@ -43,18 +43,24 @@ def list_collate(inbatch):
         >>> assert list(out_batch[0].shape) == [bsize, 3, 8, 8]
         >>> assert len(out_batch[1][0]) == bsize
     """
-    # if True:
-    if torch.is_tensor(inbatch[0]):
-        num_items = [len(item) for item in inbatch]
-        if ub.allsame(num_items):
-            if len(num_items) == 0 or num_items[0] == 0:
-                batch = inbatch
+    try:
+        # if True:
+        if torch.is_tensor(inbatch[0]):
+            num_items = [len(item) for item in inbatch]
+            if ub.allsame(num_items):
+                if len(num_items) == 0 or num_items[0] == 0:
+                    batch = inbatch
+                else:
+                    batch = default_collate(inbatch)
             else:
-                batch = default_collate(inbatch)
+                batch = inbatch
         else:
-            batch = inbatch
-    else:
-        batch = [list_collate(item) for item in list(map(list, zip(*inbatch)))]
+            batch = [list_collate(item) for item in list(map(list, zip(*inbatch)))]
+    except Exception as ex:
+        print('Failed to collate inbatch={}'.format(inbatch))
+        import utool
+        utool.embed()
+        raise
     return batch
     # else:
     #     # we know the order of data in __getitem__ so we can choose not to
@@ -124,41 +130,47 @@ def padded_collate(inbatch, fill_value=-1):
         >>> out_batch = padded_collate(inbatch)
         >>> assert list(out_batch.shape) == [6, 8, 4]
     """
-    if torch.is_tensor(inbatch[0]):
-        num_items = [len(item) for item in inbatch]
-        if ub.allsame(num_items):
-            if len(num_items) == 0:
-                batch = torch.empty(0)
-            elif num_items[0] == 0:
-                batch = torch.empty(0)
-                # batch = torch.Tensor(inbatch)
-            else:
-                batch = default_collate(inbatch)
-        else:
-            max_size = max(num_items)
-            real_tail_shape = None
-            for item in inbatch:
-                if item.numel():
-                    tail_shape = item.shape[1:]
-                    if real_tail_shape is not None:
-                        assert real_tail_shape == tail_shape
-                    real_tail_shape = tail_shape
-
-            padded_inbatch = []
-            for item in inbatch:
-                n_extra = max_size - len(item)
-                if n_extra > 0:
-                    shape = (n_extra,) + tuple(real_tail_shape)
-                    extra = torch.full(shape, fill_value=fill_value,
-                                       dtype=item.dtype)
-                    padded_item = torch.cat([item, extra], dim=0)
-                    padded_inbatch.append(padded_item)
+    try:
+        if torch.is_tensor(inbatch[0]):
+            num_items = [len(item) for item in inbatch]
+            if ub.allsame(num_items):
+                if len(num_items) == 0:
+                    batch = torch.empty(0)
+                elif num_items[0] == 0:
+                    batch = torch.empty(0)
+                    # batch = torch.Tensor(inbatch)
                 else:
-                    padded_inbatch.append(item)
-            batch = inbatch
-            batch = default_collate(padded_inbatch)
-    else:
-        batch = [padded_collate(item) for item in list(map(list, zip(*inbatch)))]
+                    batch = default_collate(inbatch)
+            else:
+                max_size = max(num_items)
+                real_tail_shape = None
+                for item in inbatch:
+                    if item.numel():
+                        tail_shape = item.shape[1:]
+                        if real_tail_shape is not None:
+                            assert real_tail_shape == tail_shape
+                        real_tail_shape = tail_shape
+
+                padded_inbatch = []
+                for item in inbatch:
+                    n_extra = max_size - len(item)
+                    if n_extra > 0:
+                        shape = (n_extra,) + tuple(real_tail_shape)
+                        extra = torch.full(shape, fill_value=fill_value,
+                                           dtype=item.dtype)
+                        padded_item = torch.cat([item, extra], dim=0)
+                        padded_inbatch.append(padded_item)
+                    else:
+                        padded_inbatch.append(item)
+                batch = inbatch
+                batch = default_collate(padded_inbatch)
+        else:
+            batch = [padded_collate(item) for item in list(map(list, zip(*inbatch)))]
+    except Exception as ex:
+        print('Failed to collate inbatch={}'.format(inbatch))
+        import utool
+        utool.embed()
+        raise
     return batch
 
 

@@ -31,6 +31,7 @@ import imgaug.augmenters as iaa
 from clab.models.yolo2.utils import yolo_utils as yolo_utils
 from clab.models.yolo2 import multiscale_batch_sampler
 from clab.data import voc
+from clab import util
 from clab import hyperparams
 from clab import xpu_device
 from clab import fit_harness

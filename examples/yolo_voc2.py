@@ -166,18 +166,38 @@ class YoloVOCDataset(voc.VOCDataset):
         anchors = algo.cluster_centers_
         return anchors
 
+    def _load_sized_image(self, index, inp_size):
+        # load the raw data from VOC
+
+        cacher = ub.Cacher('voc_img', cfgstr=ub.repr2([index, inp_size]),
+                           appname='clab')
+        data = cacher.tryload()
+        if data is None:
+            image = self._load_image(index)
+            orig_size = np.array(image.shape[0:2][::-1])
+            factor = inp_size / orig_size
+            # squish the image into network input coordinates
+            interpolation = (cv2.INTER_AREA if factor.sum() <= 2 else
+                             cv2.INTER_CUBIC)
+            hwc255 = cv2.resize(image, tuple(inp_size),
+                                interpolation=interpolation)
+            data = hwc255, orig_size, factor
+            cacher.save(data)
+
+        hwc255, orig_size, factor = data
+        return hwc255, orig_size, factor
+
     @ub.memoize_method
     def _load_item(self, index, inp_size):
         # load the raw data from VOC
-
-        image = self._load_image(index)
-        orig_size = np.array(image.shape[0:2][::-1])
-        factor = inp_size / orig_size
-        # squish the image into network input coordinates
-        interpolation = (cv2.INTER_AREA if factor.sum() <= 2 else
-                         cv2.INTER_CUBIC)
-        hwc255 = cv2.resize(image, tuple(inp_size),
-                            interpolation=interpolation)
+        hwc255, orig_size, factor = self._load_sized_image(index, inp_size)
+        # orig_size = np.array(image.shape[0:2][::-1])
+        # factor = inp_size / orig_size
+        # # squish the image into network input coordinates
+        # interpolation = (cv2.INTER_AREA if factor.sum() <= 2 else
+        #                  cv2.INTER_CUBIC)
+        # hwc255 = cv2.resize(image, tuple(inp_size),
+        #                     interpolation=interpolation)
 
         # VOC loads annotations in tlbr
         annot = self._load_annotation(index)
@@ -248,6 +268,14 @@ class YoloVOCDataset(voc.VOCDataset):
                              for bb in bbs.bounding_boxes])
             tlbr = yolo_utils.clip_boxes(tlbr, hwc255.shape[0:2])
 
+        # Remove boxes that are too small
+        # ONLY DO THIS FOR THE SMALL DEMO TASK
+        tlbr = util.Boxes(tlbr, 'tlbr')
+        flags = (tlbr.area > 10).ravel()
+        tlbr = tlbr.data[flags]
+        gt_classes = gt_classes[flags]
+        gt_weights = gt_weights[flags]
+
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
 
         # Lightnet YOLO accepts truth tensors in the format:
@@ -256,8 +284,12 @@ class YoloVOCDataset(voc.VOCDataset):
         tlbr_inp = util.Boxes(tlbr, 'tlbr')
         cxywh_norm = tlbr_inp.asformat('cxywh').scale(1 / inp_size)
 
-        target = np.hstack([gt_classes[:, None], cxywh_norm.data])
-        target = torch.FloatTensor(target)
+        import utool
+        with utool.embed_on_exception_context:
+            datas = [gt_classes[:, None], cxywh_norm.data]
+            # [d.shape for d in datas]
+            target = np.concatenate(datas, axis=-1)
+            target = torch.FloatTensor(target)
 
         # Return index information in the label as well
         orig_size = torch.LongTensor(orig_size)

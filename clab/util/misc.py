@@ -654,6 +654,11 @@ class Boxes(ub.NiceRepr):
         return self.data.shape
 
     @property
+    def area(self):
+        w, h = self.as_xywh().components[-2:]
+        return w * h
+
+    @property
     def components(self):
         a = self.data[..., 0:1]
         b = self.data[..., 1:2]
