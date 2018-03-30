@@ -35,7 +35,7 @@ def list_collate(inbatch):
         else:
             batch = inbatch
     else:
-        batch = [padded_collate(item) for item in list(map(list, zip(*inbatch)))]
+        batch = [list_collate(item) for item in list(map(list, zip(*inbatch)))]
     return batch
     # else:
     #     # we know the order of data in __getitem__ so we can choose not to

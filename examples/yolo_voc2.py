@@ -70,7 +70,8 @@ class YoloVOCDataset(voc.VOCDataset):
         ...     print(a.shape)
     """
 
-    def __init__(self, devkit_dpath=None, split='train', years=[2007, 2012]):
+    def __init__(self, devkit_dpath=None, split='train', years=[2007, 2012],
+                 base_wh=[416, 416], scales=[-3, 6], factor=32):
         super(YoloVOCDataset, self).__init__(devkit_dpath, split=split,
                                              years=years)
 
@@ -78,12 +79,14 @@ class YoloVOCDataset(voc.VOCDataset):
         # With the addition of anchor boxes we changed the resolution to
         # 416×416.  Since our model downsamples by a factor of 32, we pull
         # from the following multiples of 32: {320, 352, ..., 608}.
-        self.factor = 32  # downsample factor of yolo grid
-        self.base_wh = np.array([416, 416], dtype=np.int)
+        self.factor = factor  # downsample factor of yolo grid
+
+        self.base_wh = np.array(base_wh, dtype=np.int)
+
         assert np.all(self.base_wh % self.factor == 0)
 
         self.multi_scale_inp_size = np.array([
-            self.base_wh + (self.factor * i) for i in range(-3, 6)])
+            self.base_wh + (self.factor * i) for i in range(*scales)])
         self.multi_scale_out_size = self.multi_scale_inp_size // self.factor
 
         self.anchors = np.asarray([(1.08, 1.19), (3.42, 4.41),
@@ -163,6 +166,30 @@ class YoloVOCDataset(voc.VOCDataset):
         anchors = algo.cluster_centers_
         return anchors
 
+    @ub.memoize_method
+    def _load_item(self, index, inp_size):
+        # load the raw data from VOC
+
+        image = self._load_image(index)
+        orig_size = np.array(image.shape[0:2][::-1])
+        factor = inp_size / orig_size
+        # squish the image into network input coordinates
+        interpolation = (cv2.INTER_AREA if factor.sum() <= 2 else
+                         cv2.INTER_CUBIC)
+        hwc255 = cv2.resize(image, tuple(inp_size),
+                            interpolation=interpolation)
+
+        # VOC loads annotations in tlbr
+        annot = self._load_annotation(index)
+        tlbr_orig = util.Boxes(annot['boxes'].astype(np.float), 'tlbr')
+        gt_classes = annot['gt_classes']
+        # Weight samples so we dont care about difficult cases
+        gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
+        # squish the bounding box into network input coordinates
+        tlbr = tlbr_orig.scale(factor).data
+
+        return hwc255, orig_size, tlbr, gt_classes, gt_weights
+
     @profiler.profile
     def __getitem__(self, index):
         """
@@ -195,15 +222,6 @@ class YoloVOCDataset(voc.VOCDataset):
             >>> assert list(gt_weights.shape) == [16, 6]
             >>> assert list(origsize.shape) == [16, 2]
             >>> assert list(index.shape) == [16, 1]
-
-            import ubelt
-            for timer in ubelt.Timerit(100, bestof=10, label='time'):
-                with timer:
-                    collate.padded_collate(inbatch)
-
-            for timer in ubelt.Timerit(100, bestof=10, label='list'):
-                with timer:
-                    collate.list_collate(inbatch)
         """
         if isinstance(index, tuple):
             # Get size index from the batch loader
@@ -211,27 +229,9 @@ class YoloVOCDataset(voc.VOCDataset):
             inp_size = self.multi_scale_inp_size[size_index]
         else:
             inp_size = self.base_size
-        inp_size = np.array(inp_size)
 
-        # load the raw data from VOC
-        image = self._load_image(index)
-        annot = self._load_annotation(index)
-
-        # VOC loads annotations in tlbr
-        tlbr_orig = util.Boxes(annot['boxes'].astype(np.float), 'tlbr')
-        gt_classes = annot['gt_classes']
-
-        # Weight samples so we dont care about difficult cases
-        gt_weights = 1.0 - annot['gt_ishard'].astype(np.float)
-
-        # squish the bounding box and image into standard network input coordinates
-        orig_size = np.array(image.shape[0:2][::-1])
-        factor = inp_size / orig_size
-        tlbr_inp = tlbr_orig.scale(factor)
-
-        interpolation = cv2.INTER_AREA if factor.sum() <= 2 else cv2.INTER_CUBIC
-        hwc255 = cv2.resize(image, tuple(inp_size),
-                            interpolation=interpolation)
+        (hwc255, orig_size,
+         tlbr, gt_classes, gt_weights) = self._load_item(index, inp_size)
 
         if self.augmenter:
             # Ensure the same augmentor is used for bboxes and iamges
@@ -241,19 +241,19 @@ class YoloVOCDataset(voc.VOCDataset):
 
             bbs = ia.BoundingBoxesOnImage(
                 [ia.BoundingBox(x1, y1, x2, y2)
-                 for x1, y1, x2, y2 in tlbr_inp.data], shape=hwc255.shape)
+                 for x1, y1, x2, y2 in tlbr], shape=hwc255.shape)
             bbs = seq_det.augment_bounding_boxes([bbs])[0]
 
             tlbr = np.array([[bb.x1, bb.y1, bb.x2, bb.y2]
                              for bb in bbs.bounding_boxes])
             tlbr = yolo_utils.clip_boxes(tlbr, hwc255.shape[0:2])
-            tlbr_inp = util.Boxes(tlbr, 'tlbr')
 
         chw01 = torch.FloatTensor(hwc255.transpose(2, 0, 1) / 255)
 
         # Lightnet YOLO accepts truth tensors in the format:
         # [class_id, center_x, center_y, w, h]
         # where coordinates are noramlized between 0 and 1
+        tlbr_inp = util.Boxes(tlbr, 'tlbr')
         cxywh_norm = tlbr_inp.asformat('cxywh').scale(1 / inp_size)
 
         target = np.hstack([gt_classes[:, None], cxywh_norm.data])
@@ -267,7 +267,6 @@ class YoloVOCDataset(voc.VOCDataset):
 
         return chw01, label
 
-    @ub.memoize_method
     def _load_image(self, index):
         return super(YoloVOCDataset, self)._load_image(index)
 
@@ -367,6 +366,10 @@ def setup_harness(workers=None):
         dsetkw = {'years': [2007]}
 
     data_choice = ub.argval('--data', 'normal')
+
+    if ub.argflag('--small'):
+        dsetkw['base_wh'] = np.array([7, 7]) * 32
+        dsetkw['scales'] = [-1, 1]
 
     if data_choice == 'combined':
         datasets = {
@@ -724,6 +727,10 @@ def train():
 
     python ~/code/clab/examples/yolo_voc2.py train --nice=notest_light_07 --workers=8 --gpu=1 --batch_size=16 --data=notest --2007 --warmup
     python ~/code/clab/examples/yolo_voc2.py train --nice=light_combo12_b32 --workers=8 --gpu=2,3 --batch_size=32 --data=combined --2012 --warmup
+
+    # -------
+    # LOCAL
+    python ~/code/clab/examples/yolo_voc2.py train --nice=test --workers=0 --gpu=0 --batch_size=32 --data=combined --2007 --warmup --small
 
     """
     harn = setup_harness()
