@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 import lightnet.network as lnn
-import lightnet.data as lnd
+# import lightnet.data as lnd
 
 __all__ = ['Yolo']
 
@@ -120,7 +120,8 @@ class Yolo(lnn.Darknet):
 
         self.load_weights(weights_file)
         # self.loss = lnn.RegionLoss(self)
-        self.postprocess = lnd.GetBoundingBoxes(self, conf_thresh, nms_thresh)
+        from clab.models.yolo2 import light_postproc
+        self.postprocess = light_postproc.GetBoundingBoxes(self, conf_thresh, nms_thresh)
 
     def forward(self, x):
         """

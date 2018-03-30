@@ -3,6 +3,7 @@ import sys
 import ubelt as ub
 import numpy as np
 import tqdm
+import torch
 
 
 def isiterable(obj):
@@ -576,7 +577,10 @@ def scale_boxes(boxes, factor):
         array([[5., 5.]])
     """
     sx, sy = factor if ub.iterable(factor) else (factor, factor)
-    boxes = boxes.astype(np.float).copy()
+    if torch.is_tensor(boxes):
+        boxes = boxes.float().clone()
+    else:
+        boxes = boxes.astype(np.float).copy()
     boxes[..., 0:4:2] *= sx
     boxes[..., 1:4:2] *= sy
     return boxes
@@ -598,6 +602,11 @@ class Boxes(ub.NiceRepr):
         <Boxes(tlbr, array([25, 30, 40, 40]))>
         >>> Boxes([25, 30, 15, 10], 'xywh').scale(2).as_tlbr()
         <Boxes(tlbr, array([50., 60., 80., 80.]))>
+        >>> Boxes(torch.FloatTensor([[25, 30, 15, 20]]), 'xywh').scale(.1).as_tlbr()
+        <Boxes(tlbr,
+             2.5000  3.0000  4.0000  5.0000
+            [torch.FloatTensor of size (1,4)]
+            )>
 
     Example:
         >>> datas = [
@@ -627,7 +636,7 @@ class Boxes(ub.NiceRepr):
         # return self.format + ', shape=' + str(list(self.data.shape))
         data_repr = repr(self.data)
         if '\n' in data_repr:
-            data_repr = ub.indent('\n' + data_repr, '    ')
+            data_repr = ub.indent('\n' + data_repr.lstrip('\n'), '    ')
         return '{}, {}'.format(self.format, data_repr)
 
     __repr__ = ub.NiceRepr.__str__
@@ -663,7 +672,10 @@ class Boxes(ub.NiceRepr):
             raise KeyError(self.format)
 
     def _cat(self, datas):
-        return np.concatenate(datas, axis=-1)
+        if torch.is_tensor(datas[0]):
+            return torch.cat(datas, dim=-1)
+        else:
+            return np.concatenate(datas, axis=-1)
 
     def as_xywh(self):
         if self.format == 'xywh':
