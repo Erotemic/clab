@@ -39,9 +39,10 @@ from clab import monitor
 from clab import nninit
 from clab.lr_scheduler import ListedLR
 
-# Hey! lightnet is pretty modular. No need to copy code.
-from lightnet.network.loss import RegionLoss
-from lightnet.models.network_yolo import Yolo
+# from lightnet.network.loss import RegionLoss
+# from lightnet.models.network_yolo import Yolo
+from clab.models.yolo2.region_loss import RegionLoss
+from clab.models.yolo2.light_yolo import Yolo
 
 
 class YoloVOCDataset(voc.VOCDataset):
@@ -418,24 +419,24 @@ def setup_harness(workers=None):
         90: 0.00001,
     }
 
-    if ub.argflag('--warmup'):
-        lr_step_points = {
-            # warmup learning rate
-            0:  0.0001,
-            1:  0.0001,
-            2:  0.0002,
-            3:  0.0003,
-            4:  0.0004,
-            5:  0.0005,
-            6:  0.0006,
-            7:  0.0007,
-            8:  0.0008,
-            9:  0.0009,
-            10: 0.0010,
-            # cooldown learning rate
-            60: 0.0001,
-            90: 0.00001,
-        }
+    # if ub.argflag('--warmup'):
+    lr_step_points = {
+        # warmup learning rate
+        0:  0.0001,
+        1:  0.0001,
+        2:  0.0002,
+        3:  0.0003,
+        4:  0.0004,
+        5:  0.0005,
+        6:  0.0006,
+        7:  0.0007,
+        8:  0.0008,
+        9:  0.0009,
+        10: 0.0010,
+        # cooldown learning rate
+        60: 0.0001,
+        90: 0.00001,
+    }
 
     batch_size = int(ub.argval('--batch_size', default=16))
     n_cpus = psutil.cpu_count(logical=True)
@@ -444,20 +445,6 @@ def setup_harness(workers=None):
     print('Making loaders')
     loaders = make_loaders(datasets, batch_size=batch_size,
                            workers=workers if workers is not None else workers)
-
-    """
-    Reference:
-        Original YOLO9000 hyperparameters are defined here:
-        https://github.com/pjreddie/darknet/blob/master/cfg/yolo-voc.2.0.cfg
-
-        https://github.com/longcw/yolo2-pytorch/issues/1#issuecomment-286410772
-
-        Notes:
-            jitter is a translation / crop parameter
-            https://groups.google.com/forum/#!topic/darknet/A-JJeXprvJU
-
-            thresh in 2.0.cfg is iou_thresh here
-    """
 
     # anchors = {'num': 5, 'values': list(ub.flatten(datasets['train'].anchors))}
     anchors = dict(num=5, values=[1.3221, 1.73145, 3.19275, 4.00944, 5.05587,
@@ -470,19 +457,18 @@ def setup_harness(workers=None):
         model=(Yolo, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
+            'conf_thresh': postproc_params['conf_thresh'],
+            'nms_thresh': postproc_params['nms_thresh'],
         }),
 
         criterion=(RegionLoss, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
-            # 'anchors': datasets['train'].anchors,
             # 'object_scale': 5.0,
             # 'noobject_scale': 1.0,
             # 'class_scale': 1.0,
             # 'coord_scale': 1.0,
             # 'thresh': 0.6,
-            # 'reproduce_longcw': ub.argflag('--longcw'),
-            # 'denom': ub.argval('--denom', default='num_boxes'),
         }),
 
         optimizer=(torch.optim.SGD, dict(
@@ -491,7 +477,6 @@ def setup_harness(workers=None):
             weight_decay=0.0005
         )),
 
-        # initializer=(nninit.KaimingNormal, {}),
         initializer=(nninit.Pretrained, {
             'fpath': pretrained_fpath,
         }),
@@ -546,7 +531,11 @@ def setup_harness(workers=None):
         target = labels[0]
 
         bsize = inputs[0].shape[0]
-        loss = harn.criterion(outputs, target, seen=harn.epoch * bsize)
+
+        n_items = len(harn.loaders['train'])
+        bx = harn.bxs['train']
+        seen = harn.epoch * n_items + (bx * bsize)
+        loss = harn.criterion(outputs, target, seen=seen)
         return outputs, loss
 
     @harn.add_batch_metric_hook

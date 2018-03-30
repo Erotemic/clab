@@ -142,6 +142,7 @@ class FitHarness(object):
             'max_iter': max_iter,
         }
         harn.epoch = 0
+        harn.bxs = {}
 
     def setup_dpath(harn, workdir=None, **kwargs):
         from clab import folder_structure
@@ -573,6 +574,8 @@ class FitHarness(object):
         # accumulated = []
         with grad_context(learn):
             for bx, batch in enumerate(iter(loader)):
+
+                harn.bxs[tag] = bx
                 inputs, labels = harn._standardize_batch(batch)
 
                 # Core learning / backprop
