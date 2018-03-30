@@ -19,6 +19,14 @@ else:
     profile = __dummy_profile__
     IS_PROFILING = False
 
+if '--flamegraph' in sys.argv:
+    """
+    https://github.com/evanhempel/python-flamegraph
+    python -m flamegraph -o perf.log myscript.py --your-script args here
+    """
+    import flamegraph
+    flamegraph.start_profile_thread(fd=open("./perf.log", "w"))
+
 
 @atexit.register
 def dump_global_profile_report():

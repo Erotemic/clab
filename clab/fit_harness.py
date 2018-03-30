@@ -573,7 +573,9 @@ class FitHarness(object):
         # labels?
         # accumulated = []
         with grad_context(learn):
-            for bx, batch in enumerate(iter(loader)):
+            batch_iter = iter(loader)
+            for bx in range(len(loader)):
+                batch = next(batch_iter)
 
                 harn.bxs[tag] = bx
                 inputs, labels = harn._standardize_batch(batch)
@@ -669,16 +671,6 @@ class FitHarness(object):
 
         https://github.com/meetshah1995/pytorch-semseg/blob/master/train.py
         """
-        if harn.dry:
-            # TODO: make general if model has output_size_for
-            # output_shape = (label.shape[0],) + tuple(harn.single_output_shape)
-            # output_shape = (label.shape[0], 3, label.shape[1], label.shape[2])
-            # output = Variable(torch.rand(*output_shape))
-            output = None
-            base = float(sum(harn.current_lrs()))
-            loss = Variable(base + torch.randn(1) * base)
-            return output, loss
-
         # Run custom forward pass with loss computation, fallback to default
         if harn._custom_run_batch is None:
             outputs, loss = harn._default_run_batch(harn, inputs, labels)
@@ -686,7 +678,7 @@ class FitHarness(object):
             outputs, loss = harn._custom_run_batch(harn, inputs, labels)
 
         # Backprop and learn
-        if learn:
+        if learn and not harn.dry:
             harn.optimizer.zero_grad()
             loss.backward()
             harn.optimizer.step()
@@ -696,6 +688,16 @@ class FitHarness(object):
     def _default_run_batch(harn, harn_, inputs, labels):
         # What happens when there are multiple criterions?
         # How does hyperparam deal with that?
+
+        if harn.dry:
+            # TODO: make general if model has output_size_for
+            # output_shape = (label.shape[0],) + tuple(harn.single_output_shape)
+            # output_shape = (label.shape[0], 3, label.shape[1], label.shape[2])
+            # output = Variable(torch.rand(*output_shape))
+            output = None
+            base = float(sum(harn.current_lrs()))
+            loss = Variable(base + torch.randn(1) * base)
+            return output, loss
 
         # Forward prop through the model
         outputs = harn.model(*inputs)

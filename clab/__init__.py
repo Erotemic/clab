@@ -116,3 +116,5 @@ from clab import tasks
 from clab import transforms
 from clab import util
 from clab import xpu_device
+
+XPU = xpu_device.XPU

@@ -347,12 +347,12 @@ def setup_harness(workers=None):
     CommandLine:
         python ~/code/clab/examples/yolo_voc2.py setup_harness
         python ~/code/clab/examples/yolo_voc2.py setup_harness --profile
+        python ~/code/clab/examples/yolo_voc2.py setup_harness --flamegraph
 
     Example:
         >>> harn = setup_harness(workers=0)
         >>> harn.initialize()
         >>> harn.dry = True
-        >>> # xdoc: +SKIP
         >>> harn.run()
     """
     workdir = ub.truepath('~/work/VOC2007')
@@ -500,6 +500,7 @@ def setup_harness(workers=None):
                                    patience=max_epoch)
 
     @harn.set_batch_runner
+    @profiler.profile
     def batch_runner(harn, inputs, labels):
         """
         Custom function to compute the output of a batch and its loss.
@@ -518,7 +519,11 @@ def setup_harness(workers=None):
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
         """
-        outputs = harn.model.forward(*inputs)
+        if harn.dry:
+            shape = harn.model.module.output_shape_for(inputs[0].shape)
+            outputs = torch.rand(*shape)
+        else:
+            outputs = harn.model.forward(*inputs)
 
         # darknet criterion needs to know the input image shape
         # inp_size = tuple(inputs[0].shape[-2:])
@@ -533,6 +538,7 @@ def setup_harness(workers=None):
         return outputs, loss
 
     @harn.add_batch_metric_hook
+    @profiler.profile
     def custom_metrics(harn, output, labels):
         metrics_dict = ub.odict()
         criterion = harn.criterion
@@ -545,6 +551,7 @@ def setup_harness(workers=None):
     harn.batch_confusions = []
 
     @harn.add_iter_callback
+    @profiler.profile
     def on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss):
         """
         Custom hook to run on each batch (used to compute mAP on the fly)
@@ -594,6 +601,9 @@ def setup_harness(workers=None):
         conf_thresh = harn.postproc_params['conf_thresh']
         nms_thresh = harn.postproc_params['nms_thresh']
         ovthresh = harn.postproc_params['ovthresh']
+
+        if outputs is None:
+            return
 
         get_bboxes = harn.model.module.postprocess
         get_bboxes.conf_thresh = conf_thresh
@@ -650,6 +660,7 @@ def setup_harness(workers=None):
         harn.batch_confusions.extend(y_batch)
 
     @harn.add_epoch_callback
+    @profiler.profile
     def on_epoch(harn, tag, loader):
         y = pd.concat(harn.batch_confusions)
         num_classes = len(loader.dataset.label_names)

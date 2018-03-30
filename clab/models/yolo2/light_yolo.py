@@ -123,6 +123,11 @@ class Yolo(lnn.Darknet):
         from clab.models.yolo2 import light_postproc
         self.postprocess = light_postproc.GetBoundingBoxes(self, conf_thresh, nms_thresh)
 
+    def output_shape_for(self, input_shape):
+        b, c, h, w = input_shape
+        o = self.num_anchors*(5+self.num_classes)
+        return (b, o, h // 32, w // 32)
+
     def forward(self, x):
         """
         Example:
