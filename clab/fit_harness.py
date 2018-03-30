@@ -657,6 +657,7 @@ class FitHarness(object):
         """
         loader = harn.loaders[tag]
         for bx, batch in enumerate(iter(loader)):
+            print('bx = {!r}'.format(bx))
             if bx >= index:
                 break
         return harn._standardize_batch(batch)

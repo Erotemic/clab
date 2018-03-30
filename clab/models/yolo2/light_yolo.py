@@ -152,8 +152,12 @@ class Yolo(lnn.Darknet):
             >>> cls_names = list(ub.take(label_names, out_cxs.numpy().astype(np.int).tolist()))
             >>> print(pd.DataFrame({'name': cls_names, 'score': out_scores}))
             >>> mplutil.figure(fnum=1, doclf=True)
+            >>> #sf = orig_sizes[0].numpy() / (np.array(inp_size) / 32)
+            >>> sf = orig_sizes[0].numpy()
+            >>> norm_cxywh = util.Boxes(out_boxes.numpy(), 'cxywh')
+            >>> xywh = norm_cxywh.asformat('xywh').scale(sf).data
             >>> mplutil.imshow(rgb255, colorspace='rgb')
-            >>> mplutil.draw_boxes(out_boxes)
+            >>> mplutil.draw_boxes(xywh)
             >>> mplutil.show_if_requested()
         """
         outputs = []

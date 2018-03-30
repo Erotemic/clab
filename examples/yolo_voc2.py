@@ -41,8 +41,9 @@ from clab.lr_scheduler import ListedLR
 
 # from lightnet.network.loss import RegionLoss
 # from lightnet.models.network_yolo import Yolo
+# from clab.models.yolo2.light_yolo import Yolo
 from clab.models.yolo2.region_loss import RegionLoss
-from clab.models.yolo2.light_yolo import Yolo
+from clab.models.yolo2 import light_yolo
 
 
 class YoloVOCDataset(voc.VOCDataset):
@@ -335,18 +336,10 @@ def ensure_lightnet_initial_weights():
     torch_fpath = weight_fpath + '.pt'
     if not os.path.exists(torch_fpath):
         # hack to transform initial state
-        model = Yolo(num_classes=1000)
+        model = light_yolo.Yolo(num_classes=1000)
         model.load_weights(weight_fpath)
         torch.save(model.state_dict(), torch_fpath)
     return torch_fpath
-
-
-def demo_lightnet_weights():
-    from os.path import dirname, join
-    import lightnet
-    fpath = join(dirname(dirname(lightnet.__file__)),
-                 'examples', 'yolo-voc', 'lightnet_weights.pt')
-    return fpath
 
 
 def setup_harness(workers=None):
@@ -440,7 +433,8 @@ def setup_harness(workers=None):
 
     batch_size = int(ub.argval('--batch_size', default=16))
     n_cpus = psutil.cpu_count(logical=True)
-    workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
+    if workers is None:
+        workers = int(ub.argval('--workers', default=int(n_cpus / 2)))
 
     print('Making loaders')
     loaders = make_loaders(datasets, batch_size=batch_size,
@@ -454,7 +448,7 @@ def setup_harness(workers=None):
     hyper = hyperparams.HyperParams(
 
         # model=(darknet.Darknet19, {
-        model=(Yolo, {
+        model=(light_yolo.Yolo, {
             'num_classes': datasets['train'].num_classes,
             'anchors': anchors,
             'conf_thresh': postproc_params['conf_thresh'],
@@ -516,10 +510,10 @@ def setup_harness(workers=None):
             >>> from yolo_voc2 import *
             >>> harn = setup_harness(workers=0)
             >>> harn.initialize()
-            >>> batch = harn._demo_batch(0, 'train')
+            >>> batch = harn._demo_batch(0, 'vali')
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
-            >>> weights_fpath = demo_lightnet_weights()
+            >>> weights_fpath = light_yolo.demo_weights()
             >>> state_dict = torch.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
@@ -533,7 +527,7 @@ def setup_harness(workers=None):
         bsize = inputs[0].shape[0]
 
         n_items = len(harn.loaders['train'])
-        bx = harn.bxs['train']
+        bx = harn.bxs.get('train', 0)
         seen = harn.epoch * n_items + (bx * bsize)
         loss = harn.criterion(outputs, target, seen=seen)
         return outputs, loss
@@ -558,20 +552,36 @@ def setup_harness(workers=None):
         Example:
             >>> harn = setup_harness(workers=0)
             >>> harn.initialize()
-            >>> batch = harn._demo_batch(0, 'train')
+            >>> batch = harn._demo_batch(0, 'vali')
             >>> inputs, labels = batch
             >>> criterion = harn.criterion
             >>> loader = harn.loaders['train']
-            >>> weights_fpath = demo_lightnet_weights()
+            >>> weights_fpath = light_yolo.demo_weights()
             >>> state_dict = torch.load(weights_fpath)['weights']
             >>> harn.model.module.load_state_dict(state_dict)
             >>> outputs, loss = harn._custom_run_batch(harn, inputs, labels)
             >>> tag = 'train'
             >>> on_batch(harn, tag, loader, bx, inputs, labels, outputs, loss)
+
+        Ignore:
+
+            >>> target, gt_weights, batch_orig_sz, batch_index = labels
+            >>> bx = 0
+            >>> postout = harn.model.module.postprocess(outputs.clone())
+            >>> item = postout[bx].cpu().numpy()
+            >>> cxywh = util.Boxes(item[..., 0:4], 'cxywh')
+            >>> orig_size = batch_orig_sz[bx].numpy().ravel()
+            >>> tlbr = cxywh.scale(orig_size).asformat('tlbr').data
+
+            >>> chw = inputs[0][bx].numpy().transpose(1, 2, 0)
+            >>> rgb255 = cv2.resize(chw * 255, tuple(orig_size))
+            >>> mplutil.imshow(rgb255, colorspace='rgb')
+            >>> mplutil.draw_boxes(tlbr, 'tlbr')
+            >>> mplutil.show_if_requested()
         """
         # Accumulate relevant outputs to measure
-        target, gt_weights, orig_size, batch_index = labels
-        inp_size = inputs[0].shape[-2:][::-1]
+        target, gt_weights, batch_orig_sz, batch_index = labels
+        # inp_size = inputs[0].shape[-2:][::-1]
 
         conf_thresh = harn.postproc_params['conf_thresh']
         nms_thresh = harn.postproc_params['nms_thresh']
@@ -586,11 +596,12 @@ def setup_harness(workers=None):
         batch_pred_boxes = []
         batch_pred_scores = []
         batch_pred_cls_inds = []
-        for item_ in postout:
+        for bx, item_ in enumerate(postout):
             item = item_.cpu().numpy()
             if len(item):
                 cxywh = util.Boxes(item[..., 0:4], 'cxywh')
-                tlbr = cxywh.scale(inp_size).asformat('tlbr').data
+                orig_size = batch_orig_sz[bx].numpy().ravel()
+                tlbr = cxywh.scale(orig_size).asformat('tlbr').data
                 batch_pred_boxes.append(tlbr)
                 batch_pred_scores.append(item[..., 4])
                 batch_pred_cls_inds.append(item[..., 5])
@@ -602,7 +613,6 @@ def setup_harness(workers=None):
         batch_true_cls_inds = target[..., 0]
         batch_true_boxes = target[..., 1:5]
 
-        batch_orig_sz = orig_size
         batch_img_inds = batch_index
 
         y_batch = []
