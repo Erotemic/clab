@@ -608,7 +608,7 @@ def setup_harness(workers=None):
             item = item_.cpu().numpy()
             if len(item):
                 cxywh = util.Boxes(item[..., 0:4], 'cxywh')
-                orig_size = batch_orig_sz[bx].numpy().ravel()
+                orig_size = batch_orig_sz[bx].cpu().numpy().ravel()
                 tlbr = cxywh.scale(orig_size).asformat('tlbr').data
                 batch_pred_boxes.append(tlbr)
                 batch_pred_scores.append(item[..., 4])
@@ -712,7 +712,7 @@ def train():
     python ~/code/clab/examples/yolo_voc2.py train --nice=combo12_batch16_div_bsize_light --workers=2 --gpu=1 --batch_size=16 --data=combined --denom=bsize --2012
 
     python ~/code/clab/examples/yolo_voc2.py train --nice=notest_light_07 --workers=8 --gpu=1 --batch_size=16 --data=notest --2007 --warmup
-    python ~/code/clab/examples/yolo_voc2.py train --nice=light_combo12_b32 --workers=8 --gpu=2,4 --batch_size=32 --data=combined --2012 --warmup
+    python ~/code/clab/examples/yolo_voc2.py train --nice=light_combo12_b32 --workers=8 --gpu=2,3 --batch_size=32 --data=combined --2012 --warmup
 
     """
     harn = setup_harness()
