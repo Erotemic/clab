@@ -114,7 +114,8 @@ def padded_collate(inbatch, fill_value=-1):
         >>> out_batch = padded_collate(inbatch)
         >>> assert len(out_batch) == 2
         >>> assert list(out_batch[0].shape) == [bsize, 3, 8, 8]
-        >>> assert len(out_batch[1][0]) == bsize
+        >>> #assert list(out_batch[1][0].shape) == [bsize, 0, 4]
+        >>> assert list(out_batch[1][0].shape) == [0]
 
     Example:
         >>> inbatch = [torch.rand(4, 4), torch.rand(8, 4),
@@ -127,9 +128,9 @@ def padded_collate(inbatch, fill_value=-1):
         num_items = [len(item) for item in inbatch]
         if ub.allsame(num_items):
             if len(num_items) == 0:
-                batch = torch.FloatTensor()
+                batch = torch.empty(0)
             elif num_items[0] == 0:
-                batch = torch.FloatTensor(inbatch)
+                batch = torch.empty(0)
                 # batch = torch.Tensor(inbatch)
             else:
                 batch = default_collate(inbatch)
