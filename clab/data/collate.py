@@ -26,12 +26,31 @@ def list_collate(inbatch):
         >>> assert len(out_batch) == 2
         >>> assert list(out_batch[0].shape) == [bsize, 3, 8, 8]
         >>> assert len(out_batch[1][0]) == bsize
+
+    Example:
+        >>> import torch
+        >>> rng = np.random.RandomState(0)
+        >>> inbatch = []
+        >>> bsize = 4
+        >>> for _ in range(bsize):
+        >>>     # add an image and some dummy bboxes to the batch
+        >>>     img = torch.rand(3, 8, 8)  # dummy 8x8 image
+        >>>     boxes = torch.empty(0, 4)
+        >>>     item = (img, [boxes])
+        >>>     inbatch.append(item)
+        >>> out_batch = list_collate(inbatch)
+        >>> assert len(out_batch) == 2
+        >>> assert list(out_batch[0].shape) == [bsize, 3, 8, 8]
+        >>> assert len(out_batch[1][0]) == bsize
     """
     # if True:
     if torch.is_tensor(inbatch[0]):
         num_items = [len(item) for item in inbatch]
         if ub.allsame(num_items):
-            batch = default_collate(inbatch)
+            if len(num_items) == 0 or num_items[0] == 0:
+                batch = inbatch
+            else:
+                batch = default_collate(inbatch)
         else:
             batch = inbatch
     else:
@@ -82,6 +101,22 @@ def padded_collate(inbatch, fill_value=-1):
         >>> assert list(out_batch[1].shape) == [bsize, 11, 4]
 
     Example:
+        >>> import torch
+        >>> rng = np.random.RandomState(0)
+        >>> inbatch = []
+        >>> bsize = 4
+        >>> for _ in range(bsize):
+        >>>     # add an image and some dummy bboxes to the batch
+        >>>     img = torch.rand(3, 8, 8)  # dummy 8x8 image
+        >>>     boxes = torch.empty(0, 4)
+        >>>     item = (img, [boxes])
+        >>>     inbatch.append(item)
+        >>> out_batch = padded_collate(inbatch)
+        >>> assert len(out_batch) == 2
+        >>> assert list(out_batch[0].shape) == [bsize, 3, 8, 8]
+        >>> assert len(out_batch[1][0]) == bsize
+
+    Example:
         >>> inbatch = [torch.rand(4, 4), torch.rand(8, 4),
         >>>            torch.rand(0, 4), torch.rand(3, 4),
         >>>            torch.rand(0, 4), torch.rand(1, 4)]
@@ -91,7 +126,13 @@ def padded_collate(inbatch, fill_value=-1):
     if torch.is_tensor(inbatch[0]):
         num_items = [len(item) for item in inbatch]
         if ub.allsame(num_items):
-            batch = default_collate(inbatch)
+            if len(num_items) == 0:
+                batch = torch.FloatTensor()
+            elif num_items[0] == 0:
+                batch = torch.FloatTensor(inbatch)
+                # batch = torch.Tensor(inbatch)
+            else:
+                batch = default_collate(inbatch)
         else:
             max_size = max(num_items)
             real_tail_shape = None

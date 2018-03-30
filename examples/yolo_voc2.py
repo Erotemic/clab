@@ -653,6 +653,8 @@ def setup_harness(workers=None):
                 true_boxes = util.Boxes(true_boxes_, 'cxywh').scale(
                     orig_size).asformat('tlbr').data
                 true_boxes = np.hstack([true_boxes, true_weights[:, None]])
+            else:
+                true_boxes = true_boxes_.reshape(-1, 4)
 
             y = voc.EvaluateVOC.image_confusions(true_boxes, true_cxs,
                                                  pred_boxes, pred_scores,
