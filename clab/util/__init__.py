@@ -1,14 +1,13 @@
 """
-python -c "import ubelt._internal as a; a.autogen_init('clab.util')"
-python -m clab
+mkinit clab.util
 """
 # flake8: noqa
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-__DYNAMIC__ = True
+__DYNAMIC__ = False
 if __DYNAMIC__:
-    from ubelt._internal import dynamic_import
-    exec(dynamic_import(__name__))
+    import mkinit
+    exec(mkinit.mkinit.dynamic_init(__name__))
 else:
     # <AUTOGEN_INIT>
     from clab.util import colorutil
@@ -75,10 +74,10 @@ else:
                                   nx_ensure_agraph_color, nx_sink_nodes,
                                   nx_source_nodes, patch_pygraphviz,)
     from clab.util.priority_queue import (PriorityQueue, SortedQueue,)
-    from clab.util.profiler import (IS_PROFILING, IS_PROFILING, KernprofParser,
+    from clab.util.profiler import (IS_PROFILING, KernprofParser,
                                     dump_global_profile_report, dynamic_profile,
                                     find_parent_class, find_pattern_above_row,
-                                    find_pyclass_above_row, profile, profile,
+                                    find_pyclass_above_row, profile,
                                     profile_onthefly,)
     from clab.util.util_affine import (TRANSFORM_DTYPE, affine_around_mat3x3,
                                        affine_mat3x3, rotation_around_bbox_mat3x3,
