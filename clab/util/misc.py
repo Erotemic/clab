@@ -401,7 +401,7 @@ def protect_print(print):
             prog = list(progs)[0]
             # Specify file in case we are capturing stdout
             for line in str(msg).split('\n'):
-                if len(line) > prog.ncols:
+                if prog.ncols is not None and len(line) > prog.ncols:
                     for subline in ub.chunks(line, prog.ncols):
                         tqdm.tqdm.write(''.join(subline), file=sys.stdout)
                 else:
